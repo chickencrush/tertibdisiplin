@@ -15,7 +15,7 @@ window.APP_CONFIG = {
   // Konfigurasi Brand & Identitas
   APP_NAME: "TERTIB DISIPLIN",
   TAGLINE: "Sistem Kontrol Operasional & Presensi GPS Karyawan",
-  COMPANY_NAME: "CompanyOps Enterprise",
+  COMPANY_NAME: "CHICKEN  CRUSH INDONESIA",
   VERSION: "2.0.0-GAS-GDrive",
 
   // Jika URL GAS diisi, aplikasi akan otomatis beralih 100% ke Google Sheets & Drive
