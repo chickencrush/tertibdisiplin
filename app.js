@@ -559,6 +559,86 @@ const logoutUser = () => {
   showToast('Anda telah keluar dari aplikasi.', 'info');
 };
 
+// ================= PANEL SLIDE (Sidebar Responsif) =================
+// Buka/tutup sidebar sebagai panel slide di Android/iOS/tablet.
+const isMobileLayout = () => window.innerWidth <= 900;
+
+window.openSidebar = () => {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!sidebar || !isMobileLayout()) return;
+  sidebar.classList.add('open');
+  sidebar.setAttribute('aria-hidden', 'false');
+  if (overlay) overlay.classList.add('show');
+  document.body.classList.add('panel-open');
+};
+
+window.closeSidebar = () => {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!sidebar) return;
+  sidebar.classList.remove('open');
+  sidebar.setAttribute('aria-hidden', isMobileLayout() ? 'true' : 'false');
+  if (overlay) overlay.classList.remove('show');
+  document.body.classList.remove('panel-open');
+};
+
+const setupResponsiveSidebar = () => {
+  const sidebar = document.getElementById('sidebar');
+  const btnToggle = document.getElementById('btn-toggle-sidebar');
+  if (!sidebar) return;
+
+  // Tombol hamburger di topbar
+  if (btnToggle) {
+    btnToggle.addEventListener('click', () => {
+      sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+  }
+
+  // Tutup lewat tombol Esc
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sidebar.classList.contains('open')) closeSidebar();
+  });
+
+  // Reset state saat berpindah mode PC <-> mobile
+  window.addEventListener('resize', () => {
+    if (!isMobileLayout()) closeSidebar();
+  });
+
+  // Gesture geser (swipe): tepi kiri -> buka, panel terbuka -> tutup
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+  let edgeSwipeActive = false;
+
+  document.addEventListener('touchstart', (e) => {
+    if (!isMobileLayout()) return;
+    const t = e.changedTouches[0];
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+    touchStartTime = Date.now();
+    const isOpen = sidebar.classList.contains('open');
+    // Mulai dari tepi kiri layar (24px) untuk membuka, atau dari dalam panel untuk menutup
+    edgeSwipeActive = (!isOpen && touchStartX <= 24) || (isOpen && touchStartX <= 300);
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    if (!edgeSwipeActive || !isMobileLayout()) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartX;
+    const dy = Math.abs(t.clientY - touchStartY);
+    const dt = Date.now() - touchStartTime;
+    // Syarat swipe horizontal yang cepat & jelas
+    if (dt < 400 && dy < 80) {
+      const isOpen = sidebar.classList.contains('open');
+      if (!isOpen && dx > 60) openSidebar();
+      else if (isOpen && dx < -60) closeSidebar();
+    }
+    edgeSwipeActive = false;
+  }, { passive: true });
+};
+// =============== END PANEL SLIDE (Sidebar Responsif) ===============
+
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
   // Register PWA Service Worker
@@ -582,8 +662,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       e.preventDefault();
       const view = item.getAttribute('data-view');
       if (view) switchView(view);
+      // Di Android/iOS (layar sempit), menu otomatis ditutup setelah memilih halaman
+      if (window.innerWidth <= 900) closeSidebar();
     });
   });
+
+  // Sidebar responsif: tombol hamburger (mobile) + tutup lewat overlay / tombol Esc
+  setupResponsiveSidebar();
 
   // Start live clock for attendance
   setInterval(updateAttendanceClock, 1000);

@@ -2,17 +2,22 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- Viewport adaptif: mendukung safe-area Android (status/nav bar) & iOS (notch) + zoom input -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, viewport-fit=cover">
   <title>TERTIB DISIPLIN - Sistem Kontrol Operasional & Disiplin Karyawan</title>
   
   <!-- PWA Meta Tags -->
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#701c34">
+  <meta name="theme-color" content="#701c34" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#581329" media="(prefers-color-scheme: dark)">
+  <meta name="msapplication-TileColor" content="#701c34">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="TERTIB DISIPLIN">
+  <meta name="format-detection" content="telephone=no">
   <link rel="icon" type="image/png" href="icons/favicon.png">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192.png">
 
   <!-- Google Fonts: Plus Jakarta Sans & Outfit -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,7 +30,7 @@
   <!-- Feather Icons -->
   <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
 
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 
@@ -160,10 +165,14 @@
   </div>
 </div>
 
+<!-- Overlay gelap untuk sidebar saat mode mobile/tablet (Android & iOS) -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
 <div class="app-layout">
 
-  <!-- Left Sidebar (Burgundy Theme Matching Mockup) -->
-  <aside class="sidebar" id="sidebar">
+  <!-- Left Sidebar / Panel Slide (Burgundy Theme Matching Mockup) -->
+  <aside class="sidebar" id="sidebar" aria-label="Menu navigasi utama">
+    <button type="button" class="panel-close-btn" id="btn-close-sidebar" aria-label="Tutup menu" onclick="closeSidebar()">&times;</button>
     <div class="brand-area">
       <img src="icons/logo.png" alt="Logo TERTIB DISIPLIN" class="brand-logo-img">
       <div class="brand-info">
@@ -515,7 +524,7 @@
 
       <!-- VIEW 2: PRESENSI GPS & SELFIE -->
       <section class="view-panel" id="view-presensi">
-        <div style="display:grid; grid-template-columns: 460px 1fr; gap:24px;">
+        <div class="responsive-grid-2 presensi-layout" style="display:grid; grid-template-columns: 460px 1fr; gap:24px;">
           
           <!-- Left: Live Camera Viewfinder & Coordinates Check -->
           <div class="modern-card">
@@ -592,7 +601,7 @@
               </button>
             </div>
 
-            <div style="overflow-x:auto;">
+            <div class="table-scroll-wrap" style="overflow-x:auto;">
               <table class="payslip-table" id="attendance-table">
                 <thead>
                   <tr>
@@ -672,7 +681,7 @@
         </div>
 
         <!-- 3-Column Kanban Board for Proses - Hold - Selesai -->
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:20px;">
+        <div class="kanban-board" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:20px;">
           
           <!-- Column 1: PROSES -->
           <div class="modern-card" style="border-top: 4px solid #3b82f6;">
@@ -773,7 +782,7 @@
 
         <!-- Employee Table -->
         <div class="modern-card">
-          <div style="overflow-x:auto;">
+          <div class="table-scroll-wrap" style="overflow-x:auto;">
             <table class="payslip-table">
               <thead>
                 <tr>
@@ -849,7 +858,7 @@
             </button>
           </div>
 
-          <div style="overflow-x:auto;">
+          <div class="table-scroll-wrap" style="overflow-x:auto;">
             <table class="payslip-table">
               <thead>
                 <tr>
@@ -886,7 +895,7 @@
               <span class="card-badge-tag">Otomatis Terintegrasi</span>
             </div>
 
-            <div style="overflow-x:auto;">
+            <div class="table-scroll-wrap" style="overflow-x:auto;">
               <table class="payslip-table">
                 <thead>
                   <tr>
@@ -967,7 +976,7 @@
 
       <!-- VIEW 8: KALENDER & MEETING -->
       <section class="view-panel" id="view-calendar">
-        <div style="display:grid; grid-template-columns: 1fr 340px; gap:24px;">
+        <div class="responsive-grid-2 calendar-layout" style="display:grid; grid-template-columns: 1fr 340px; gap:24px;">
           
           <div class="modern-card">
             <div class="card-title-row">
@@ -1010,7 +1019,7 @@
             </button>
           </div>
 
-          <div style="overflow-x:auto;">
+          <div class="table-scroll-wrap" style="overflow-x:auto;">
             <table class="payslip-table">
               <thead>
                 <tr>
@@ -1166,7 +1175,7 @@
           </div>
 
           <!-- Table Container -->
-          <div style="overflow-x:auto; margin-top:16px; border:1px solid #e2e8f0; border-radius:12px;">
+          <div class="table-scroll-wrap" style="overflow-x:auto; margin-top:16px; border:1px solid #e2e8f0; border-radius:12px;">
             <table class="payslip-table" id="db-inspector-table" style="font-size:12px;">
               <thead id="db-inspector-thead">
                 <!-- Dynamically populated -->
@@ -1393,7 +1402,7 @@
       <p style="font-size:12px; color:#64748b; margin-bottom:16px;">
         Struktur grading resmi perusahaan dengan rentang upah minimum, maksimum, dan uang kehadiran harian sesuai regulasi Kementerian Ketenagakerjaan:
       </p>
-      <div style="overflow-x:auto;">
+      <div class="table-scroll-wrap" style="overflow-x:auto;">
         <table class="payslip-table">
           <thead>
             <tr>
