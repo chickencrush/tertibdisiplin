@@ -41,6 +41,47 @@ body {
   min-height: 100vh;
 }
 
+/* ==========================================
+   ADAPTASI LAYAR PC / ANDROID / iOS (Safe Area)
+   - env(safe-area-inset-*) hanya bernilai > 0 pada
+     perangkat dengan notch / status bar transparan (iOS & Android PWA).
+   - Pada PC nilainya 0 sehingga tampilan tetap seperti desain asli.
+   ========================================== */
+html, body {
+  height: 100%;
+}
+
+body {
+  padding-top: env(safe-area-inset-top, 0px);
+  touch-action: manipulation; /* hilangkan delay tap 300ms di mobile, zoom tetap bisa */
+  overscroll-behavior-y: none; /* cegah efek "bounce" berlebihan pada iOS Safari */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.sidebar {
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, calc(env(safe-area-inset-right, 0px) + 4px));
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+}
+
+.main-wrapper {
+  /* tinggi dinamis: 100dvh = viewport nyata pada browser mobile Android/iOS */
+  height: 100vh;
+  height: 100dvh;
+}
+
+.topbar {
+  padding-left: max(32px, env(safe-area-inset-left, 32px));
+  padding-right: max(32px, env(safe-area-inset-right, 32px));
+}
+
+.content-body {
+  padding-left: max(32px, env(safe-area-inset-left, 32px));
+  padding-right: max(32px, env(safe-area-inset-right, 32px));
+  padding-bottom: max(28px, calc(env(safe-area-inset-bottom, 0px) + 28px));
+}
+
 /* Sidebar */
 .sidebar {
   width: 260px;
@@ -1361,7 +1402,69 @@ textarea.form-control {
   to { opacity: 1; transform: translateX(0); }
 }
 
-/* Responsive adjustments */
+/* ==========================================
+   RESPONSIVE: PC (lebar) ➔ Tablet ➔ Android / iOS (HP)
+   ========================================== */
+
+/* Overlay gelap saat panel slide (sidebar) dibuka di layar sempit */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  z-index: 45;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.sidebar-overlay.show {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Tombol hamburger hanya tampil di layar sempit */
+#btn-toggle-sidebar {
+  display: none !important;
+}
+
+/* Tombol tutup panel slide hanya tampil saat mode mobile (di dalam @media 900px) */
+.panel-close-btn {
+  display: none;
+}
+
+/* Layout PC besar: konten diberi batas maksimum agar tidak melebar berlebihan */
+@media (min-width: 1600px) {
+  .content-body > * {
+    max-width: 1560px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* Tablet & layar menengah */
+@media (max-width: 1280px) {
+  .topbar {
+    padding: 14px 20px;
+    flex-wrap: wrap;
+  }
+  .topbar-right {
+    gap: 10px;
+  }
+  .search-pill {
+    width: 160px;
+  }
+  .content-body {
+    padding: 22px 20px;
+  }
+  .sidebar {
+    width: 230px;
+  }
+}
+
 @media (max-width: 1080px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
@@ -1369,31 +1472,381 @@ textarea.form-control {
   .charts-dual-row {
     grid-template-columns: 1fr;
   }
+  /* Presensi: kamera & riwayat ditumpuk vertikal */
+  .presensi-layout {
+    grid-template-columns: 1fr !important;
+  }
+  /* Kalender: ringkasan jadwal turun ke bawah */
+  .calendar-layout {
+    grid-template-columns: 1fr !important;
+  }
+  /* Kanban Daily Report tetap 3 kolom namun lebih ramping */
+  .kanban-board {
+    gap: 14px !important;
+  }
+}
+
+/* Mobile (Android & iOS): sidebar menjadi panel slide dari kiri */
+@media (max-width: 900px) {
+  #btn-toggle-sidebar {
+    display: flex !important;
+  }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 280px;
+    max-width: 85vw;
+    height: 100vh;
+    height: 100dvh;
+    transform: translateX(-105%);
+    visibility: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    box-shadow: none;
+    transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1),
+                visibility 0.32s ease,
+                box-shadow 0.32s ease;
+    padding-top: max(20px, env(safe-area-inset-top, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: 14px;
+    padding-bottom: max(16px, calc(env(safe-area-inset-bottom, 0px) + 16px));
+  }
+  .sidebar.open {
+    transform: translateX(0);
+    visibility: visible;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.28), 0 0 60px rgba(0, 0, 0, 0.18);
+  }
+
+  /* Header panel slide: tombol tutup di kanan atas */
+  .sidebar .panel-close-btn {
+    display: flex;
+    position: absolute;
+    top: max(14px, env(safe-area-inset-top, 0px));
+    right: 12px;
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    font-size: 20px;
+    line-height: 1;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 5;
+    transition: background 0.2s ease, transform 0.2s ease;
+  }
+  .sidebar .panel-close-btn:hover,
+  .sidebar .panel-close-btn:active {
+    background: rgba(255, 255, 255, 0.28);
+    transform: rotate(90deg);
+  }
+
+  /* Menu digulir halus bila layar pendek */
+  .nav-menu {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+  }
+  .nav-menu::-webkit-scrollbar {
+    width: 4px;
+  }
+  .nav-menu::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+  }
+
+  /* Kartu promo PWA tidak menutupi menu di layar sempit */
+  .sidebar-footer {
+    margin-top: auto;
+    padding-top: 14px;
+  }
+
+  /* Header panel slide diberi ruang untuk tombol tutup di kanan atas */
+  .sidebar .brand-area {
+    padding-right: 40px;
+  }
+
+  /* Geser konten utama saat panel terbuka (efek "slide" natural ala iOS) */
+  .main-wrapper {
+    transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  body.panel-open .main-wrapper {
+    transform: translateX(min(140px, 40vw));
+  }
+  .main-wrapper {
+    width: 100%;
+  }
+  .kanban-board {
+    grid-template-columns: 1fr !important;
+  }
+  .metrics-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .mode-switcher-container {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+  .mode-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 7px 8px;
+  }
+  .stream-item-row {
+    flex-wrap: wrap;
+  }
+  .stream-author-outlet {
+    width: 100%;
+    order: -1;
+  }
+  .stream-desc-content {
+    min-width: 0;
+  }
 }
 
 @media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    left: -260px;
-    height: 100vh;
-  }
-  .sidebar.open {
-    left: 0;
-  }
   .topbar {
-    padding: 14px 16px;
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .topbar-left {
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+  .topbar-title-wrap h2 {
+    font-size: 17px;
+  }
+  .topbar-title-wrap p {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60vw;
+  }
+  .topbar-right {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .select-filter {
+    flex: 1 1 45%;
+    min-width: 0;
+    font-size: 12px;
+  }
+  .search-pill {
+    order: -1;
+    width: 100%;
+  }
+  .search-pill:focus-within {
+    width: 100%;
+  }
+  .user-meta {
+    display: none;
+  }
+  .user-profile-pill {
+    padding: 4px;
+  }
+  .btn-logout span {
+    display: none;
   }
   .content-body {
-    padding: 16px;
+    padding: 16px 14px;
+    padding-bottom: max(24px, calc(env(safe-area-inset-bottom, 0px) + 24px));
   }
   .metrics-row {
     grid-template-columns: 1fr;
   }
   .chat-window-wrapper {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 60vh;
+  }
+  .chat-window-wrapper .chat-stream-body {
+    max-height: 48vh;
   }
   .chat-channels-sidebar {
-    display: none;
+    flex-direction: row;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 10px;
+    gap: 6px;
+  }
+  .chat-channel-item {
+    white-space: nowrap;
+    margin-bottom: 0;
+  }
+  .camera-wrapper {
+    height: auto;
+    aspect-ratio: 3 / 4;
+    max-height: 60vh;
+  }
+  .modal-card {
+    max-height: 92vh;
+    max-height: 92dvh;
+    border-radius: 20px;
+  }
+  .modal-header {
+    padding: 16px 18px;
+  }
+  .modal-body {
+    padding: 18px;
+  }
+  .modal-footer {
+    padding: 14px 18px;
+    flex-wrap: wrap;
+  }
+  .modal-footer .btn-primary,
+  .modal-footer .btn-secondary {
+    flex: 1 1 45%;
+    justify-content: center;
+    text-align: center;
+  }
+  .payslip-sheet {
+    padding: 18px 14px;
+    font-size: 12px;
+  }
+  .pwa-install-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+  .toast-container {
+    left: 14px;
+    right: 14px;
+    bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 20px));
+    align-items: stretch;
+  }
+  .toast {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 26px 20px;
+    border-radius: 22px;
+  }
+  .auth-title {
+    font-size: 22px;
+  }
+  .auth-logo-img {
+    width: 76px;
+    height: 76px;
+  }
+  .ring-visual {
+    width: 116px;
+    height: 116px;
+  }
+  .rings-container {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .staff-sub-metrics {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+  }
+  .select-filter {
+    flex: 1 1 100%;
+  }
+  .icon-action-btn {
+    width: 34px;
+    height: 34px;
+  }
+}
+
+/* Landscape HP pendek (mis. iPhone landscape / Android dengan nav bar) */
+@media (max-height: 500px) and (orientation: landscape) {
+  .sidebar {
+    padding-top: 12px;
+  }
+  .brand-area {
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+  }
+  .nav-item {
+    padding: 8px 14px;
+  }
+  .camera-wrapper {
+    max-height: 70vh;
+  }
+  .auth-gate-screen {
+    align-items: flex-start;
+  }
+}
+
+/* iOS Safari saja: perbaiki rendering tinggi & scroll dalam */
+@supports (-webkit-touch-callout: none) {
+  .main-wrapper {
+    height: -webkit-fill-available;
+  }
+  .sidebar {
+    height: 100%;
+  }
+  /* Panel slide di iOS: gunakan translate3d + percepat komposit agar mulus */
+  @media (max-width: 900px) {
+    .sidebar {
+      transform: translate3d(-105%, 0, 0);
+      will-change: transform;
+      backface-visibility: hidden;
+    }
+    .sidebar.open {
+      transform: translate3d(0, 0, 0);
+    }
+    body.panel-open .main-wrapper {
+      transform: translate3d(min(140px, 40vw), 0, 0);
+    }
+  }
+  .form-control,
+  select.form-control,
+  textarea.form-control {
+    font-size: 16px; /* cegah halaman ter-zoom otomatis saat fokus input di iOS */
+  }
+  .chat-window-wrapper {
+    height: calc(100vh - 190px);
+  }
+}
+
+/* Cetak slip gaji & laporan */
+@media print {
+  .sidebar,
+  .topbar,
+  .toast-container,
+  .pwa-install-banner,
+  .sidebar-overlay,
+  .btn-primary,
+  .btn-secondary,
+  .btn-logout,
+  .modal-close-btn {
+    display: none !important;
+  }
+  body {
+    padding: 0;
+    background: #fff;
+  }
+  .main-wrapper {
+    height: auto;
+    overflow: visible;
+  }
+  .content-body {
+    padding: 0;
+  }
+  .modal-overlay {
+    position: static;
+    background: #fff;
+    padding: 0;
+  }
+  .modal-card {
+    box-shadow: none;
+    max-width: 100%;
+    max-height: none;
   }
 }
 
