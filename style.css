@@ -1620,8 +1620,6 @@ body[data-access="staff"] .topbar-right .search-pill { display: none; }
 
 @media (max-width: 768px) {
   html, body { overflow-x: hidden; width: 100%; }
-  body { display: block; }
-  .app-layout { display: block; }
 
   /* Sidebar geser dari kiri, dibuka lewat tombol menu */
   .sidebar {
@@ -1668,7 +1666,6 @@ body[data-access="staff"] .topbar-right .search-pill { display: none; }
   .nav-item { padding: 12px 14px; }
 
   /* Bilah atas ringkas */
-  .main-wrapper { width: 100%; height: auto; min-height: 100vh; overflow: visible; }
   .topbar { flex-wrap: wrap; padding: 10px 12px; gap: 8px; }
   #btn-toggle-sidebar { display: inline-flex; flex-shrink: 0; }
   .topbar-left { flex: 1 1 100%; flex-wrap: wrap; gap: 10px; align-items: center; }
@@ -1715,4 +1712,78 @@ body[data-access="staff"] .topbar-right .search-pill { display: none; }
 @media (max-width: 768px) {
   .metrics-row { grid-template-columns: minmax(0, 1fr); }
   .chart-wrapper, .chart-container, .modern-card canvas { max-width: 100%; }
+}
+
+
+/* ==========================================================
+   BINGKAI LAYAR PENUH: sidebar & konten menggulir sendiri-sendiri
+   (tidak ada gulir ganda, tidak ada ruang kosong di bawah)
+   ========================================================== */
+html, body { height: 100%; }
+body { overflow: hidden; }
+.app-layout { display: flex; height: 100vh; height: 100dvh; width: 100%; overflow: hidden; }
+
+.main-wrapper { flex: 1 1 0; min-width: 0; height: 100%; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.topbar { position: relative; flex: 0 0 auto; }
+.content-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; scroll-behavior: smooth; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+
+/* Sidebar: gulir halus naik turun, bisa dibuka/tutup */
+.sidebar {
+  height: 100%; min-height: 0;
+  overflow-y: auto; overflow-x: hidden;
+  scroll-behavior: smooth; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.35) transparent;
+  transition: width 0.3s ease, padding 0.3s ease, transform 0.28s ease, opacity 0.2s ease;
+}
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.28); border-radius: 6px; }
+.sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.5); }
+.sidebar > * { flex-shrink: 0; min-width: 228px; }
+.content-body::-webkit-scrollbar { width: 10px; }
+.content-body::-webkit-scrollbar-thumb { background: #d9c7ce; border-radius: 10px; border: 2px solid #f4f5f8; }
+.content-body::-webkit-scrollbar-thumb:hover { background: #c3a7b2; }
+
+#btn-toggle-sidebar { display: inline-flex; flex-shrink: 0; }
+
+/* Desktop: sidebar bisa disembunyikan (pilihan diingat) */
+@media (min-width: 769px) {
+  body.sidebar-collapsed .sidebar { width: 0; padding-left: 0; padding-right: 0; opacity: 0; pointer-events: none; }
+}
+
+/* Bilah atas satu baris: judul menyusut (elipsis), item cadangan disembunyikan bertahap */
+.topbar { flex-wrap: nowrap; padding: 12px 24px; gap: 14px; }
+.topbar-left { flex: 1 1 0; min-width: 0; gap: 14px; }
+.topbar-title-wrap { flex: 1 1 0; min-width: 100px; }
+.topbar-title-wrap h2 { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-title-wrap p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-right { flex: 0 0 auto; flex-wrap: nowrap; gap: 10px; }
+.mode-switcher-container { flex: 0 0 auto; }
+
+@media (max-width: 1600px) {
+  .topbar-right .search-pill, .topbar-right #filter-period-select { display: none; }
+}
+@media (max-width: 1560px) {
+  .user-meta, .user-profile-pill > svg, .user-profile-pill > i { display: none; }
+  .user-profile-pill { padding: 4px; gap: 0; }
+  .btn-logout span { display: none; }
+  .btn-logout { padding: 9px 11px; }
+}
+/* Layar sempit: bilah atas dua baris (judul + mode di atas, filter di bawah) */
+@media (max-width: 1100px) {
+  .topbar { flex-wrap: wrap; row-gap: 8px; }
+  .topbar-left { flex: 1 1 100%; }
+  .topbar-right { flex: 1 1 100%; justify-content: flex-end; }
+}
+
+/* Layar pendek (laptop dengan skala tampilan besar): rapatkan tinggi */
+@media (max-height: 720px) {
+  .topbar { padding-top: 8px; padding-bottom: 8px; }
+  .topbar-title-wrap p { display: none; }
+  .content-body { padding: 16px 20px; }
+  .sidebar { padding: 14px 12px; }
+  .brand-area { padding-bottom: 12px; margin-bottom: 8px; }
+  .nav-menu { gap: 2px; margin-bottom: 8px; }
+  .nav-item { padding: 9px 14px; }
+  .sidebar-footer .promo-card { display: none; }
 }

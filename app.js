@@ -152,14 +152,27 @@ const setSidebarOpen = (open) => {
   const btn = document.getElementById('btn-toggle-sidebar');
   if (btn) btn.setAttribute('aria-label', open ? 'Tutup menu' : 'Buka menu');
 };
+const isMobileLayout = () => window.innerWidth <= 768;
+const setSidebarCollapsed = (collapsed) => {
+  document.body.classList.toggle('sidebar-collapsed', collapsed);
+  try { localStorage.setItem('td_sidebar_collapsed', collapsed ? '1' : '0'); } catch (e) { /* abaikan */ }
+  const btn = document.getElementById('btn-toggle-sidebar');
+  if (btn) btn.setAttribute('aria-label', collapsed ? 'Tampilkan menu' : 'Sembunyikan menu');
+};
 const initSidebarToggle = () => {
   const btn = document.getElementById('btn-toggle-sidebar');
   const bd = document.getElementById('sidebar-backdrop');
   const sb = document.getElementById('sidebar');
-  if (btn) btn.addEventListener('click', () => setSidebarOpen(!sb.classList.contains('open')));
+  let saved = null;
+  try { saved = localStorage.getItem('td_sidebar_collapsed'); } catch (e) { /* abaikan */ }
+  if (saved === '1' && !isMobileLayout()) setSidebarCollapsed(true);
+  if (btn) btn.addEventListener('click', () => {
+    if (isMobileLayout()) setSidebarOpen(!sb.classList.contains('open'));
+    else setSidebarCollapsed(!document.body.classList.contains('sidebar-collapsed'));
+  });
   if (bd) bd.addEventListener('click', () => setSidebarOpen(false));
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') setSidebarOpen(false); });
-  window.addEventListener('resize', () => { if (window.innerWidth > 768) setSidebarOpen(false); });
+  window.addEventListener('resize', () => { if (!isMobileLayout()) setSidebarOpen(false); });
 };
 
 // Pesan kesalahan login tampil di dalam formulir (tidak bergantung pada toast)
@@ -510,6 +523,7 @@ const switchView = (viewName) => {
   AppState.currentView = viewName;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const activeNav = document.querySelector(`.nav-item[data-view="${viewName}"]`);
+  if (activeNav && activeNav.scrollIntoView) { try { activeNav.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { /* abaikan */ } }
   if (activeNav) activeNav.classList.add('active');
 
   document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
