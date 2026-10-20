@@ -1405,13 +1405,16 @@ textarea.form-control {
   inset: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background: radial-gradient(circle at 10% 20%, #8b2341 0%, #701c34 50%, #3e0b1a 100%);
   z-index: 99999;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 20px;
+  padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .auth-gate-screen.hidden {
@@ -1421,7 +1424,7 @@ textarea.form-control {
 .auth-card {
   background: #ffffff;
   width: 100%;
-  max-width: 500px;
+  max-width: 540px;
   border-radius: 28px;
   padding: 36px 32px;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
@@ -1488,65 +1491,64 @@ textarea.form-control {
 }
 
 .auth-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: #f1f5f9;
-  border-radius: 14px;
-  padding: 4px;
-  margin-bottom: 20px;
+  /* Deprecated: tabs removed — login & register forms are both visible on the front page */
+  display: none;
 }
 
 .auth-tab-btn {
-  padding: 10px;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  font-weight: 700;
-  color: #64748b;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  /* Deprecated */
+  display: none;
 }
 
-.auth-tab-btn.active {
-  background: #ffffff;
-  color: var(--burgundy-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.auth-quick-hint {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 12px;
-  font-size: 12px;
-  color: #475569;
-  margin-bottom: 16px;
-  line-height: 1.5;
-}
-
-.auth-quick-btns {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
-.auth-quick-btn {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 5px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #334155;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
+.auth-quick-hint,
+.auth-quick-btns,
+.auth-quick-btn,
 .auth-quick-btn:hover {
-  background: var(--burgundy-soft);
-  border-color: var(--burgundy-primary);
+  /* Deprecated: Quick demo login panel removed for production security */
+  display: none !important;
+}
+
+/* ==========================================
+   Auth Section Title & Divider (login + register stacked)
+   ========================================== */
+.auth-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
   color: var(--burgundy-primary);
+  font-family: 'Outfit', sans-serif;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--burgundy-soft);
+}
+
+.auth-section-title-register {
+  margin-top: 8px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 22px 0 18px 0;
+}
+
+.auth-divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+}
+
+.auth-divider-text {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #94a3b8;
+  background: #ffffff;
+  padding: 0 8px;
+  border-radius: 4px;
 }
 
 .auth-submit-btn {
@@ -1587,8 +1589,8 @@ textarea.form-control {
   color: #b91c1c;
 }
 
-/* Pendaftaran mandiri & akun demo dimatikan (akun dibuat admin lewat impor Spreadsheet) */
-.auth-tabs, #form-auth-register, .auth-quick-hint { display: none !important; }
+/* Pendaftaran mandiri DIAKTIFKAN kembali — form registrasi tampil di halaman depan
+   bersanding dengan form login. Tombol quick-login demo dihapus demi keamanan produksi. */
 
 
 /* ==========================================================

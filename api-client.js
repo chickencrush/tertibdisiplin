@@ -82,12 +82,13 @@
       var b = r.body;
       if (r.status === 200 && b) {
         if (path.indexOf('/api/auth/login') === 0 && b.token) lsSet('td_token', b.token);
+        if (path.indexOf('/api/auth/register') === 0 && b.token) lsSet('td_token', b.token);
         if (path.indexOf('/api/payroll/verify-pin') === 0 && b.payslip_token) ssSet('td_payslip_token', b.payslip_token);
         if (b.__csv !== undefined) {
           return new Response(b.__csv, { status: 200, headers: { 'Content-Type': 'text/csv', 'X-Filename': b.filename || 'export.csv' } });
         }
       }
-      if (r.status === 401 && path.indexOf('/api/auth/login') !== 0 && path.indexOf('/verify-pin') < 0) {
+      if (r.status === 401 && path.indexOf('/api/auth/login') !== 0 && path.indexOf('/api/auth/register') !== 0 && path.indexOf('/verify-pin') < 0) {
         lsSet('td_token', null); ssSet('td_payslip_token', null);
         window.dispatchEvent(new Event('td-session-expired'));
       }

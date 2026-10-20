@@ -44,34 +44,13 @@
       </div>
     </div>
 
-    <!-- Auth Tabs Switcher -->
-    <div class="auth-tabs">
-      <button type="button" class="auth-tab-btn active" id="tab-btn-login" onclick="switchAuthTab('login')">
-        <i data-feather="log-in" style="width:14px; height:14px; vertical-align:middle; margin-right:4px;"></i> Masuk (Login)
-      </button>
-      <button type="button" class="auth-tab-btn" id="tab-btn-register" onclick="switchAuthTab('register')">
-        <i data-feather="user-plus" style="width:14px; height:14px; vertical-align:middle; margin-right:4px;"></i> Daftar Akun Baru
-      </button>
+    <!-- Section Title: LOGIN -->
+    <div class="auth-section-title">
+      <i data-feather="log-in" style="width:14px; height:14px;"></i> Masuk ke Akun Anda
     </div>
 
     <!-- FORM 1: LOGIN -->
-    <form id="form-auth-login" onsubmit="handleAuthLogin(event)">
-      <!-- Quick Demo Access Banner -->
-      <div class="auth-quick-hint">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <strong style="color:var(--burgundy-primary);">Akun Siap Pakai:</strong>
-          <span style="font-size:10px; color:#64748b;">(Klik untuk isi otomatis)</span>
-        </div>
-        <div class="auth-quick-btns">
-          <button type="button" class="auth-quick-btn" onclick="quickFillLogin('ADM001', 'admin123')">
-            👑 Super Admin (Management)
-          </button>
-          <button type="button" class="auth-quick-btn" onclick="quickFillLogin('CRW001', 'crew123')">
-            👨‍🍳 Crew Operasional
-          </button>
-        </div>
-      </div>
-
+    <form id="form-auth-login" onsubmit="handleAuthLogin(event)" autocomplete="off">
       <div class="form-group">
         <label class="form-label required">NIP atau Email Terdaftar</label>
         <input type="text" class="form-control" id="login-identifier" placeholder="Contoh: OPS001 atau nama@perusahaan.com" autocomplete="username" autocapitalize="characters" required>
@@ -81,7 +60,7 @@
         <label class="form-label required">Password</label>
         <div style="position:relative;">
           <input type="password" class="form-control" id="login-password" placeholder="Masukkan password akun" autocomplete="current-password" required style="padding-right:40px;">
-          <button type="button" onclick="togglePasswordVisibility('login-password', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;">
+          <button type="button" onclick="togglePasswordVisibility('login-password', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;" aria-label="Tampilkan / sembunyikan password">
             <i data-feather="eye" style="width:16px; height:16px;"></i>
           </button>
         </div>
@@ -94,8 +73,20 @@
       </button>
     </form>
 
-    <!-- FORM 2: REGISTRASI -->
-    <form id="form-auth-register" onsubmit="handleAuthRegister(event)" style="display:none;">
+    <!-- Divider between Login & Register -->
+    <div class="auth-divider" role="separator" aria-label="Pemisah antara login dan registrasi">
+      <span class="auth-divider-line"></span>
+      <span class="auth-divider-text">ATAU</span>
+      <span class="auth-divider-line"></span>
+    </div>
+
+    <!-- Section Title: REGISTRASI -->
+    <div class="auth-section-title auth-section-title-register">
+      <i data-feather="user-plus" style="width:14px; height:14px;"></i> Daftar Akun Baru
+    </div>
+
+    <!-- FORM 2: REGISTRASI (now visible by default on the front page) -->
+    <form id="form-auth-register" onsubmit="handleAuthRegister(event)" autocomplete="off">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <div class="form-group">
           <label class="form-label required">Nama Lengkap</label>
@@ -154,7 +145,7 @@
         </div>
         <div class="form-group">
           <label class="form-label required">PIN 6-Digit (Slip Gaji)</label>
-          <input type="password" class="form-control" id="reg-pincode" placeholder="6 Digit angka (123456)" maxlength="6" pattern="[0-9]{6}" required>
+          <input type="password" class="form-control" id="reg-pincode" placeholder="6 Digit angka" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="off" required>
         </div>
       </div>
 

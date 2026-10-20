@@ -222,30 +222,22 @@ const initAuthSession = () => {
 };
 
 const switchAuthTab = (tab) => {
-  const loginBtn = document.getElementById('tab-btn-login');
-  const regBtn = document.getElementById('tab-btn-register');
-  const loginForm = document.getElementById('form-auth-login');
-  const regForm = document.getElementById('form-auth-register');
-
-  if (tab === 'login') {
-    loginBtn.classList.add('active');
-    regBtn.classList.remove('active');
-    loginForm.style.display = 'block';
-    regForm.style.display = 'none';
+  // Deprecated: login & register forms are now both visible simultaneously on the front page.
+  // Function kept as no-op for backward compatibility (older cached HTML may still call it).
+  // Optionally scroll to the relevant section.
+  if (tab === 'register') {
+    const reg = document.getElementById('form-auth-register');
+    if (reg) reg.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } else {
-    regBtn.classList.add('active');
-    loginBtn.classList.remove('active');
-    loginForm.style.display = 'none';
-    regForm.style.display = 'block';
-    syncRegisterDivisions(document.getElementById('reg-type').value || 'Operasional');
-    populateRegisterOutlets();
+    const login = document.getElementById('form-auth-login');
+    if (login) login.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 };
 
 const quickFillLogin = (nip, password) => {
-  document.getElementById('login-identifier').value = nip;
-  document.getElementById('login-password').value = password;
-  showToast(`Akun ${nip} siap untuk login!`, 'info');
+  // Deprecated: Quick login panel has been removed for production security.
+  // Function kept as no-op for backward compatibility in case of cached HTML.
+  return;
 };
 
 const togglePasswordVisibility = (fieldId, btn) => {
@@ -309,8 +301,6 @@ const handleAuthLogin = async (e) => {
 
 const handleAuthRegister = async (e) => {
   e.preventDefault();
-  showToast('Pendaftaran akun hanya dilakukan oleh HRD. Hubungi HRD Anda.', 'warning');
-  return;
   const name = document.getElementById('reg-name').value.trim();
   const nip = document.getElementById('reg-nip').value.trim();
   const email = document.getElementById('reg-email').value.trim();
@@ -323,12 +313,21 @@ const handleAuthRegister = async (e) => {
   const pin_code = document.getElementById('reg-pincode').value.trim();
   const submitBtn = document.getElementById('btn-register-submit');
 
+  // Basic validation
+  if (!name || !nip || !email || !phone || !role) {
+    showToast('Mohon lengkapi semua kolom wajib.', 'warning');
+    return;
+  }
   if (password.length < 6) {
     showToast('Password minimal 6 karakter!', 'warning');
     return;
   }
   if (pin_code.length !== 6 || isNaN(pin_code)) {
     showToast('PIN harus berupa 6 digit angka!', 'warning');
+    return;
+  }
+  if (!outlet_id) {
+    showToast('Pilih titik outlet terlebih dahulu. Jika kosong, hubungi admin untuk menambahkan outlet.', 'warning');
     return;
   }
 
@@ -348,24 +347,29 @@ const handleAuthRegister = async (e) => {
     if (res.ok && data.status === 'success') {
       setCurrentUser(data.user);
       document.getElementById('auth-gate-screen').classList.add('hidden');
-      showToast(data.message, 'success');
+      showToast(data.message || 'Pendaftaran berhasil! Selamat datang.', 'success');
 
       if (data.user.type === 'Management') {
         AppState.currentMode = 'Management';
-        document.getElementById('btn-mode-management').classList.add('active');
-        document.getElementById('btn-mode-operasional').classList.remove('active');
+        const btnMgmt = document.getElementById('btn-mode-management');
+        const btnOps = document.getElementById('btn-mode-operasional');
+        if (btnMgmt) btnMgmt.classList.add('active');
+        if (btnOps) btnOps.classList.remove('active');
       } else {
         AppState.currentMode = 'Operasional';
-        document.getElementById('btn-mode-operasional').classList.add('active');
-        document.getElementById('btn-mode-management').classList.remove('active');
+        const btnMgmt = document.getElementById('btn-mode-management');
+        const btnOps = document.getElementById('btn-mode-operasional');
+        if (btnOps) btnOps.classList.add('active');
+        if (btnMgmt) btnMgmt.classList.remove('active');
       }
 
-      await loadEmployees();
+      await loadAllAppData();
     } else {
-      showToast(data.detail || 'Registrasi gagal.', 'error');
+      showToast(data.detail || data.message || 'Registrasi gagal. Periksa kembali data Anda.', 'error');
     }
   } catch (err) {
-    showToast('Terjadi kesalahan koneksi saat registrasi.', 'error');
+    showToast('Terjadi kesalahan koneksi saat registrasi. Pastikan koneksi internet stabil.', 'error');
+    console.error('Register error:', err);
   } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Daftar & Masuk ke Aplikasi';
@@ -482,6 +486,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Cek sesi login, data dimuat hanya jika sudah login
   const isLoggedIn = initAuthSession();
   if (isLoggedIn) await loadAllAppData();
+
+  // Initialize registration form dropdowns (since register form is now visible on the front page,
+  // we must populate divisions & outlets even when the user is not logged in yet)
+  try {
+    syncRegisterDivisions(document.getElementById('reg-type') ? document.getElementById('reg-type').value : 'Operasional');
+    // Load outlets first so populateRegisterOutlets has data to render
+    await loadOutlets();
+    populateRegisterOutlets();
+  } catch (e) {
+    console.warn('Gagal mengisi dropdown registrasi awal:', e);
+  }
 
   // Initialize mockup charts (dilewati bila pustaka grafik gagal dimuat)
   if (window.Chart) initMockupCharts();
