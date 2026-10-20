@@ -71,22 +71,32 @@
       <button type="submit" class="auth-submit-btn" id="btn-login-submit">
         Masuk ke Sistem TERTIB DISIPLIN
       </button>
+
+      <!-- Toggle to reveal the registration form (collapsed by default) -->
+      <div class="auth-register-toggle">
+        <span>Belum punya akun karyawan?</span>
+        <button type="button" id="btn-show-register" onclick="toggleRegisterForm(true)">
+          <i data-feather="user-plus" style="width:13px; height:13px;"></i> Daftar Sekarang
+        </button>
+      </div>
     </form>
 
-    <!-- Divider between Login & Register -->
-    <div class="auth-divider" role="separator" aria-label="Pemisah antara login dan registrasi">
-      <span class="auth-divider-line"></span>
-      <span class="auth-divider-text">ATAU</span>
-      <span class="auth-divider-line"></span>
-    </div>
+    <!-- FORM 2: REGISTRASI (collapsed by default, expands when "Daftar Sekarang" clicked) -->
+    <div class="auth-register-wrapper" id="auth-register-wrapper" aria-hidden="true">
+      <div class="auth-divider" role="separator" aria-label="Pemisah antara login dan registrasi">
+        <span class="auth-divider-line"></span>
+        <span class="auth-divider-text">ATAU</span>
+        <span class="auth-divider-line"></span>
+      </div>
 
-    <!-- Section Title: REGISTRASI -->
-    <div class="auth-section-title auth-section-title-register">
-      <i data-feather="user-plus" style="width:14px; height:14px;"></i> Daftar Akun Baru
-    </div>
+      <div class="auth-section-title auth-section-title-register">
+        <i data-feather="user-plus" style="width:14px; height:14px;"></i> Daftar Akun Baru
+        <button type="button" class="auth-register-close" onclick="toggleRegisterForm(false)" aria-label="Tutup form pendaftaran">
+          <i data-feather="x" style="width:14px; height:14px;"></i>
+        </button>
+      </div>
 
-    <!-- FORM 2: REGISTRASI (now visible by default on the front page) -->
-    <form id="form-auth-register" onsubmit="handleAuthRegister(event)" autocomplete="off">
+      <form id="form-auth-register" onsubmit="handleAuthRegister(event)" autocomplete="off">
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <div class="form-group">
           <label class="form-label required">Nama Lengkap</label>
@@ -141,7 +151,7 @@
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <div class="form-group">
           <label class="form-label required">Password Akun</label>
-          <input type="password" class="form-control" id="reg-password" placeholder="Minimal 6 karakter" required>
+          <input type="password" class="form-control" id="reg-password" placeholder="Minimal 8 karakter" required minlength="8">
         </div>
         <div class="form-group">
           <label class="form-label required">PIN 6-Digit (Slip Gaji)</label>
@@ -152,7 +162,8 @@
       <button type="submit" class="auth-submit-btn" id="btn-register-submit">
         Daftar & Masuk ke Aplikasi
       </button>
-    </form>
+      </form>
+    </div>
 
   </div>
 </div>
@@ -270,7 +281,7 @@
         </button>
         <div class="topbar-title-wrap">
           <h2 id="page-title">Dashboard</h2>
-          <p id="page-subtitle">Pusat Kontrol Operasional & Manajemen 5 Outlet</p>
+          <p id="page-subtitle">Pusat Kontrol Operasional & Manajemen Multi-Outlet</p>
         </div>
 
         <!-- Mode Switcher: Dropdown & Pill for Management vs Operational -->
@@ -287,18 +298,12 @@
       <div class="topbar-right">
         <!-- Quick Filters matching mockup: Period and Outlet -->
         <select class="select-filter" id="filter-period-select" onchange="applyGlobalFilters()">
-          <option value="Sept 2024">Sept 2024</option>
-          <option value="Okt 2024" selected>Okt 2024</option>
-          <option value="Nov 2024">Nov 2024</option>
+          <!-- Populated dynamically by app.js on load -->
         </select>
 
         <select class="select-filter" id="filter-outlet-select" onchange="applyGlobalFilters()">
-          <option value="all">Semua Outlet (5 Lokasi)</option>
-          <option value="outlet-01">Outlet Pusat Sudirman</option>
-          <option value="outlet-02">Outlet Senopati Culinary</option>
-          <option value="outlet-03">Outlet PIK Golf Island</option>
-          <option value="outlet-04">Outlet Dago Bandung</option>
-          <option value="outlet-05">Outlet Surabaya</option>
+          <option value="all">Semua Outlet</option>
+          <!-- Populated dynamically by app.js on load -->
         </select>
 
         <!-- Search Input -->
@@ -364,10 +369,10 @@
                     <i data-feather="star"></i>
                   </div>
                 </div>
-                <div class="stat-main-number">
-                  4.3 <span>/ 5</span>
+                <div class="stat-main-number" id="stat-ratings-value">
+                  - <span>/ 5</span>
                 </div>
-                <div class="stat-subtitle">⭐ Rata-rata dari 250+ review harian</div>
+                <div class="stat-subtitle" id="stat-ratings-subtitle">⭐ Data rating akan tampil setelah ada ulasan</div>
               </div>
 
               <!-- Reviews Card -->
@@ -378,8 +383,8 @@
                     <i data-feather="edit-3"></i>
                   </div>
                 </div>
-                <div class="stat-main-number">
-                  6,838
+                <div class="stat-main-number" id="stat-reports-value">
+                  0
                 </div>
                 <div class="stat-subtitle">📝 Total laporan operasional & checklist</div>
               </div>
@@ -387,15 +392,15 @@
               <!-- Happy Customers Card -->
               <div class="stat-card stat-card-coral">
                 <div class="stat-header">
-                  <span class="stat-title">Customer Satisfaction (CSAT)</span>
+                  <span class="stat-title">Tingkat Kehadiran Hari Ini</span>
                   <div class="stat-icon-badge">
                     <i data-feather="heart"></i>
                   </div>
                 </div>
-                <div class="stat-main-number">
-                  92%
+                <div class="stat-main-number" id="stat-attendance-value">
+                  0%
                 </div>
-                <div class="stat-subtitle">❤️ 3.2M feedback pelanggan terverifikasi</div>
+                <div class="stat-subtitle" id="stat-attendance-subtitle">❤️ Persentase karyawan yang sudah presensi hari ini</div>
               </div>
             </div>
 
@@ -426,10 +431,9 @@
                     <h3>Status Kendala Operasional</h3>
                     <p style="font-size:11px; color:#64748b;">Penyelesaian masalah di seluruh outlet</p>
                   </div>
-                  <select class="select-filter" style="padding:4px 24px 4px 10px; font-size:11px;">
-                    <option>Semua Cabang</option>
-                    <option>Sudirman</option>
-                    <option>Senopati</option>
+                  <select class="select-filter" id="issue-outlet-filter" style="padding:4px 24px 4px 10px; font-size:11px;">
+                    <option value="all">Semua Cabang</option>
+                    <!-- Populated dynamically by app.js -->
                   </select>
                 </div>
 
@@ -440,22 +444,22 @@
                   <div class="ring-legend">
                     <div class="legend-item">
                       <div class="legend-dot" style="background:#10b981;"></div>
-                      <span>Resolved (Selesai): <strong>70%</strong></span>
+                      <span>Resolved (Selesai): <strong id="legend-resolved">0%</strong></span>
                     </div>
                     <div class="legend-item">
                       <div class="legend-dot" style="background:#f59e0b;"></div>
-                      <span>Pending (Hold): <strong>20%</strong></span>
+                      <span>Pending (Hold): <strong id="legend-pending">0%</strong></span>
                     </div>
                     <div class="legend-item">
                       <div class="legend-dot" style="background:#ef4444;"></div>
-                      <span>Escalated: <strong>10%</strong></span>
+                      <span>Escalated: <strong id="legend-escalated">0%</strong></span>
                     </div>
                   </div>
                 </div>
 
                 <div class="pill-metric-box">
                   <span>🚀 Kecepatan Rata-rata Problem Solving:</span>
-                  <span class="val">5 Hari (Target: &lt; 7 Hari)</span>
+                  <span class="val" id="stat-problem-solving">- Hari (Target: &lt; 7 Hari)</span>
                 </div>
               </div>
             </div>
@@ -500,14 +504,14 @@
                 <canvas id="happyDonutChart"></canvas>
               </div>
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:11px; margin-top:10px;">
-                <div><span style="color:#701c34;">●</span> Members (55%)</div>
-                <div><span style="color:#0284c7;">●</span> Non-Members (25%)</div>
-                <div><span style="color:#f43f5e;">●</span> New Guest (12%)</div>
-                <div><span style="color:#10b981;">●</span> Existing (8%)</div>
+                <div><span style="color:#701c34;">●</span> Members (0%)</div>
+                <div><span style="color:#0284c7;">●</span> Non-Members (0%)</div>
+                <div><span style="color:#f43f5e;">●</span> New Guest (0%)</div>
+                <div><span style="color:#10b981;">●</span> Existing (0%)</div>
               </div>
             </div>
 
-            <!-- Staff Ratings (Matching Exact Mockup Item Cards: Georgy, Emma, Akash) -->
+            <!-- Staff Ratings -->
             <div class="modern-card">
               <div class="card-title-row">
                 <h3>Staff Ratings & Performa</h3>
@@ -525,7 +529,7 @@
       <!-- VIEW 2: PRESENSI GPS & SELFIE -->
       <section class="view-panel" id="view-presensi">
         <div style="display:grid; grid-template-columns: 460px 1fr; gap:24px;">
-          
+
           <!-- Left: Live Camera Viewfinder & Coordinates Check -->
           <div class="modern-card">
             <div class="card-title-row">
@@ -536,16 +540,22 @@
             <!-- Outlet Selector for GPS Check -->
             <div class="form-group">
               <label class="form-label required">Pilih Lokasi Outlet Presensi</label>
-              <select class="form-control" id="presensi-outlet-select" onchange="checkGpsDistance()">
+              <select class="form-control" id="presensi-outlet-select" onchange="window.checkGpsDistance && window.checkGpsDistance()">
+                <option value="">— Pilih outlet —</option>
                 <!-- Populated dynamically -->
               </select>
             </div>
 
+            <!-- Trigger GPS Detection Manually -->
+            <button class="btn-secondary" type="button" style="width:100%; justify-content:center; margin-bottom:12px;" onclick="window.detectDeviceGPS && window.detectDeviceGPS()">
+              <i data-feather="map-pin" style="width:14px; height:14px;"></i> Deteksi Lokasi GPS Saya
+            </button>
+
             <!-- Live Geofence Distance Warning/Valid Pill -->
-            <div id="geofence-status-banner" class="geofence-alert geofence-valid">
-              <i data-feather="check-circle" id="geofence-icon"></i>
+            <div id="geofence-status-banner" class="geofence-alert geofence-warning">
+              <i data-feather="alert-circle" id="geofence-icon"></i>
               <div id="geofence-text">
-                <strong>Status Radius:</strong> Menghitung koordinat GPS...
+                <strong>Menunggu deteksi GPS.</strong> Tekan tombol "Deteksi Lokasi GPS Saya" di atas, lalu izinkan akses lokasi.
               </div>
             </div>
 
@@ -555,7 +565,7 @@
               <canvas id="camera-snapshot-canvas" style="display:none;"></canvas>
               <div class="camera-guide-overlay"></div>
               <div class="camera-timestamp-stamp" id="camera-timestamp-box">
-                GPS: -6.2088, 106.8456 | <span id="camera-clock">00:00:00 WIB</span>
+                GPS: <span id="camera-gps-display">belum diketahui</span> | <span id="camera-clock">00:00:00 WIB</span>
               </div>
             </div>
 
@@ -571,20 +581,20 @@
               </div>
 
               <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label">Kamera Perangkat</label>
-                <button class="btn-secondary" style="width:100%;" onclick="startCamera()">
+                <label class="form-label">Buka Kamera (opsional)</label>
+                <button class="btn-secondary" type="button" style="width:100%;" onclick="window.startCamera && window.startCamera()">
                   <i data-feather="camera" style="width:14px; height:14px;"></i> Buka Kamera
                 </button>
               </div>
             </div>
 
             <!-- Check-in Action Button -->
-            <button class="btn-primary" style="width:100%; justify-content:center; padding:14px; font-size:14px;" id="btn-submit-checkin" onclick="submitAttendanceCheckIn()">
+            <button class="btn-primary" type="button" style="width:100%; justify-content:center; padding:14px; font-size:14px;" id="btn-submit-checkin" onclick="window.submitAttendanceCheckIn && window.submitAttendanceCheckIn()">
               <i data-feather="check-circle"></i> AMBIL SELFIE & PRESENSI MASUK
             </button>
 
             <!-- SPL Overtime Button -->
-            <button class="btn-secondary" style="width:100%; margin-top:8px; justify-content:center;" onclick="openSplModal()">
+            <button class="btn-secondary" type="button" style="width:100%; margin-top:8px; justify-content:center;" onclick="openSplModal()">
               <i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Surat Perintah Lembur (SPL) Digital
             </button>
           </div>
@@ -638,7 +648,7 @@
           <!-- Filters Row -->
           <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; align-items:center;">
             <select class="select-filter" id="report-filter-division" onchange="filterDailyReportBoard()">
-              <option value="all">Semua Divisi (21 Divisi)</option>
+              <option value="all">Semua Divisi</option>
               <optgroup label="Management">
                 <option value="HRD">HRD</option>
                 <option value="BM">BM (Branch Manager)</option>
@@ -738,7 +748,7 @@
         <div class="modern-card" style="margin-bottom:20px;">
           <div class="card-title-row">
             <div>
-              <h3>Database Karyawan (275 Personel Aktif)</h3>
+              <h3>Database Karyawan <span id="emp-count-badge" style="font-size:12px; color:#64748b; font-weight:500;">(memuat...)</span></h3>
               <p style="font-size:12px; color:#64748b;">Sistem Grading, Skala Upah Permenaker 1/2017, & Persetujuan Multilevel</p>
             </div>
             <div style="display:flex; gap:10px;">
@@ -755,8 +765,8 @@
           <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
             <select class="select-filter" id="emp-filter-type" onchange="loadEmployeesList()">
               <option value="all">Semua Tipe (Management & Operasional)</option>
-              <option value="Management">Management (12 Divisi)</option>
-              <option value="Operasional">Tim Operasional (9 Divisi)</option>
+              <option value="Management">Management</option>
+              <option value="Operasional">Tim Operasional</option>
             </select>
 
             <select class="select-filter" id="emp-filter-division" onchange="loadEmployeesList()">
@@ -766,11 +776,7 @@
 
             <select class="select-filter" id="emp-filter-outlet" onchange="loadEmployeesList()">
               <option value="all">Semua Outlet</option>
-              <option value="outlet-01">Outlet Pusat Sudirman</option>
-              <option value="outlet-02">Outlet Senopati</option>
-              <option value="outlet-03">Outlet PIK</option>
-              <option value="outlet-04">Outlet Dago Bandung</option>
-              <option value="outlet-05">Outlet Surabaya</option>
+              <!-- Populated dynamically by app.js on load -->
             </select>
 
             <div class="search-pill" style="width:260px;">
@@ -1064,7 +1070,7 @@
                 <i data-feather="file-text"></i> Ekspor CSV / Excel
               </button>
               <button class="btn-secondary" onclick="confirmResetDatabase()" style="display:inline-flex; align-items:center; gap:6px; color:#dc2626; border-color:#fca5a5;">
-                <i data-feather="rotate-ccw"></i> Reset Data Demo
+                <i data-feather="rotate-ccw"></i> Reset Database
               </button>
             </div>
           </div>
@@ -1109,7 +1115,7 @@
               </div>
               <p style="font-size:12px; color:#64748b; line-height:1.5;">
                 Gunakan menu di navigasi sebelah kiri:
-                <br>• <strong>Database Karyawan</strong>: Tambah / edit 275+ karyawan, mutasi outlet, skala upah.
+                <br>• <strong>Database Karyawan</strong>: Tambah / edit karyawan, mutasi outlet, skala upah.
                 <br>• <strong>Titik Lokasi Outlet</strong>: Ubah koordinat GPS & radius geofencing presensi.
                 <br>• <strong>Payroll Autopilot</strong>: Generate slip gaji bulanan 1-klik.
                 <br>• <strong>Live Inspector di Bawah</strong>: Telusuri seluruh tabel database langsung di browser!
@@ -1372,7 +1378,7 @@
   </div>
 </div>
 
-<!-- 5. Modal: Ganti Akun / Switch User (RBAC Simulator 275 Karyawan) -->
+<!-- 5. Modal: Ganti Akun / Switch User (RBAC Simulator) -->
 <div class="modal-overlay" id="modal-switch-user">
   <div class="modal-card" style="max-width:540px;">
     <div class="modal-header">

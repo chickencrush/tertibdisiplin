@@ -29,8 +29,12 @@ const AppState = {
   activeChatChannel: '#general',
   selectedPayslipForPin: null,
   deviceCoordinates: { lat: 0, lon: 0 },
-  gpsOk: false,
+  gpsOk: false,          // false = unknown/denied, true = granted
+  gpsLoading: false,     // true while waiting for getCurrentPosition
+  gpsLastError: '',      // human-readable last error
   cameraStream: null,
+  cameraReady: false,    // true after stream attached & video dimensions known
+  cameraLoading: false,
   deferredPwaPrompt: null
 };
 
@@ -221,22 +225,45 @@ const initAuthSession = () => {
   return false;
 };
 
+// ==========================================
+// Auth Tab & Collapsible Registration Panel
+// ==========================================
 const switchAuthTab = (tab) => {
-  // Deprecated: login & register forms are now both visible simultaneously on the front page.
-  // Function kept as no-op for backward compatibility (older cached HTML may still call it).
-  // Optionally scroll to the relevant section.
+  // Deprecated: tabs removed. Use toggleRegisterForm() instead.
+  // Kept as no-op for backward compatibility (older cached HTML may still call it).
   if (tab === 'register') {
-    const reg = document.getElementById('form-auth-register');
-    if (reg) reg.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toggleRegisterForm(true);
   } else {
-    const login = document.getElementById('form-auth-login');
-    if (login) login.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toggleRegisterForm(false);
+  }
+};
+
+// Exposed to window so inline onclick handlers can call it
+window.toggleRegisterForm = (show) => {
+  const wrapper = document.getElementById('auth-register-wrapper');
+  const toggleBtn = document.getElementById('btn-show-register');
+  if (!wrapper) return;
+  if (show) {
+    wrapper.classList.add('open');
+    wrapper.setAttribute('aria-hidden', 'false');
+    if (toggleBtn) toggleBtn.style.display = 'none';
+    // Lazy-initialise dropdowns first time the form is opened
+    try {
+      syncRegisterDivisions(document.getElementById('reg-type').value || 'Operasional');
+      populateRegisterOutlets();
+    } catch (e) { /* ignored */ }
+    // Smooth scroll to registration form
+    setTimeout(() => wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    if (window.feather) feather.replace();
+  } else {
+    wrapper.classList.remove('open');
+    wrapper.setAttribute('aria-hidden', 'true');
+    if (toggleBtn) toggleBtn.style.display = '';
   }
 };
 
 const quickFillLogin = (nip, password) => {
-  // Deprecated: Quick login panel has been removed for production security.
-  // Function kept as no-op for backward compatibility in case of cached HTML.
+  // Deprecated: Quick login panel removed for production security.
   return;
 };
 
@@ -309,21 +336,21 @@ const handleAuthRegister = async (e) => {
   const division = document.getElementById('reg-division').value;
   const role = document.getElementById('reg-role').value.trim();
   const outlet_id = document.getElementById('reg-outlet').value;
-  const password = document.getElementById('reg-password').value.trim();
+  const password = document.getElementById('reg-password').value;
   const pin_code = document.getElementById('reg-pincode').value.trim();
   const submitBtn = document.getElementById('btn-register-submit');
 
-  // Basic validation
+  // Field validation
   if (!name || !nip || !email || !phone || !role) {
-    showToast('Mohon lengkapi semua kolom wajib.', 'warning');
+    showToast('Mohon lengkapi semua kolom wajib (Nama, NIP, Email, HP, Jabatan).', 'warning');
     return;
   }
-  if (password.length < 6) {
-    showToast('Password minimal 6 karakter!', 'warning');
+  if (password.length < 8) {
+    showToast('Password minimal 8 karakter untuk keamanan akun Anda.', 'warning');
     return;
   }
-  if (pin_code.length !== 6 || isNaN(pin_code)) {
-    showToast('PIN harus berupa 6 digit angka!', 'warning');
+  if (pin_code.length !== 6 || !/^\d{6}$/.test(pin_code)) {
+    showToast('PIN slip gaji harus 6 digit angka.', 'warning');
     return;
   }
   if (!outlet_id) {
@@ -333,6 +360,7 @@ const handleAuthRegister = async (e) => {
 
   submitBtn.disabled = true;
   submitBtn.textContent = 'Mendaftarkan akun...';
+  const slowHint = setTimeout(() => { submitBtn.textContent = 'Menghubungi server, mohon tunggu...'; }, 4000);
 
   try {
     const res = await fetch('/api/auth/register', {
@@ -347,7 +375,7 @@ const handleAuthRegister = async (e) => {
     if (res.ok && data.status === 'success') {
       setCurrentUser(data.user);
       document.getElementById('auth-gate-screen').classList.add('hidden');
-      showToast(data.message || 'Pendaftaran berhasil! Selamat datang.', 'success');
+      showToast(data.message || `Pendaftaran berhasil! Selamat datang, ${name}.`, 'success');
 
       if (data.user.type === 'Management') {
         AppState.currentMode = 'Management';
@@ -371,6 +399,7 @@ const handleAuthRegister = async (e) => {
     showToast('Terjadi kesalahan koneksi saat registrasi. Pastikan koneksi internet stabil.', 'error');
     console.error('Register error:', err);
   } finally {
+    clearTimeout(slowHint);
     submitBtn.disabled = false;
     submitBtn.textContent = 'Daftar & Masuk ke Aplikasi';
   }
@@ -487,17 +516,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const isLoggedIn = initAuthSession();
   if (isLoggedIn) await loadAllAppData();
 
-  // Initialize registration form dropdowns (since register form is now visible on the front page,
-  // we must populate divisions & outlets even when the user is not logged in yet)
-  try {
-    syncRegisterDivisions(document.getElementById('reg-type') ? document.getElementById('reg-type').value : 'Operasional');
-    // Load outlets first so populateRegisterOutlets has data to render
-    await loadOutlets();
-    populateRegisterOutlets();
-  } catch (e) {
-    console.warn('Gagal mengisi dropdown registrasi awal:', e);
-  }
-
   // Initialize mockup charts (dilewati bila pustaka grafik gagal dimuat)
   if (window.Chart) initMockupCharts();
 
@@ -546,10 +564,10 @@ const switchView = (viewName) => {
   if (activePanel) activePanel.classList.add('active');
 
   const titles = {
-    'dashboard': ['Dashboard', 'Pusat Kontrol Operasional & Manajemen 5 Outlet'],
+    'dashboard': ['Dashboard', 'Pusat Kontrol Operasional & Manajemen Multi-Outlet'],
     'daily-report': ['Daily Report Operasional', 'Alur Tugas: Proses ➔ Hold (Wajib Bukti) ➔ Selesai (Wajib Bukti)'],
     'presensi': ['Presensi GPS & Selfie', 'Verifikasi Titik Lokasi Geofence & Kamera Langsung'],
-    'employees': ['Database Karyawan', 'Manajemen 275+ Personel, Skala Upah Permenaker 1/2017 & Struktur Organisasi'],
+    'employees': ['Database Karyawan', 'Manajemen Personel, Skala Upah Permenaker 1/2017 & Struktur Organisasi'],
     'payroll': ['Kompensasi & Payroll Autopilot', 'Perhitungan Upah Harian, BPJS, PPh 21 TER, & Slip Gaji Online'],
     'kpi': ['Analisis Kinerja & KPI', 'Evaluasi Kinerja Otomatis Manajemen & Tim Operasional'],
     'chat': ['Chat Room Internal', 'Saluran Komunikasi Antar Divisi & Direct Messages'],
@@ -570,8 +588,15 @@ const switchView = (viewName) => {
   }
 
   if (viewName === 'presensi') {
-    startCamera();
-    checkGpsDistance();
+    // Don't auto-start camera (it may prompt user before they're ready).
+    // User can click "Buka Kamera" or just press "AMBIL SELFIE & PRESENSI" —
+    // the submit handler will start the camera on demand.
+    // But DO trigger GPS detection so the geofence banner shows the right state.
+    if (!AppState.gpsOk && !AppState.gpsLoading) {
+      window.detectDeviceGPS && window.detectDeviceGPS();
+    }
+    window.checkGpsDistance && window.checkGpsDistance();
+    loadAttendanceLogs && loadAttendanceLogs();
   } else if (viewName === 'database') {
     stopCamera();
     loadDatabaseOverview();
@@ -642,7 +667,7 @@ const loadOutlets = async () => {
   }
 };
 
-// Load Employees from API (275+ records)
+// Load Employees from API
 const loadEmployees = async () => {
   try {
     const res = await fetch('/api/employees');
@@ -743,6 +768,7 @@ let branchRatingChartInstance = null;
 let issueRingsChartInstance = null;
 let happyDonutChartInstance = null;
 
+// Render charts with placeholder (zero) data; refreshFromApi() updates them later.
 const initMockupCharts = () => {
   // 1. Branch Rating Bar Chart
   const branchCanvas = document.getElementById('branchRatingChart');
@@ -751,18 +777,18 @@ const initMockupCharts = () => {
     branchRatingChartInstance = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: ['Sudirman', 'Senopati', 'PIK', 'Bandung', 'Surabaya'],
+        labels: ['(Memuat outlet...)'],
         datasets: [
           {
             label: 'Bulan Ini',
-            data: [4.6, 4.4, 4.8, 4.2, 4.5],
+            data: [0],
             backgroundColor: '#701c34',
             borderRadius: 6,
             barThickness: 14
           },
           {
             label: 'Bulan Lalu',
-            data: [4.2, 4.1, 4.5, 3.9, 4.3],
+            data: [0],
             backgroundColor: '#e2e8f0',
             borderRadius: 6,
             barThickness: 14
@@ -798,9 +824,9 @@ const initMockupCharts = () => {
     issueRingsChartInstance = new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['Resolved', 'Pending', 'Escalated'],
+        labels: ['Resolved (Selesai)', 'Pending (Hold)', 'Escalated'],
         datasets: [{
-          data: [70, 20, 10],
+          data: [0, 0, 0],
           backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
           borderWidth: 3,
           borderColor: '#ffffff',
@@ -817,7 +843,7 @@ const initMockupCharts = () => {
     });
   }
 
-  // 3. Happy Customers Donut Chart
+  // 3. Happy Customers Donut Chart (placeholder until real data arrives)
   const happyCanvas = document.getElementById('happyDonutChart');
   if (happyCanvas) {
     const ctx = happyCanvas.getContext('2d');
@@ -826,7 +852,7 @@ const initMockupCharts = () => {
       data: {
         labels: ['Members', 'Non-Members', 'New Guest', 'Existing Guest'],
         datasets: [{
-          data: [55, 25, 12, 8],
+          data: [0, 0, 0, 0],
           backgroundColor: ['#701c34', '#0284c7', '#f43f5e', '#10b981'],
           borderWidth: 2,
           borderColor: '#ffffff',
@@ -1189,61 +1215,119 @@ const updateReportStatusDirect = async (reportId, status, proofUrl, proofNotes, 
 };
 
 // ================= PRESENSI GPS & SELFIE CAMERA =================
-const detectDeviceGPS = () => {
+// All presensi functions are exposed to window.* so inline onclick handlers
+// work even when the script is loaded as a module / in strict mode.
+
+// --- GPS Detection (async, with proper state tracking) ---
+window.detectDeviceGPS = () => {
   if (!navigator.geolocation) {
     AppState.gpsOk = false;
-    checkGpsDistance();
+    AppState.gpsLastError = 'Browser tidak mendukung deteksi lokasi.';
+    window.checkGpsDistance();
     return;
   }
+  if (AppState.gpsLoading) return; // prevent duplicate concurrent requests
+  AppState.gpsLoading = true;
+  window.checkGpsDistance(); // show "mendeteksi..." immediately
+
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       AppState.deviceCoordinates = { lat: pos.coords.latitude, lon: pos.coords.longitude };
       AppState.gpsOk = true;
-      checkGpsDistance();
+      AppState.gpsLoading = false;
+      AppState.gpsLastError = '';
+      window.checkGpsDistance();
     },
     (err) => {
-      console.warn('Lokasi GPS tidak tersedia:', err && err.message);
       AppState.gpsOk = false;
-      checkGpsDistance();
+      AppState.gpsLoading = false;
+      const messages = {
+        1: 'Akses lokasi ditolak. Silakan izinkan lokasi di pengaturan browser, lalu muat ulang halaman.',
+        2: 'Lokasi tidak tersedia. Pastikan GPS perangkat aktif dan sinyal cukup kuat.',
+        3: 'Permintaan lokasi timeout. Coba lagi dalam beberapa detik.'
+      };
+      AppState.gpsLastError = messages[err.code] || (err.message || 'Gagal mendapatkan lokasi.');
+      console.warn('GPS error:', AppState.gpsLastError);
+      window.checkGpsDistance();
     },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
   );
 };
+const detectDeviceGPS = window.detectDeviceGPS;
 
+// --- Live clock on camera overlay (also updates GPS display) ---
 const updateAttendanceClock = () => {
   const clockEl = document.getElementById('camera-clock');
   if (clockEl) {
     const now = new Date();
     clockEl.textContent = now.toLocaleTimeString('id-ID') + ' WIB';
   }
+  const gpsDisplay = document.getElementById('camera-gps-display');
+  if (gpsDisplay) {
+    if (AppState.gpsOk) {
+      gpsDisplay.textContent = AppState.deviceCoordinates.lat.toFixed(4) + ', ' + AppState.deviceCoordinates.lon.toFixed(4);
+    } else {
+      gpsDisplay.textContent = 'belum diketahui';
+    }
+  }
 };
 
-const startCamera = async () => {
+// --- Camera Start (async, with proper state tracking) ---
+window.startCamera = async () => {
   const video = document.getElementById('camera-feed');
   if (!video) return;
-
+  if (AppState.cameraLoading || AppState.cameraReady) return; // prevent duplicate calls
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showToast('Browser tidak mendukung akses kamera. Gunakan tombol kamera HP saat presensi.', 'warning');
+    return;
+  }
+  AppState.cameraLoading = true;
+  // Update button label if exists
+  const btn = document.getElementById('btn-submit-checkin');
   try {
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      AppState.cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
-      });
-      video.srcObject = AppState.cameraStream;
-    }
+    AppState.cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+      audio: false
+    });
+    video.srcObject = AppState.cameraStream;
+    // Wait for video metadata to ensure dimensions are available
+    await new Promise((resolve) => {
+      if (video.readyState >= 2) return resolve();
+      video.onloadedmetadata = () => resolve();
+      setTimeout(resolve, 3000); // safety timeout
+    });
+    AppState.cameraReady = true;
+    AppState.cameraLoading = false;
   } catch (err) {
-    console.warn('Camera access error or desktop without webcam:', err);
+    AppState.cameraReady = false;
+    AppState.cameraLoading = false;
+    const msg = (err && err.name === 'NotAllowedError')
+      ? 'Akses kamera ditolak. Izinkan kamera di browser, atau gunakan tombol kamera HP saat presensi.'
+      : 'Kamera tidak tersedia. Anda bisa presensi dengan kamera HP saat klik tombol presensi.';
+    console.warn('Camera error:', err && err.message);
+    // Don't alert here — the user will see the warning when they try to presensi
+    showToast(msg, 'warning');
   }
 };
+const startCamera = window.startCamera;
 
+// --- Stop Camera (called when leaving presensi view) ---
 const stopCamera = () => {
   if (AppState.cameraStream) {
-    AppState.cameraStream.getTracks().forEach(track => track.stop());
+    try {
+      AppState.cameraStream.getTracks().forEach(track => track.stop());
+    } catch (e) { /* ignored */ }
     AppState.cameraStream = null;
   }
+  AppState.cameraReady = false;
+  AppState.cameraLoading = false;
+  const video = document.getElementById('camera-feed');
+  if (video) video.srcObject = null;
 };
 
-// Haversine Distance Calculation (Client-side)
+// --- Haversine Distance Calculation (client-side) ---
 const calculateHaversine = (lat1, lon1, lat2, lon2) => {
-  const R = 6371000;
+  const R = 6371000; // meters
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -1253,45 +1337,78 @@ const calculateHaversine = (lat1, lon1, lat2, lon2) => {
   return Math.round(R * c);
 };
 
-const checkGpsDistance = () => {
+// --- Update Geofence Banner (called whenever GPS or outlet changes) ---
+window.checkGpsDistance = () => {
   const outletSelect = document.getElementById('presensi-outlet-select');
   const banner = document.getElementById('geofence-status-banner');
   const text = document.getElementById('geofence-text');
   const icon = document.getElementById('geofence-icon');
-  if (!outletSelect || !banner) return;
+  if (!outletSelect || !banner || !text) return;
 
-  const outlet = AppState.outlets.find(o => o.id === outletSelect.value) || AppState.outlets[0];
-  if (!outlet) return;
-
-  if (!AppState.gpsOk) {
-    banner.className = 'geofence-alert geofence-invalid';
-    text.innerHTML = '<strong>GPS belum aktif:</strong> izinkan akses lokasi pada browser, lalu muat ulang halaman. Presensi tidak bisa dilakukan tanpa lokasi.';
+  // Outlet may not be loaded yet — show waiting state
+  if (!AppState.outlets || AppState.outlets.length === 0) {
+    banner.className = 'geofence-alert geofence-warning';
+    text.innerHTML = '<strong>Memuat daftar outlet...</strong> Mohon tunggu sebentar.';
     return;
   }
+  const outlet = AppState.outlets.find(o => o.id === outletSelect.value) || AppState.outlets[0];
+  if (!outlet) {
+    banner.className = 'geofence-alert geofence-invalid';
+    text.innerHTML = '<strong>Tidak ada outlet.</strong> Hubungi admin untuk menambahkan outlet.';
+    return;
+  }
+
+  // GPS still loading
+  if (AppState.gpsLoading) {
+    banner.className = 'geofence-alert geofence-warning';
+    text.innerHTML = '<strong>Mendeteksi lokasi GPS...</strong> Pastikan GPS perangkat aktif.';
+    return;
+  }
+
+  // GPS not yet acquired
+  if (!AppState.gpsOk) {
+    banner.className = 'geofence-alert geofence-invalid';
+    text.innerHTML = `<strong>GPS belum aktif:</strong> ${AppState.gpsLastError || 'Izinkan akses lokasi pada browser, lalu tekan tombol "Deteksi Lokasi GPS".'}
+      <br><button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px;" onclick="window.detectDeviceGPS()">
+        <i data-feather="map-pin" style="width:11px; height:11px;"></i> Deteksi Ulang Lokasi GPS
+      </button>`;
+    if (window.feather) feather.replace();
+    return;
+  }
+
+  // Outlet may be from public endpoint (no lat/lon) — skip client-side check
+  if (typeof outlet.lat !== 'number' || typeof outlet.lon !== 'number') {
+    banner.className = 'geofence-alert geofence-warning';
+    text.innerHTML = `<strong>${outlet.name}</strong> dipilih. Validasi radius akan dilakukan di server saat presensi.`;
+    return;
+  }
+
   const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, outlet.lat, outlet.lon);
   const isValid = dist <= outlet.radius_meters;
 
   if (isValid) {
     banner.className = 'geofence-alert geofence-valid';
-    text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m) - <strong>Valid Untuk Presensi</strong>`;
+    text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m) — <strong>Valid Untuk Presensi</strong>`;
   } else {
     banner.className = 'geofence-alert geofence-invalid';
-    text.innerHTML = `<strong>Di Luar Radius:</strong> Anda berada ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m). <em>Presensi online ditolak kecuali dalam radius outlet.</em>`;
+    text.innerHTML = `<strong>Di Luar Radius:</strong> Anda berada ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m). <em>Presensi akan ditandai "Menunggu Approval" atasan.</em>`;
   }
 };
+const checkGpsDistance = window.checkGpsDistance;
 
-// Snapshot from video to canvas
+// --- Snapshot from video to canvas ---
 const captureSelfieSnapshot = () => {
   const video = document.getElementById('camera-feed');
   const canvas = document.getElementById('camera-snapshot-canvas');
-  if (!video || !canvas || !AppState.cameraStream || !video.videoWidth) return null;
+  if (!video || !canvas) return null;
+  if (!AppState.cameraReady || !AppState.cameraStream || !video.videoWidth) return null;
 
   canvas.width = video.videoWidth || 480;
   canvas.height = video.videoHeight || 360;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  // Stamp current time & GPS
+  // Stamp current time & GPS on the snapshot
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(10, canvas.height - 40, canvas.width - 20, 30);
   ctx.fillStyle = '#ffffff';
@@ -1301,7 +1418,7 @@ const captureSelfieSnapshot = () => {
   return canvas.toDataURL('image/jpeg', 0.85);
 };
 
-// Cadangan: buka kamera HP bila kamera di dalam halaman tidak bisa dipakai
+// --- Fallback: native camera input (used when in-page camera fails or on iOS Safari) ---
 const captureSelfieViaNativeCamera = () => new Promise((resolve) => {
   const input = document.createElement('input');
   input.type = 'file';
@@ -1334,26 +1451,69 @@ const captureSelfieViaNativeCamera = () => new Promise((resolve) => {
   input.click();
 });
 
-const submitAttendanceCheckIn = async () => {
-  const outletId = document.getElementById('presensi-outlet-select').value;
-  const shiftName = document.getElementById('presensi-shift-select').value;
-  const outlet = AppState.outlets.find(o => o.id === outletId);
+// --- Submit Attendance (Check-in) with full UX feedback ---
+window.submitAttendanceCheckIn = async () => {
+  const outletSelect = document.getElementById('presensi-outlet-select');
+  const shiftSelect = document.getElementById('presensi-shift-select');
+  const submitBtn = document.getElementById('btn-submit-checkin');
 
+  if (!outletSelect || !shiftSelect) {
+    showToast('Form presensi tidak ditemukan. Muat ulang halaman.', 'error');
+    return;
+  }
+  const outletId = outletSelect.value;
+  const shiftName = shiftSelect.value;
+
+  if (!outletId) {
+    showToast('Pilih outlet terlebih dahulu.', 'warning');
+    return;
+  }
+  if (!AppState.currentUser || !AppState.currentUser.id) {
+    showToast('Sesi login tidak ditemukan. Silakan login kembali.', 'error');
+    return;
+  }
+
+  // --- GPS check: if not ready, request once and wait briefly ---
   if (!AppState.gpsOk) {
-    detectDeviceGPS();
-    alert('Lokasi GPS belum aktif. Izinkan akses lokasi pada browser, tunggu beberapa detik, lalu tekan presensi lagi.');
-    return;
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mendeteksi GPS...'; }
+    window.detectDeviceGPS();
+    // Wait up to 8 seconds for GPS to come back
+    let waited = 0;
+    while (AppState.gpsLoading && waited < 8000) {
+      await new Promise(r => setTimeout(r, 500));
+      waited += 500;
+    }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="check-circle"></i> AMBIL SELFIE & PRESENSI MASUK'; if (window.feather) feather.replace(); }
+    if (!AppState.gpsOk) {
+      showToast('Lokasi GPS belum tersedia. Pastikan GPS aktif dan izin lokasi diberikan, lalu coba lagi.', 'warning');
+      return;
+    }
   }
 
-  // Take selfie (kamera halaman, atau kamera HP sebagai cadangan)
+  // --- Camera: ensure in-page camera is started; fallback to native camera input ---
+  if (!AppState.cameraReady) {
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Memulai kamera...'; }
+    await window.startCamera();
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="check-circle"></i> AMBIL SELFIE & PRESENSI MASUK'; if (window.feather) feather.replace(); }
+  }
+
+  // --- Take selfie (in-page camera first, native fallback second) ---
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengambil foto...'; }
   let selfieBase64 = captureSelfieSnapshot();
-  if (!selfieBase64) selfieBase64 = await captureSelfieViaNativeCamera();
   if (!selfieBase64) {
-    alert('Foto selfie wajib diambil. Izinkan kamera atau ambil foto lewat kamera HP.');
+    // Prompt user to capture via native camera
+    showToast('Kamera halaman tidak siap. Buka kamera HP untuk ambil selfie.', 'info');
+    selfieBase64 = await captureSelfieViaNativeCamera();
+  }
+  if (!selfieBase64) {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="check-circle"></i> AMBIL SELFIE & PRESENSI MASUK'; if (window.feather) feather.replace(); }
+    showToast('Foto selfie wajib diambil. Coba lagi, atau izinkan akses kamera di pengaturan browser.', 'warning');
     return;
   }
 
-  showToast('Memverifikasi GPS & Wajah Selfie...', 'info');
+  // --- Submit to API ---
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengirim presensi...'; }
+  showToast('Memverifikasi GPS & wajah selfie...', 'info');
 
   try {
     const res = await fetch('/api/attendance/check-in', {
@@ -1370,20 +1530,28 @@ const submitAttendanceCheckIn = async () => {
       })
     });
     const data = await res.json();
-    if (res.ok) {
+    if (res.ok && data.status !== 'error') {
       if (data.in_radius) {
-        showToast(`Presensi Berhasil! Status: ${data.attendance_status} (${data.late_minutes} menit)`, 'success');
+        showToast(`Presensi berhasil! Status: ${data.attendance_status}${data.late_minutes ? ' (Terlambat ' + data.late_minutes + ' menit)' : ' (Tepat Waktu)'}`, 'success');
       } else {
-        showToast(`Peringatan: Presensi tercatat di LUAR RADIUS (${data.distance_meters}m)! Butuh approval atasan.`, 'warning');
+        showToast(`Presensi tercatat di LUAR RADIUS (${data.distance_meters}m). Menunggu approval atasan.`, 'warning');
       }
       await loadAttendanceLogs();
     } else {
-      alert(data.detail || 'Gagal check-in');
+      showToast(data.detail || data.message || 'Gagal check-in. Coba beberapa saat lagi.', 'error');
     }
   } catch (err) {
-    showToast('Terjadi kesalahan saat check-in', 'error');
+    showToast('Terjadi kesalahan koneksi saat check-in. Periksa internet Anda.', 'error');
+    console.error('Check-in error:', err);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-feather="check-circle"></i> AMBIL SELFIE & PRESENSI MASUK';
+      if (window.feather) feather.replace();
+    }
   }
 };
+const submitAttendanceCheckIn = window.submitAttendanceCheckIn;
 
 const renderAttendanceTable = (logs) => {
   const tbody = document.getElementById('attendance-tbody');
@@ -1750,7 +1918,7 @@ const runAutopilotPayroll = async () => {
     showToast('Fitur ini hanya untuk tim payroll (OM, HRD, Finance).', 'warning');
     return;
   }
-  if (!confirm('Jalankan proses Autopilot Payroll bulan ini untuk seluruh 275+ karyawan?')) return;
+  if (!confirm('Jalankan proses Autopilot Payroll bulan ini untuk seluruh karyawan?')) return;
   showToast('Memproses kalkulasi otomatis upah harian, lembur, BPJS, dan PPh 21...', 'info');
 
   try {
