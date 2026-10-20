@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnostik - TERTIB DISIPLIN</title>
+<link rel="icon" href="./icons/favicon.png">
+<style>
+  body { font-family: system-ui, sans-serif; background: #f7f1f3; color: #2a1b21; margin: 0; padding: 16px; }
+  .box { max-width: 760px; margin: 0 auto; background: #fff; border-radius: 14px; padding: 20px; box-shadow: 0 4px 18px rgba(112,28,52,.12); }
+  h1 { color: #701c34; font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 16px; color: #6b5a60; font-size: 14px; }
+  .row { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid #eee; }
+  .dot { flex: 0 0 22px; height: 22px; border-radius: 50%; color: #fff; font-size: 13px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .ok .dot { background: #16a34a; } .warn .dot { background: #d97706; } .fail .dot { background: #dc2626; }
+  .t { font-weight: 600; font-size: 14px; } .d { font-size: 13px; color: #555; margin-top: 2px; word-break: break-word; }
+  button { background: #701c34; color: #fff; border: 0; border-radius: 10px; padding: 10px 14px; font-size: 14px; cursor: pointer; margin: 4px 6px 4px 0; }
+  button.alt { background: #e9dfe3; color: #701c34; }
+  input { padding: 9px; border: 1px solid #ccc; border-radius: 8px; font-size: 14px; margin: 4px 6px 4px 0; width: 170px; }
+  .sec { margin-top: 18px; padding-top: 12px; border-top: 2px solid #f0e4e8; }
+  pre { background: #faf5f7; padding: 10px; border-radius: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Diagnostik TERTIB DISIPLIN</h1>
+  <p class="sub">Halaman ini memeriksa GitHub, config.js, Apps Script, dan Spreadsheet satu per satu. Kirim hasilnya (tombol Salin) bila masih ada masalah.</p>
+  <button id="run">Jalankan pemeriksaan</button>
+  <button class="alt" id="copy">Salin laporan</button>
+  <button class="alt" id="clear">Bersihkan cache aplikasi</button>
+  <div id="out"></div>
+
+  <div class="sec">
+    <div class="t">Tes login (tidak menyimpan sesi)</div>
+    <input id="ti" placeholder="NIP atau email">
+    <input id="tp" type="password" placeholder="Password">
+    <button id="tl">Tes login</button>
+    <pre id="lo">Belum dijalankan.</pre>
+  </div>
+</div>
+<script src="./config.js"></script>
+<script src="./diagnostik.js"></script>
+<script>
+  var lines = [];
+  var out = document.getElementById('out');
+  function log(status, title, detail) {
+    lines.push('[' + status.toUpperCase() + '] ' + title + (detail ? ' - ' + detail : ''));
+    var row = document.createElement('div'); row.className = 'row ' + status;
+    var dot = document.createElement('div'); dot.className = 'dot'; dot.textContent = status === 'ok' ? '✓' : (status === 'warn' ? '!' : '✕');
+    var box = document.createElement('div');
+    var t = document.createElement('div'); t.className = 't'; t.textContent = title;
+    var d = document.createElement('div'); d.className = 'd'; d.textContent = detail || '';
+    box.appendChild(t); box.appendChild(d); row.appendChild(dot); row.appendChild(box); out.appendChild(row);
+  }
+  function base() { return location.href.replace(/diagnostik\.html.*$/, ''); }
+  document.getElementById('run').onclick = async function () {
+    out.innerHTML = ''; lines = ['Laporan diagnostik ' + new Date().toISOString(), 'Halaman: ' + location.href];
+    await tdRunDiagnostics({ cfg: window.TD_CONFIG, fetch: window.fetch.bind(window), baseUrl: base(), isHttps: location.protocol === 'https:', hasSW: 'serviceWorker' in navigator }, log);
+  };
+  document.getElementById('copy').onclick = function () {
+    var txt = lines.join('\n'); if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function () { alert('Laporan disalin.'); }); else prompt('Salin teks ini:', txt);
+  };
+  document.getElementById('clear').onclick = async function () {
+    try {
+      var regs = await navigator.serviceWorker.getRegistrations(); for (var r of regs) await r.unregister();
+      var keys = await caches.keys(); for (var k of keys) await caches.delete(k);
+      try { localStorage.removeItem('td_token'); } catch (e) {}
+      alert('Cache aplikasi dibersihkan. Tutup semua tab aplikasi, lalu buka lagi.');
+    } catch (e) { alert('Tidak ada cache yang perlu dibersihkan.'); }
+  };
+  document.getElementById('tl').onclick = async function () {
+    var lo = document.getElementById('lo'); var cfg = window.TD_CONFIG || {};
+    if (!cfg.API_URL || cfg.API_URL.indexOf('https://script.google.com/') !== 0) { lo.textContent = 'API_URL belum diisi benar di config.js.'; return; }
+    lo.textContent = 'Memeriksa...';
+    try {
+      var r = await fetch(cfg.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, redirect: 'follow',
+        body: JSON.stringify({ method: 'POST', path: '/api/auth/login', body: { identifier: document.getElementById('ti').value.trim(), password: document.getElementById('tp').value }, token: '', slipToken: '' }) });
+      var j = JSON.parse(await r.text());
+      lo.textContent = 'Status: ' + j.status + '\nPesan: ' + ((j.body && (j.body.detail || j.body.message)) || '-') + (j.status === 200 ? '\nLogin BERHASIL untuk: ' + j.body.user.name + ' (' + j.body.user.division + ')' : '');
+    } catch (e) { lo.textContent = 'Gagal: ' + (e && e.message) + '\nBalasan bukan data dari Apps Script. Jalankan pemeriksaan di atas.'; }
+  };
+  document.getElementById('run').click();
+</script>
+</body>
+</html>

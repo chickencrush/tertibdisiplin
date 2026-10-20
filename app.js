@@ -1,3 +1,15 @@
+const LOGO_URI = './icons/logo.png';
+// Gambar rusak / kosong -> logo cadangan yang tertanam (tidak bergantung folder icons)
+document.addEventListener('error', (ev) => {
+  const t = ev.target;
+  if (t && t.tagName === 'IMG' && !t.dataset.fb) { t.dataset.fb = '1'; t.src = window.LOGO_FALLBACK || LOGO_URI; }
+}, true);
+window.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('img').forEach((im) => {
+    if (im.complete && im.naturalWidth === 0 && !im.dataset.fb) { im.dataset.fb = '1'; im.src = window.LOGO_FALLBACK || LOGO_URI; }
+  });
+});
+
 /**
  * TERTIB DISIPLIN - Main JavaScript Controller
  * Complete functionality for Management & Operational Crew Daily Report & HR Suite
@@ -16,321 +28,15 @@ const AppState = {
   kpiSummary: null,
   activeChatChannel: '#general',
   selectedPayslipForPin: null,
-  deviceCoordinates: { lat: -6.2088, lon: 106.8456 },
+  deviceCoordinates: { lat: 0, lon: 0 },
+  gpsOk: false,
   cameraStream: null,
   deferredPwaPrompt: null
 };
 
-// ============================================================================
-// UNIVERSAL API ADAPTER: GOOGLE APPS SCRIPT (SHEETS & DRIVE) + LOCAL FALLBACK
-// ============================================================================
-const originalFetch = window.fetch.bind(window);
-
-window.fetch = async function(url, options = {}) {
-  // Gunakan fetch lokal biasa jika URL bukan API atau konfigurasi Google Apps Script belum diset
-  if (!window.APP_CONFIG || !window.APP_CONFIG.isGoogleBackendActive || typeof url !== 'string' || !url.startsWith('/api/')) {
-    return originalFetch(url, options);
-  }
-
-  const gasUrl = window.APP_CONFIG.GAS_WEBAPP_URL;
-  const method = (options.method || 'GET').toUpperCase();
-
-  const makeJsonResponse = (data, status = 200) => {
-    return new Response(JSON.stringify(data), {
-      status: status,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  };
-
-  try {
-    // 1. AUTH LOGIN & REGISTER
-    if (url === '/api/auth/login') {
-      const body = JSON.parse(options.body || '{}');
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'login', ...body })
-      });
-      const data = await gasRes.json();
-      if (data.status === 'error') {
-        return makeJsonResponse({ detail: data.message }, 401);
-      }
-      return makeJsonResponse(data, 200);
-    }
-
-    if (url === '/api/auth/register') {
-      const body = JSON.parse(options.body || '{}');
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'register', ...body })
-      });
-      const data = await gasRes.json();
-      if (data.status === 'error') {
-        return makeJsonResponse({ detail: data.message }, 400);
-      }
-      return makeJsonResponse(data, 200);
-    }
-
-    // 2. CONFIG
-    if (url === '/api/config') {
-      const gasRes = await originalFetch(`${gasUrl}?action=config`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-
-    // 3. OUTLETS
-    if (url === '/api/outlets' && method === 'GET') {
-      const gasRes = await originalFetch(`${gasUrl}?action=getOutlets`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-    if (url === '/api/outlets' && method === 'POST') {
-      const body = JSON.parse(options.body || '{}');
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'createOutlet', ...body })
-      });
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-    if (url.startsWith('/api/outlets/') && method === 'DELETE') {
-      const id = url.split('/').pop();
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'deleteOutlet', id: id })
-      });
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-
-    // 4. EMPLOYEES
-    if (url === '/api/employees' && method === 'GET') {
-      const gasRes = await originalFetch(`${gasUrl}?action=getEmployees`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-
-    // 5. DAILY REPORTS
-    if (url === '/api/daily-reports' && method === 'GET') {
-      const gasRes = await originalFetch(`${gasUrl}?action=getDailyReports`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-    if (url === '/api/daily-reports' && method === 'POST') {
-      const body = JSON.parse(options.body || '{}');
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'createDailyReport', ...body })
-      });
-      const data = await gasRes.json();
-      if (data.status === 'error') {
-        return makeJsonResponse({ detail: data.message }, 400);
-      }
-      return makeJsonResponse(data, 200);
-    }
-    if (url.startsWith('/api/daily-reports/') && url.endsWith('/status')) {
-      const parts = url.split('/');
-      const reportId = parts[3];
-      const body = JSON.parse(options.body || '{}');
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'updateReportStatus', report_id: reportId, ...body })
-      });
-      const data = await gasRes.json();
-      if (data.status === 'error') {
-        return makeJsonResponse({ detail: data.message }, 400);
-      }
-      return makeJsonResponse(data, 200);
-    }
-
-    // 6. ATTENDANCE & CHECK-IN
-    if (url.startsWith('/api/attendance') && method === 'GET') {
-      const query = url.includes('?') ? '&' + url.split('?')[1] : '';
-      const gasRes = await originalFetch(`${gasUrl}?action=getAttendance${query}`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-    if (url === '/api/attendance/check-in' && method === 'POST') {
-      const body = JSON.parse(options.body || '{}');
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'checkIn', ...body })
-      });
-      const data = await gasRes.json();
-      if (data.status === 'error') {
-        return makeJsonResponse({ detail: data.message }, 400);
-      }
-      return makeJsonResponse(data, 200);
-    }
-
-    // 7. PAYROLL & E-PAYSLIP
-    if (url.startsWith('/api/payroll/slips') && method === 'GET') {
-      const query = url.includes('?') ? '&' + url.split('?')[1] : '';
-      const gasRes = await originalFetch(`${gasUrl}?action=getPayslips${query}`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-    if (url === '/api/payroll/summary' && method === 'GET') {
-      const gasRes = await originalFetch(`${gasUrl}?action=getPayrollSummary`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-    if (url === '/api/payroll/verify-pin' && method === 'POST') {
-      const body = JSON.parse(options.body || '{}');
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'verifyPin', ...body })
-      });
-      const data = await gasRes.json();
-      if (data.status === 'error') {
-        return makeJsonResponse({ detail: data.message }, 401);
-      }
-      return makeJsonResponse(data, 200);
-    }
-    if (url === '/api/payroll/run-autopilot' && method === 'POST') {
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'runPayrollAutopilot' })
-      });
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-    if (url.includes('/api/payroll/slips/') && url.endsWith('/send-email')) {
-      const parts = url.split('/');
-      const slipId = parts[4];
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'sendPayslipEmail', slip_id: slipId })
-      });
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-
-    // 8. KPI SUMMARY
-    if (url === '/api/kpi/summary' && method === 'GET') {
-      const gasRes = await originalFetch(`${gasUrl}?action=getKpiSummary`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-
-    // 9. CHAT ROOM
-    if (url.startsWith('/api/chat/messages') && method === 'GET') {
-      const queryCh = new URLSearchParams(url.split('?')[1] || '').get('channel') || '#general';
-      const gasRes = await originalFetch(`${gasUrl}?action=getChatMessages&channel=${encodeURIComponent(queryCh)}`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-    if (url === '/api/chat/messages' && method === 'POST') {
-      const body = JSON.parse(options.body || '{}');
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'sendMessage', ...body })
-      });
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-
-    // 10. CALENDAR & AGENDA
-    if (url === '/api/calendar/events' && method === 'GET') {
-      const gasRes = await originalFetch(`${gasUrl}?action=getCalendarEvents`);
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-    if (url === '/api/calendar/events' && method === 'POST') {
-      const body = JSON.parse(options.body || '{}');
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'createEvent', ...body })
-      });
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-
-    // 11. FILE UPLOAD TO GOOGLE DRIVE
-    if (url === '/api/upload' && method === 'POST') {
-      const formData = options.body;
-      const file = formData ? formData.get('file') : null;
-      if (!file) {
-        return makeJsonResponse({ detail: 'File tidak ditemukan' }, 400);
-      }
-      
-      const toBase64 = (f) => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(f);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-      });
-
-      const base64Str = await toBase64(file);
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'uploadFile',
-          fileName: file.name,
-          mimeType: file.type || 'image/jpeg',
-          base64: base64Str
-        })
-      });
-      const data = await gasRes.json();
-      if (data.status === 'error') {
-        return makeJsonResponse({ detail: data.message }, 500);
-      }
-      return makeJsonResponse({ status: 'success', url: data.url, filename: file.name }, 200);
-    }
-
-    // 12. DATABASE OVERVIEW & INSPECTOR
-    if (url === '/api/database/overview') {
-      const gasRes = await originalFetch(`${gasUrl}?action=getOverview`);
-      const data = await gasRes.json();
-      return makeJsonResponse({ status: 'success', counts: data.data || data }, 200);
-    }
-    if (url.startsWith('/api/database/tables/')) {
-      const parts = url.split('?')[0].split('/');
-      const table = parts[parts.length - 1];
-      const gasRes = await originalFetch(`${gasUrl}?action=getTableData&table=${encodeURIComponent(table)}`);
-      const data = await gasRes.json();
-      const rows = data.data || [];
-      return makeJsonResponse({
-        status: 'success',
-        table: table,
-        total_rows: rows.length,
-        columns: rows.length > 0 ? Object.keys(rows[0]) : [],
-        data: rows
-      }, 200);
-    }
-    if (url === '/api/database/reset' && method === 'POST') {
-      const gasRes = await originalFetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'resetCleanDatabase' })
-      });
-      const data = await gasRes.json();
-      return makeJsonResponse(data, 200);
-    }
-
-    // Fallback default
-    return originalFetch(url, options);
-
-  } catch (err) {
-    console.error('GAS API Bridge Error:', err);
-    return makeJsonResponse({ detail: 'Gagal menghubungi Google Apps Script: ' + err.message }, 500);
-  }
-};
-
 // Formatting Utilities
 const formatRupiah = (val) => {
+  if (val === null || val === undefined || Number.isNaN(val)) return '••••••';
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
     currency: 'IDR',
@@ -356,24 +62,144 @@ const showToast = (message, type = 'info') => {
 };
 
 // ==========================================
+// Hak akses panel per divisi
+// ==========================================
+// Super admin (OM) dan HRD membuka SEMUA panel. Divisi lain hanya panel yang relevan.
+// Ubah daftar di bawah untuk menyesuaikan. Server (Code.gs) memakai aturan yang sama.
+const FULL_ACCESS_DIVISIONS = ['OM', 'HRD'];
+const PAYROLL_DIVISIONS = ['OM', 'HRD', 'Finance'];
+const VIEW_ACCESS = {
+  'dashboard': 'all',
+  'presensi': 'all',
+  'daily-report': 'all',
+  'payroll': 'all',            // karyawan biasa hanya melihat slip sendiri (butuh PIN)
+  'chat': 'all',               // saluran dibatasi lagi di CHAT_CHANNEL_RULES
+  'calendar': 'all',
+  'employees': ['OM', 'HRD', 'Finance', 'BM', 'HRGA'],
+  'kpi': ['OM', 'HRD', 'BM', 'QC', 'Finance', 'HRGA', 'DOS', 'SPV', 'Head Kitchen', 'Head Bar'],
+  'outlets': ['OM', 'HRD'],
+  'database': ['OM', 'HRD']
+};
+const CHAT_CHANNEL_RULES = {
+  '#general': null,
+  '#management': { type: 'Management' },
+  '#kitchen-bar': { divisions: ['Head Kitchen', 'Head Bar', 'Kitchen', 'Bar', 'SPV', 'QC'] },
+  '#service-crew': { divisions: ['SPV', 'Kasir', 'Server', 'PA', 'CS', 'BM'] },
+  '#logistik': { divisions: ['Logistik', 'Driver', 'Produksi', 'Security', 'HRGA', 'Finance'] }
+};
+
+const isFullAccess = (user = AppState.currentUser) => !!user && FULL_ACCESS_DIVISIONS.includes(user.division);
+const isPayrollAdmin = (user = AppState.currentUser) => !!user && PAYROLL_DIVISIONS.includes(user.division);
+const canAccessView = (view, user = AppState.currentUser) => {
+  if (!user) return false;
+  if (isFullAccess(user)) return true;
+  const rule = VIEW_ACCESS[view];
+  if (!rule) return false;
+  return rule === 'all' || rule.includes(user.division);
+};
+const canAccessChannel = (channel, user = AppState.currentUser) => {
+  if (!user) return false;
+  if (isFullAccess(user)) return true;
+  if (!Object.prototype.hasOwnProperty.call(CHAT_CHANNEL_RULES, channel)) return false;
+  const rule = CHAT_CHANNEL_RULES[channel];
+  if (!rule) return true;
+  if (rule.type && user.type === rule.type) return true;
+  return !!(rule.divisions && rule.divisions.includes(user.division));
+};
+
+// Terapkan hak akses ke menu, pemilih mode, tombol payroll, dan saluran chat
+const applyAccessControl = () => {
+  const user = AppState.currentUser;
+  if (!user) return;
+
+  document.querySelectorAll('.nav-item').forEach(item => {
+    const allowed = canAccessView(item.getAttribute('data-view'));
+    const li = item.closest('li') || item;
+    li.style.display = allowed ? '' : 'none';
+  });
+
+  // Pemilih Dashboard Management / Tim Operasional hanya untuk Super admin & HRD
+  const modeSwitcher = document.querySelector('.mode-switcher-container');
+  if (modeSwitcher) modeSwitcher.style.display = isFullAccess(user) ? '' : 'none';
+  AppState.currentMode = user.type === 'Management' ? 'Management' : 'Operasional';
+  const bm = document.getElementById('btn-mode-management');
+  const bo = document.getElementById('btn-mode-operasional');
+  if (bm) bm.classList.toggle('active', AppState.currentMode === 'Management');
+  if (bo) bo.classList.toggle('active', AppState.currentMode === 'Operasional');
+
+  document.querySelectorAll('.payroll-admin-only').forEach(el => {
+    el.style.display = isPayrollAdmin(user) ? '' : 'none';
+  });
+
+  document.querySelectorAll('.chat-channel-item').forEach(el => {
+    const m = /switchChatChannel\('([^']+)'/.exec(el.getAttribute('onclick') || '');
+    el.style.display = (m ? canAccessChannel(m[1]) : true) ? '' : 'none';
+  });
+
+  document.body.dataset.access = isFullAccess(user) ? 'full' : (canAccessView('employees', user) ? 'manager' : 'staff');
+};
+
+// ==========================================
+// Sidebar (menu geser) untuk layar HP
+// ==========================================
+const setSidebarOpen = (open) => {
+  const sb = document.getElementById('sidebar');
+  const bd = document.getElementById('sidebar-backdrop');
+  if (!sb) return;
+  sb.classList.toggle('open', open);
+  if (bd) bd.classList.toggle('show', open);
+  document.body.classList.toggle('sidebar-locked', open);
+  const btn = document.getElementById('btn-toggle-sidebar');
+  if (btn) btn.setAttribute('aria-label', open ? 'Tutup menu' : 'Buka menu');
+};
+const initSidebarToggle = () => {
+  const btn = document.getElementById('btn-toggle-sidebar');
+  const bd = document.getElementById('sidebar-backdrop');
+  const sb = document.getElementById('sidebar');
+  if (btn) btn.addEventListener('click', () => setSidebarOpen(!sb.classList.contains('open')));
+  if (bd) bd.addEventListener('click', () => setSidebarOpen(false));
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') setSidebarOpen(false); });
+  window.addEventListener('resize', () => { if (window.innerWidth > 768) setSidebarOpen(false); });
+};
+
+// Pesan kesalahan login tampil di dalam formulir (tidak bergantung pada toast)
+const showLoginError = (msg) => {
+  const box = document.getElementById('auth-login-error');
+  if (!box) return;
+  box.textContent = msg || '';
+  box.style.display = msg ? 'block' : 'none';
+};
+
+// ==========================================
 // Authentication Gate & Session Management
 // ==========================================
+// Muat data aplikasi (hanya setelah login) - hanya yang boleh dilihat peran ini, dan paralel agar cepat
+const loadAllAppData = async () => {
+  applyAccessControl();
+  await loadOutlets();
+  populateRegisterOutlets();
+  const jobs = [loadDailyReports(), loadAttendanceLogs(), loadPayslips(), loadCalendarEvents()];
+  if (canAccessView('employees')) jobs.push(loadEmployees());
+  if (canAccessView('kpi')) jobs.push(loadKpiSummary());
+  await Promise.all(jobs);
+  populateDivisionDropdowns();
+  switchView('dashboard');
+  if (window.feather) feather.replace();
+};
+
 const initAuthSession = () => {
-  // Check persistent (localStorage) first, then session (sessionStorage)
-  const savedUserStr = localStorage.getItem('tertib_disiplin_auth_user')
-    || sessionStorage.getItem('tertib_disiplin_auth_user');
+  const savedUserStr = localStorage.getItem('tertib_disiplin_auth_user');
   const authScreen = document.getElementById('auth-gate-screen');
 
-  if (savedUserStr) {
+  if (savedUserStr && localStorage.getItem('td_token')) {
     try {
       const user = JSON.parse(savedUserStr);
       AppState.currentUser = user;
-      setCurrentUser(user, true);
+      setCurrentUser(user);
       if (authScreen) authScreen.classList.add('hidden');
       return true;
     } catch (e) {
       localStorage.removeItem('tertib_disiplin_auth_user');
-      sessionStorage.removeItem('tertib_disiplin_auth_user');
     }
   }
 
@@ -404,13 +230,9 @@ const switchAuthTab = (tab) => {
 };
 
 const quickFillLogin = (nip, password) => {
-  // Deprecated: Quick login panel has been removed for production security.
-  // Function kept as no-op for backward compatibility in case of cached HTML.
-  return;
-};
-
-const showForgotPasswordHelp = () => {
-  showToast('Silakan hubungi HRD / Master Admin untuk reset password & PIN Anda.', 'info');
+  document.getElementById('login-identifier').value = nip;
+  document.getElementById('login-password').value = password;
+  showToast(`Akun ${nip} siap untuk login!`, 'info');
 };
 
 const togglePasswordVisibility = (fieldId, btn) => {
@@ -428,12 +250,19 @@ const togglePasswordVisibility = (fieldId, btn) => {
 
 const handleAuthLogin = async (e) => {
   e.preventDefault();
+  showLoginError('');
   const ident = document.getElementById('login-identifier').value.trim();
-  const pwd = document.getElementById('login-password').value.trim();
+  const pwd = document.getElementById('login-password').value;
   const submitBtn = document.getElementById('btn-login-submit');
+
+  if (!ident || !pwd) {
+    showLoginError('NIP/Email dan password wajib diisi.');
+    return;
+  }
 
   submitBtn.disabled = true;
   submitBtn.textContent = 'Memverifikasi...';
+  const slowHint = setTimeout(() => { submitBtn.textContent = 'Menghubungi server, mohon tunggu...'; }, 4000);
 
   try {
     const res = await fetch('/api/auth/login', {
@@ -444,33 +273,22 @@ const handleAuthLogin = async (e) => {
     const data = await res.json();
 
     if (res.ok && data.status === 'success') {
+      document.getElementById('login-password').value = '';
       setCurrentUser(data.user);
       document.getElementById('auth-gate-screen').classList.add('hidden');
       showToast(data.message, 'success');
-
-      // Adjust dashboard mode according to user type
-      if (data.user.type === 'Management') {
-        AppState.currentMode = 'Management';
-        document.getElementById('btn-mode-management').classList.add('active');
-        document.getElementById('btn-mode-operasional').classList.remove('active');
-      } else {
-        AppState.currentMode = 'Operasional';
-        document.getElementById('btn-mode-operasional').classList.add('active');
-        document.getElementById('btn-mode-management').classList.remove('active');
-      }
-
-      // Reload fresh data
-      await loadEmployees();
-      await loadDailyReports();
-      await loadAttendanceLogs();
-      await loadPayslips();
-      await loadKpiSummary();
+      await loadAllAppData();
     } else {
-      showToast(data.detail || 'Login gagal. Periksa kembali NIP/Email dan password Anda.', 'error');
+      const msg = data.detail || 'Login gagal. Periksa kembali NIP/Email dan password Anda.';
+      showLoginError(msg);
+      showToast(msg, 'error');
     }
   } catch (err) {
-    showToast('Terjadi kesalahan koneksi saat login.', 'error');
+    const msg = 'Terjadi kesalahan koneksi saat login. Periksa internet lalu coba lagi.';
+    showLoginError(msg);
+    showToast(msg, 'error');
   } finally {
+    clearTimeout(slowHint);
     submitBtn.disabled = false;
     submitBtn.textContent = 'Masuk ke Sistem TERTIB DISIPLIN';
   }
@@ -478,6 +296,8 @@ const handleAuthLogin = async (e) => {
 
 const handleAuthRegister = async (e) => {
   e.preventDefault();
+  showToast('Pendaftaran akun hanya dilakukan oleh HRD. Hubungi HRD Anda.', 'warning');
+  return;
   const name = document.getElementById('reg-name').value.trim();
   const nip = document.getElementById('reg-nip').value.trim();
   const email = document.getElementById('reg-email').value.trim();
@@ -556,27 +376,48 @@ const populateRegisterOutlets = () => {
   outSelect.innerHTML = AppState.outlets.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
 };
 
+// Hapus semua data pribadi dari memori & layar saat keluar / sesi berakhir
+const clearSessionData = () => {
+  AppState.currentUser = null;
+  AppState.employees = [];
+  AppState.outlets = [];
+  AppState.dailyReports = [];
+  AppState.attendanceLogs = [];
+  AppState.payslips = [];
+  AppState.kpiSummary = null;
+  AppState.selectedPayslipForPin = null;
+  AppState.activeChatChannel = '#general';
+  AppState.currentView = 'dashboard';
+  AppState.gpsOk = false;
+  if (AppState.cameraStream) {
+    try { AppState.cameraStream.getTracks().forEach(t => t.stop()); } catch (e) { /* abaikan */ }
+    AppState.cameraStream = null;
+  }
+  localStorage.removeItem('tertib_disiplin_auth_user');
+  if (window.tdLogout) tdLogout();
+};
+// Muat ulang halaman agar tidak ada sisa data pengguna sebelumnya di layar
+const restartToLogin = (notice) => {
+  if (notice) { try { sessionStorage.setItem('td_notice', notice); } catch (e) { /* abaikan */ } }
+  if (window.location && typeof window.location.reload === 'function') window.location.reload();
+};
+
 const logoutUser = () => {
   if (!confirm('Apakah Anda yakin ingin keluar (Logout) dari TERTIB DISIPLIN?')) return;
-  localStorage.removeItem('tertib_disiplin_auth_user');
-  sessionStorage.removeItem('tertib_disiplin_auth_user');
-  AppState.currentUser = null;
+  clearSessionData();
+  setSidebarOpen(false);
+  showLoginError('');
   const authScreen = document.getElementById('auth-gate-screen');
   if (authScreen) authScreen.classList.remove('hidden');
-  // Clear login form fields
-  const identInput = document.getElementById('login-identifier');
-  const pwdInput = document.getElementById('login-password');
-  if (identInput) identInput.value = '';
-  if (pwdInput) pwdInput.value = '';
   switchAuthTab('login');
-  showToast('Anda telah keluar dari aplikasi.', 'info');
+  restartToLogin('Anda telah keluar dari aplikasi.');
 };
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
   // Register PWA Service Worker
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(() => {
+    navigator.serviceWorker.register('./sw.js').then(() => {
       console.log('TERTIB DISIPLIN Service Worker Registered');
     }).catch(err => console.log('SW registration error:', err));
   }
@@ -587,6 +428,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     AppState.deferredPwaPrompt = e;
     const banner = document.getElementById('pwa-banner');
     if (banner) banner.style.display = 'flex';
+  });
+
+  initSidebarToggle();
+  ['login-identifier', 'login-password'].forEach(id => {
+    const f = document.getElementById(id);
+    if (f) f.addEventListener('input', () => showLoginError(''));
   });
 
   // Setup Navigation listeners
@@ -602,24 +449,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(updateAttendanceClock, 1000);
   detectDeviceGPS();
 
-  // Load initial outlets first so registration can populate
-  await loadOutlets();
-  populateRegisterOutlets();
-  syncRegisterDivisions('Operasional');
+  // Sesi berakhir -> kembali ke layar login
+  window.addEventListener('td-session-expired', () => {
+    clearSessionData();
+    setSidebarOpen(false);
+    const authScreen = document.getElementById('auth-gate-screen');
+    if (authScreen) authScreen.classList.remove('hidden');
+    switchAuthTab('login');
+    showToast('Sesi berakhir. Silakan login kembali.', 'warning');
+    restartToLogin('Sesi berakhir. Silakan login kembali.');
+  });
 
-  // Check login session
+  // Pesan dari sebelum halaman dimuat ulang (keluar / sesi berakhir)
+  try {
+    const notice = sessionStorage.getItem('td_notice');
+    if (notice) { sessionStorage.removeItem('td_notice'); showToast(notice, 'info'); }
+  } catch (e) { /* abaikan */ }
+
+  // Cek sesi login, data dimuat hanya jika sudah login
   const isLoggedIn = initAuthSession();
+  if (isLoggedIn) await loadAllAppData();
 
-  // Load app data
-  await loadEmployees();
-  await loadDailyReports();
-  await loadKpiSummary();
-  await loadAttendanceLogs();
-  await loadPayslips();
-  await loadCalendarEvents();
-
-  // Initialize mockup charts
-  initMockupCharts();
+  // Initialize mockup charts (dilewati bila pustaka grafik gagal dimuat)
+  if (window.Chart) initMockupCharts();
 
   // Populate UI dropdowns
   populateDivisionDropdowns();
@@ -650,6 +502,11 @@ const dismissPwaBanner = () => {
 
 // Navigation View Switcher
 const switchView = (viewName) => {
+  if (!canAccessView(viewName)) {
+    showToast('Anda tidak memiliki akses ke panel ini.', 'warning');
+    viewName = 'dashboard';
+  }
+  setSidebarOpen(false);
   AppState.currentView = viewName;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const activeNav = document.querySelector(`.nav-item[data-view="${viewName}"]`);
@@ -678,6 +535,10 @@ const switchView = (viewName) => {
     titleEl.textContent = titles[viewName][0];
     subEl.textContent = titles[viewName][1];
   }
+  if (viewName === 'payroll' && !isPayrollAdmin()) {
+    titleEl.textContent = 'Slip Gaji Saya';
+    subEl.textContent = 'Slip gaji pribadi Anda. Dibuka dengan PIN 6 digit.';
+  }
 
   if (viewName === 'presensi') {
     startCamera();
@@ -691,42 +552,7 @@ const switchView = (viewName) => {
   }
 
   if (window.feather) feather.replace();
-
-  // Auto-close mobile sidebar drawer after navigation
-  closeSidebarDrawer();
 };
-
-// ==========================================
-// RESPONSIVE SIDEBAR DRAWER (Mobile / Tablet)
-// ==========================================
-const openSidebarDrawer = () => {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.getElementById('sidebar-overlay');
-  if (!sidebar || !overlay) return;
-  sidebar.classList.add('open');
-  overlay.classList.add('active');
-  document.body.style.overflow = 'hidden'; // lock background scroll
-};
-
-const closeSidebarDrawer = () => {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.getElementById('sidebar-overlay');
-  if (!sidebar || !overlay) return;
-  if (!sidebar.classList.contains('open')) return;
-  sidebar.classList.remove('open');
-  overlay.classList.remove('active');
-  document.body.style.overflow = '';
-};
-
-// Close drawer when Esc is pressed
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeSidebarDrawer();
-});
-
-// Auto-close drawer if user resizes back to desktop
-window.addEventListener('resize', () => {
-  if (window.innerWidth > 1080) closeSidebarDrawer();
-});
 
 // Switch Dashboard Mode: Management vs Tim Operasional
 const switchDashboardMode = (mode) => {
@@ -745,7 +571,7 @@ const switchDashboardMode = (mode) => {
   if (window.feather) feather.replace();
 };
 
-const setCurrentUser = (user, skipStorageRewrite = false) => {
+const setCurrentUser = (user) => {
   if (!user) return;
   AppState.currentUser = user;
   const nameEl = document.getElementById('current-user-name');
@@ -753,28 +579,21 @@ const setCurrentUser = (user, skipStorageRewrite = false) => {
   const avatarEl = document.getElementById('current-user-avatar');
   if (nameEl) nameEl.textContent = user.name;
   if (roleEl) roleEl.textContent = `${user.role} (${user.division})`;
-  if (avatarEl) avatarEl.src = user.avatar_url || 'icons/logo.png';
-
-  // Skip storage rewrite when restoring an existing session to preserve
-  // the original storage medium (localStorage vs sessionStorage).
-  if (skipStorageRewrite) return;
-
-  // Decide storage medium based on "Remember Me" checkbox
-  const rememberChk = document.getElementById('login-remember-me');
-  const usePersistent = rememberChk ? rememberChk.checked : true;
-
-  // Clear both stores first to avoid stale data
-  localStorage.removeItem('tertib_disiplin_auth_user');
-  sessionStorage.removeItem('tertib_disiplin_auth_user');
-
-  const store = usePersistent ? localStorage : sessionStorage;
-  store.setItem('tertib_disiplin_auth_user', JSON.stringify(user));
+  if (avatarEl) avatarEl.src = user.avatar_url || LOGO_URI;
+  const sName = document.getElementById('sidebar-user-name');
+  const sRole = document.getElementById('sidebar-user-role');
+  const sAv = document.getElementById('sidebar-user-avatar');
+  if (sName) sName.textContent = user.name;
+  if (sRole) sRole.textContent = `${user.role} (${user.division})`;
+  if (sAv) sAv.src = user.avatar_url || LOGO_URI;
+  localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(user));
 };
 
 // Load Outlets from API
 const loadOutlets = async () => {
   try {
     const res = await fetch('/api/outlets');
+    if (!res.ok) return;
     const data = await res.json();
     AppState.outlets = data;
 
@@ -798,6 +617,7 @@ const loadOutlets = async () => {
 const loadEmployees = async () => {
   try {
     const res = await fetch('/api/employees');
+    if (!res.ok) return;
     const data = await res.json();
     AppState.employees = data;
     renderEmployeesTable(data);
@@ -810,6 +630,7 @@ const loadEmployees = async () => {
 const loadDailyReports = async () => {
   try {
     const res = await fetch('/api/daily-reports');
+    if (!res.ok) return;
     const data = await res.json();
     AppState.dailyReports = data;
     renderDashboardReportsStream();
@@ -823,6 +644,7 @@ const loadDailyReports = async () => {
 const loadKpiSummary = async () => {
   try {
     const res = await fetch('/api/kpi/summary');
+    if (!res.ok) return;
     const data = await res.json();
     AppState.kpiSummary = data;
     renderStaffRatingsCards(data.topStaff || []);
@@ -836,6 +658,7 @@ const loadKpiSummary = async () => {
 const loadAttendanceLogs = async () => {
   try {
     const res = await fetch('/api/attendance');
+    if (!res.ok) return;
     const data = await res.json();
     AppState.attendanceLogs = data;
     renderAttendanceTable(data);
@@ -848,12 +671,14 @@ const loadAttendanceLogs = async () => {
 const loadPayslips = async () => {
   try {
     const res = await fetch('/api/payroll/slips');
+    if (!res.ok) return;
     const data = await res.json();
     AppState.payslips = data;
     renderPayslipsTable(data);
 
     // Summary
     const sumRes = await fetch('/api/payroll/summary');
+    if (!sumRes.ok) return;
     const sum = await sumRes.json();
     if (sum) {
       document.getElementById('pay-total-gross').textContent = formatRupiah(sum.total_gross || 0);
@@ -1224,6 +1049,8 @@ const previewReportFile = async (input) => {
       previewImg.src = data.url;
       document.getElementById('proof-preview-container').style.display = 'block';
       showToast('Bukti berhasil diunggah!', 'success');
+    } else {
+      showToast(data.detail || 'Gagal mengunggah file bukti', 'error');
     }
   } catch (err) {
     showToast('Gagal mengunggah file bukti', 'error');
@@ -1334,26 +1161,24 @@ const updateReportStatusDirect = async (reportId, status, proofUrl, proofNotes, 
 
 // ================= PRESENSI GPS & SELFIE CAMERA =================
 const detectDeviceGPS = () => {
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        AppState.deviceCoordinates = {
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude
-        };
-        checkGpsDistance();
-      },
-      (err) => {
-        console.warn('Geolocation permission not granted, using simulated outlet radius');
-        // Fallback: place user within 18m of Outlet Pusat Sudirman
-        AppState.deviceCoordinates = {
-          lat: -6.20885,
-          lon: 106.84565
-        };
-        checkGpsDistance();
-      }
-    );
+  if (!navigator.geolocation) {
+    AppState.gpsOk = false;
+    checkGpsDistance();
+    return;
   }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      AppState.deviceCoordinates = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      AppState.gpsOk = true;
+      checkGpsDistance();
+    },
+    (err) => {
+      console.warn('Lokasi GPS tidak tersedia:', err && err.message);
+      AppState.gpsOk = false;
+      checkGpsDistance();
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
 };
 
 const updateAttendanceClock = () => {
@@ -1409,6 +1234,11 @@ const checkGpsDistance = () => {
   const outlet = AppState.outlets.find(o => o.id === outletSelect.value) || AppState.outlets[0];
   if (!outlet) return;
 
+  if (!AppState.gpsOk) {
+    banner.className = 'geofence-alert geofence-invalid';
+    text.innerHTML = '<strong>GPS belum aktif:</strong> izinkan akses lokasi pada browser, lalu muat ulang halaman. Presensi tidak bisa dilakukan tanpa lokasi.';
+    return;
+  }
   const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, outlet.lat, outlet.lon);
   const isValid = dist <= outlet.radius_meters;
 
@@ -1425,7 +1255,7 @@ const checkGpsDistance = () => {
 const captureSelfieSnapshot = () => {
   const video = document.getElementById('camera-feed');
   const canvas = document.getElementById('camera-snapshot-canvas');
-  if (!video || !canvas) return null;
+  if (!video || !canvas || !AppState.cameraStream || !video.videoWidth) return null;
 
   canvas.width = video.videoWidth || 480;
   canvas.height = video.videoHeight || 360;
@@ -1442,13 +1272,57 @@ const captureSelfieSnapshot = () => {
   return canvas.toDataURL('image/jpeg', 0.85);
 };
 
+// Cadangan: buka kamera HP bila kamera di dalam halaman tidak bisa dipakai
+const captureSelfieViaNativeCamera = () => new Promise((resolve) => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.setAttribute('capture', 'user');
+  let done = false;
+  const finish = (v) => { if (!done) { done = true; resolve(v); } };
+  input.onchange = () => {
+    const f = input.files && input.files[0];
+    if (!f) return finish(null);
+    const img = new Image();
+    img.onload = () => {
+      const sc = Math.min(1, 800 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * sc);
+      c.height = Math.round(img.height * sc);
+      const x = c.getContext('2d');
+      x.drawImage(img, 0, 0, c.width, c.height);
+      x.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      x.fillRect(10, c.height - 40, c.width - 20, 30);
+      x.fillStyle = '#ffffff';
+      x.font = '12px sans-serif';
+      x.fillText(`GPS: ${AppState.deviceCoordinates.lat.toFixed(4)}, ${AppState.deviceCoordinates.lon.toFixed(4)} | ${new Date().toLocaleString('id-ID')}`, 20, c.height - 20);
+      finish(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => finish(null);
+    img.src = URL.createObjectURL(f);
+  };
+  input.addEventListener('cancel', () => finish(null));
+  input.click();
+});
+
 const submitAttendanceCheckIn = async () => {
   const outletId = document.getElementById('presensi-outlet-select').value;
   const shiftName = document.getElementById('presensi-shift-select').value;
   const outlet = AppState.outlets.find(o => o.id === outletId);
 
-  // Take selfie
-  const selfieBase64 = captureSelfieSnapshot();
+  if (!AppState.gpsOk) {
+    detectDeviceGPS();
+    alert('Lokasi GPS belum aktif. Izinkan akses lokasi pada browser, tunggu beberapa detik, lalu tekan presensi lagi.');
+    return;
+  }
+
+  // Take selfie (kamera halaman, atau kamera HP sebagai cadangan)
+  let selfieBase64 = captureSelfieSnapshot();
+  if (!selfieBase64) selfieBase64 = await captureSelfieViaNativeCamera();
+  if (!selfieBase64) {
+    alert('Foto selfie wajib diambil. Izinkan kamera atau ambil foto lewat kamera HP.');
+    return;
+  }
 
   showToast('Memverifikasi GPS & Wajah Selfie...', 'info');
 
@@ -1619,6 +1493,8 @@ const renderPayslipsTable = (slips) => {
   if (!tbody) return;
 
   tbody.innerHTML = slips.slice(0, 100).map(s => {
+    const m = !!s.masked;
+    const hide = (v) => (m ? '••••••' : v);
     return `
       <tr>
         <td><strong>${s.slip_number}</strong></td>
@@ -1631,10 +1507,10 @@ const renderPayslipsTable = (slips) => {
           <span class="card-badge-tag" style="padding:2px 6px; font-size:10px;">${s.grade}</span>
         </td>
         <td>${s.period_label}</td>
-        <td>${formatRupiah(s.base_salary)}</td>
-        <td>${formatRupiah(s.daily_allowance_total + s.overtime_pay)}</td>
-        <td style="color:#ef4444; font-weight:700;">-${formatRupiah(s.total_deductions)}</td>
-        <td style="font-weight:800; color:#065f46;">${formatRupiah(s.net_salary)}</td>
+        <td>${hide(formatRupiah(s.base_salary))}</td>
+        <td>${hide(formatRupiah(s.daily_allowance_total + s.overtime_pay))}</td>
+        <td style="color:#ef4444; font-weight:700;">${m ? '••••••' : '-' + formatRupiah(s.total_deductions)}</td>
+        <td style="font-weight:800; color:#065f46;">${hide(formatRupiah(s.net_salary))}</td>
         <td>
           ${s.is_emailed ? '<span style="color:#10b981; font-weight:700; font-size:11px;">✉️ Terkirim</span>' : '<span style="color:#94a3b8; font-size:11px;">Belum Dikirim</span>'}
         </td>
@@ -1683,6 +1559,7 @@ const confirmPinAndOpenSlip = async () => {
     const result = await res.json();
     if (res.ok) {
       closeModal('modal-pin');
+      await loadPayslips();
       showPayslipContent(AppState.selectedPayslipForPin.slipId);
     } else {
       alert(result.detail || 'PIN Salah! Akses ditolak.');
@@ -1701,7 +1578,7 @@ const showPayslipContent = (slipId) => {
     <div class="payslip-sheet">
       <div class="payslip-header-brand">
         <div class="payslip-company-info">
-          <h2>COMPANYOPS ENTERPRISE</h2>
+          <h2>TERTIB DISIPLIN</h2>
           <p>Multi-Outlet Management & F&B Operations</p>
           <p style="font-size:10px; color:#94a3b8;">Jl. Jend. Sudirman Kav 52-53, Jakarta Selatan</p>
         </div>
@@ -1840,6 +1717,10 @@ const sendPayslipToEmail = async () => {
 };
 
 const runAutopilotPayroll = async () => {
+  if (!isPayrollAdmin()) {
+    showToast('Fitur ini hanya untuk tim payroll (OM, HRD, Finance).', 'warning');
+    return;
+  }
   if (!confirm('Jalankan proses Autopilot Payroll bulan ini untuk seluruh 275+ karyawan?')) return;
   showToast('Memproses kalkulasi otomatis upah harian, lembur, BPJS, dan PPh 21...', 'info');
 
@@ -1883,6 +1764,10 @@ const renderKpiTable = (stats) => {
 
 // ================= CHAT ROOM INTERNAL =================
 const switchChatChannel = (channel, el) => {
+  if (!canAccessChannel(channel)) {
+    showToast('Anda tidak memiliki akses ke saluran ini.', 'warning');
+    return;
+  }
   AppState.activeChatChannel = channel;
   document.querySelectorAll('.chat-channel-item').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
@@ -1893,6 +1778,7 @@ const switchChatChannel = (channel, el) => {
 const loadChatMessages = async (channel = AppState.activeChatChannel) => {
   try {
     const res = await fetch(`/api/chat/messages?channel=${encodeURIComponent(channel)}`);
+    if (!res.ok) return;
     const data = await res.json();
     renderChatMessages(data);
   } catch (err) {
@@ -1952,6 +1838,7 @@ const sendChatMessage = async (e) => {
 const loadCalendarEvents = async () => {
   try {
     const res = await fetch('/api/calendar/events');
+    if (!res.ok) return;
     const data = await res.json();
     renderCalendarEvents(data);
   } catch (err) {
@@ -2114,9 +2001,7 @@ const submitNewOutletForm = async (e) => {
 
 // ================= RBAC SIMULATOR / USER SWITCHER =================
 const toggleUserSwitchModal = () => {
-  const list = document.getElementById('switch-user-list');
-  renderUserSwitchItems(AppState.employees);
-  openModal('modal-switch-user');
+  showToast('Untuk berganti akun, tekan tombol Keluar lalu login dengan akun lain.', 'info');
 };
 
 const renderUserSwitchItems = (employees) => {
@@ -2141,6 +2026,7 @@ const filterUserSwitchList = (query) => {
 };
 
 const selectSwitchUser = (empId) => {
+  return; // dinonaktifkan: berganti akun harus lewat login
   const user = AppState.employees.find(e => e.id === empId);
   if (user) {
     setCurrentUser(user);
@@ -2314,22 +2200,54 @@ const nextDatabasePage = () => {
   }
 };
 
-const exportCurrentTableCsv = () => {
+const exportCurrentTableCsv = async () => {
   const table = AppState.dbState.currentTable || 'employees';
   showToast(`Mengekspor tabel ${table} ke file CSV / Excel...`, 'info');
-  window.location.href = `/api/database/export-csv/${table}`;
+  try {
+    const res = await fetch(`/api/database/export-csv/${table}`);
+    if (!res.ok) {
+      const d = await res.json();
+      showToast(d.detail || 'Gagal mengekspor CSV', 'error');
+      return;
+    }
+    const text = await res.text();
+    tdDownloadText(text, res.headers.get('X-Filename') || `${table}.csv`, 'text/csv;charset=utf-8');
+  } catch (err) {
+    showToast('Gagal mengekspor CSV', 'error');
+  }
+};
+
+const openDatabaseSheet = async (ev) => {
+  if (ev) ev.preventDefault();
+  const w = window.open('', '_blank');
+  try {
+    const res = await fetch('/api/database/overview');
+    const d = await res.json();
+    if (res.ok && d.db_url && w) { w.location = d.db_url; return; }
+    if (w) w.close();
+    showToast(d.detail || 'Gagal membuka Spreadsheet', 'error');
+  } catch (err) {
+    if (w) w.close();
+    showToast('Gagal membuka Spreadsheet', 'error');
+  }
 };
 
 const confirmResetDatabase = async () => {
-  const confirmMsg = "⚠️ PERINGATAN:\nApakah Anda yakin ingin mereset database ke data awal default?\nSeluruh data inputan baru akan diatur ulang sesuai data template 275 karyawan.";
+  const confirmMsg = "⚠️ PERINGATAN:\nReset akan MENGHAPUS SEMUA data (karyawan, presensi, laporan, slip gaji) dan membuat akun admin baru.\nLanjutkan?";
   if (!confirm(confirmMsg)) return;
 
   try {
-    showToast('Sedang mereset database ke data awal demo...', 'info');
-    const res = await fetch('/api/database/reset', { method: 'POST' });
+    const typed = prompt('Ketik RESET (huruf besar) untuk benar-benar menghapus semua data:');
+    if (typed !== 'RESET') { showToast('Reset dibatalkan.', 'info'); return; }
+    showToast('Sedang mereset database...', 'info');
+    const res = await fetch('/api/database/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'RESET' })
+    });
     const data = await res.json();
     if (res.ok) {
-      showToast('Database berhasil direset ke data default demo!', 'success');
+      alert(data.message || 'Database berhasil direset.');
       await loadDatabaseOverview();
       await loadDatabaseTableData();
       await loadEmployees();

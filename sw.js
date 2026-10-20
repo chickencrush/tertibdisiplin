@@ -1,61 +1,40 @@
-// CompanyOps PWA Service Worker
-const CACHE_NAME = 'companyops-cache-v1';
-const ASSETS_TO_CACHE = [
-  '/',
-  '/static/index.html',
-  '/static/style.css',
-  '/static/app.js',
-  '/static/manifest.json'
+// TERTIB DISIPLIN - Service Worker
+// Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
+const CACHE_NAME = 'tertib-disiplin-v3';
+const SHELL = [
+  './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
+  './manifest.json', './icons/logo.png', './icons/icon-192.png'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.open(CACHE_NAME).then((cache) => Promise.allSettled(SHELL.map((u) => cache.add(u))))
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      );
-    })
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network first, fallback to cache
-  if (event.request.url.includes('/api/')) {
-    event.respondWith(
-      fetch(event.request).catch(() => {
-        return new Response(JSON.stringify({ error: 'Offline mode active' }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
+  const req = event.request;
+  const url = new URL(req.url);
+  // Hanya file milik aplikasi ini; panggilan ke Apps Script / CDN tidak disentuh
+  if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        if (res && res.status === 200 && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(req, copy));
+        }
+        return res;
       })
-    );
-  } else {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          // If valid response, clone to cache
-          if (response && response.status === 200 && response.type === 'basic') {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-  }
+      .catch(() => caches.match(req).then((hit) => hit || (req.mode === 'navigate' ? caches.match('./index.html') : undefined)))
+  );
 });
