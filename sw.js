@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v6';  // bumped v4 → v6 (registration collapsible, demo data removed, presensi fixes)
+const CACHE_NAME = 'tertib-disiplin-v7';  // bumped v6 → v7 (KPI personal mode + presensi pulang)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
   './manifest.json', './icons/logo.png', './icons/icon-192.png'

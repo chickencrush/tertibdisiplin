@@ -80,7 +80,8 @@ const VIEW_ACCESS = {
   'chat': 'all',               // saluran dibatasi lagi di CHAT_CHANNEL_RULES
   'calendar': 'all',
   'employees': ['OM', 'HRD', 'Finance', 'BM', 'HRGA'],
-  'kpi': ['OM', 'HRD', 'BM', 'QC', 'Finance', 'HRGA', 'DOS', 'SPV', 'Head Kitchen', 'Head Bar'],
+  // KPI: semua karyawan bisa lihat (data sendiri); admin lihat semua (dipisah di backend h_kpi_)
+  'kpi': 'all',
   'outlets': ['OM', 'HRD'],
   'database': ['OM', 'HRD']
 };
@@ -701,11 +702,81 @@ const loadKpiSummary = async () => {
     if (!res.ok) return;
     const data = await res.json();
     AppState.kpiSummary = data;
-    renderStaffRatingsCards(data.topStaff || []);
-    renderKpiTable(data.divisionStats || []);
+
+    const personalCard = document.getElementById('kpi-personal-card');
+    const adminTableCard = document.getElementById('kpi-admin-table-card');
+    const leaderboardCard = document.getElementById('kpi-leaderboard-card');
+
+    if (data.mode === 'personal') {
+      // Non-admin: show personal card, hide admin views
+      renderPersonalKpi(data);
+      if (personalCard) personalCard.style.display = 'block';
+      if (adminTableCard) adminTableCard.style.display = 'none';
+      if (leaderboardCard) leaderboardCard.style.display = 'none';
+      renderStaffRatingsCards([]);
+      renderKpiTable([]);
+    } else {
+      // Admin: show leaderboard & per-division table, hide personal card
+      renderStaffRatingsCards(data.topStaff || []);
+      renderKpiTable(data.divisionStats || []);
+      if (personalCard) personalCard.style.display = 'none';
+      if (adminTableCard) adminTableCard.style.display = 'block';
+      if (leaderboardCard) leaderboardCard.style.display = 'block';
+    }
   } catch (err) {
     console.error('Failed loading KPI:', err);
   }
+};
+
+// Render personal KPI card (for non-admin users — only their own data)
+const renderPersonalKpi = (data) => {
+  const container = document.getElementById('kpi-personal-card');
+  if (!container) return;
+  container.style.display = 'block';
+  const u = data.user || {};
+  const p = data.personal || {};
+  const onTimeColor = p.on_time_rate >= 85 ? '#10b981' : (p.on_time_rate >= 60 ? '#f59e0b' : '#ef4444');
+  const kpiColor = p.kpi_score >= 85 ? '#10b981' : (p.kpi_score >= 70 ? '#f59e0b' : '#ef4444');
+
+  container.innerHTML = `
+    <div style="display:flex; align-items:center; gap:14px; padding:18px; background:linear-gradient(135deg, var(--burgundy-soft), #fff); border-radius:18px; margin-bottom:18px;">
+      <div style="width:64px; height:64px; border-radius:50%; background:var(--burgundy-primary); color:#fff; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:800; flex-shrink:0;">
+        ${(u.name || '?').charAt(0).toUpperCase()}
+      </div>
+      <div>
+        <h3 style="margin:0; font-size:18px; color:var(--text-dark);">${u.name || '-'}</h3>
+        <p style="margin:2px 0 0 0; font-size:12px; color:#64748b;">${u.role || ''} • ${u.division || ''} • ${u.outlet_name || ''}</p>
+        <p style="margin:2px 0 0 0; font-size:11px; color:#94a3b8;">${u.grade || ''} • ${u.type || ''}</p>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px;">
+      <div style="padding:14px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;">
+        <p style="font-size:11px; color:#64748b; margin:0 0 4px 0; font-weight:700; text-transform:uppercase;">Rating</p>
+        <p style="font-size:22px; font-weight:800; color:var(--burgundy-primary); margin:0;">⭐ ${p.rating || '-'}</p>
+        <p style="font-size:11px; color:#94a3b8; margin:2px 0 0 0;">dari 5.0</p>
+      </div>
+      <div style="padding:14px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;">
+        <p style="font-size:11px; color:#64748b; margin:0 0 4px 0; font-weight:700; text-transform:uppercase;">Skor KPI</p>
+        <p style="font-size:22px; font-weight:800; color:${kpiColor}; margin:0;">${p.kpi_score || 0}%</p>
+        <p style="font-size:11px; color:#94a3b8; margin:2px 0 0 0;">penilaian performa</p>
+      </div>
+      <div style="padding:14px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;">
+        <p style="font-size:11px; color:#64748b; margin:0 0 4px 0; font-weight:700; text-transform:uppercase;">Hadir</p>
+        <p style="font-size:22px; font-weight:800; color:#0284c7; margin:0;">${p.present_days || 0}</p>
+        <p style="font-size:11px; color:#94a3b8; margin:2px 0 0 0;">hari presensi</p>
+      </div>
+      <div style="padding:14px; background:#f8fafc; border-radius:12px; border:1px solid #e2e8f0;">
+        <p style="font-size:11px; color:#64748b; margin:0 0 4px 0; font-weight:700; text-transform:uppercase;">Tepat Waktu</p>
+        <p style="font-size:22px; font-weight:800; color:${onTimeColor}; margin:0;">${p.on_time_rate || 0}%</p>
+        <p style="font-size:11px; color:#94a3b8; margin:2px 0 0 0;">${p.late_count || 0}x terlambat</p>
+      </div>
+    </div>
+    <div style="margin-top:14px; padding:12px 14px; background:#fef3c7; border:1px solid #fde68a; border-radius:10px; font-size:12px; color:#92400e;">
+      <i data-feather="info" style="width:13px; height:13px; vertical-align:middle;"></i>
+      <strong>Catatan:</strong> Data KPI hanya menampilkan performa pribadi Anda. Hubungi HRD untuk evaluasi lengkap.
+    </div>
+  `;
+  if (window.feather) feather.replace();
 };
 
 // Load Attendance Logs
@@ -1553,18 +1624,128 @@ window.submitAttendanceCheckIn = async () => {
 };
 const submitAttendanceCheckIn = window.submitAttendanceCheckIn;
 
+// --- Submit Attendance (Check-out / Presensi Pulang) ---
+// Records the check-out time for the user's most recent check-in today.
+// Also requires GPS + selfie, and computes overtime if check-out is past shift end.
+window.submitAttendanceCheckOut = async () => {
+  const submitBtn = document.getElementById('btn-submit-checkout');
+
+  if (!AppState.currentUser || !AppState.currentUser.id) {
+    showToast('Sesi login tidak ditemukan. Silakan login kembali.', 'error');
+    return;
+  }
+
+  // Make sure we have today's attendance logs to know which record to update
+  if (!AppState.attendanceLogs || AppState.attendanceLogs.length === 0) {
+    await loadAttendanceLogs();
+  }
+  // Find today's check-in for this user (any shift)
+  const today = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
+  const myCheckInToday = (AppState.attendanceLogs || []).find(l =>
+    l.employee_id === AppState.currentUser.id && l.date === today && l.check_in_time
+  );
+  if (!myCheckInToday) {
+    showToast('Anda belum presensi masuk hari ini. Lakukan presensi masuk terlebih dahulu sebelum pulang.', 'warning');
+    return;
+  }
+  if (myCheckInToday.check_out_time) {
+    showToast(`Anda sudah presensi pulang hari ini pada ${myCheckInToday.check_out_time.split(' ')[1] || myCheckInToday.check_out_time}.`, 'info');
+    return;
+  }
+
+  // --- GPS check ---
+  if (!AppState.gpsOk) {
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mendeteksi GPS...'; }
+    window.detectDeviceGPS();
+    let waited = 0;
+    while (AppState.gpsLoading && waited < 8000) {
+      await new Promise(r => setTimeout(r, 500));
+      waited += 500;
+    }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="log-out" style="width:14px; height:14px;"></i> PRESENSI PULANG (CHECK-OUT)'; if (window.feather) feather.replace(); }
+    if (!AppState.gpsOk) {
+      showToast('Lokasi GPS belum tersedia. Pastikan GPS aktif dan izin lokasi diberikan, lalu coba lagi.', 'warning');
+      return;
+    }
+  }
+
+  // --- Camera + selfie ---
+  if (!AppState.cameraReady) {
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Memulai kamera...'; }
+    await window.startCamera();
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="log-out" style="width:14px; height:14px;"></i> PRESENSI PULANG (CHECK-OUT)'; if (window.feather) feather.replace(); }
+  }
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengambil foto...'; }
+  let selfieBase64 = captureSelfieSnapshot();
+  if (!selfieBase64) {
+    showToast('Kamera halaman tidak siap. Buka kamera HP untuk ambil selfie pulang.', 'info');
+    selfieBase64 = await captureSelfieViaNativeCamera();
+  }
+  if (!selfieBase64) {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="log-out" style="width:14px; height:14px;"></i> PRESENSI PULANG (CHECK-OUT)'; if (window.feather) feather.replace(); }
+    showToast('Foto selfie wajib diambil untuk presensi pulang.', 'warning');
+    return;
+  }
+
+  // --- Submit to API ---
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengirim presensi pulang...'; }
+  showToast('Memverifikasi GPS & menyimpan presensi pulang...', 'info');
+
+  try {
+    const res = await fetch('/api/attendance/check-out', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        attendance_id: myCheckInToday.id,
+        employee_id: AppState.currentUser.id,
+        lat: AppState.deviceCoordinates.lat,
+        lon: AppState.deviceCoordinates.lon,
+        selfie_base64: selfieBase64,
+        notes: 'Presensi Pulang (Check-out) Mandiri'
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.status !== 'error') {
+      const otMsg = data.overtime_hours > 0
+        ? ` (+${data.overtime_hours} jam lembur)`
+        : '';
+      showToast(`Presensi pulang berhasil! Jam pulang: ${data.check_out_time ? data.check_out_time.split(' ')[1] || data.check_out_time : '-'}${otMsg}`, 'success');
+      await loadAttendanceLogs();
+    } else {
+      showToast(data.detail || data.message || 'Gagal check-out. Coba beberapa saat lagi.', 'error');
+    }
+  } catch (err) {
+    showToast('Terjadi kesalahan koneksi saat check-out. Periksa internet Anda.', 'error');
+    console.error('Check-out error:', err);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-feather="log-out" style="width:14px; height:14px;"></i> PRESENSI PULANG (CHECK-OUT)';
+      if (window.feather) feather.replace();
+    }
+  }
+};
+const submitAttendanceCheckOut = window.submitAttendanceCheckOut;
+
 const renderAttendanceTable = (logs) => {
   const tbody = document.getElementById('attendance-tbody');
   if (!tbody) return;
 
-  if (logs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">Belum ada data presensi hari ini.</td></tr>';
+  if (!logs || logs.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">Belum ada data presensi hari ini.</td></tr>';
     return;
   }
 
   tbody.innerHTML = logs.map(l => {
     const isLate = l.late_minutes > 0;
     const lateBadge = isLate ? `<span style="color:#ef4444; font-weight:700;">+${l.late_minutes} Menit (Denda: ${formatRupiah(l.late_deduction)})</span>` : '<span style="color:#10b981; font-weight:700;">Tepat Waktu</span>';
+    const checkInTime = l.check_in_time ? l.check_in_time.split(' ')[1] : '-';
+    const checkOutTime = l.check_out_time
+      ? (l.check_out_time.split(' ')[1] || l.check_out_time)
+      : '<span style="color:#94a3b8; font-style:italic;">belum pulang</span>';
+    const checkOutDisplay = l.check_out_time
+      ? `<strong style="color:#92400e;">${checkOutTime}</strong>${(l.overtime_hours > 0) ? `<div style="font-size:10.5px; color:#92400e; font-weight:700;">+${l.overtime_hours} jam lembur</div>` : ''}`
+      : checkOutTime;
 
     return `
       <tr>
@@ -1583,8 +1764,9 @@ const renderAttendanceTable = (logs) => {
         </td>
         <td>
           <div>${l.shift_name}</div>
-          <div style="font-size:11px; color:#64748b;">${l.check_in_time ? l.check_in_time.split(' ')[1] : '-'}</div>
+          <div style="font-size:11px; color:#64748b;">${checkInTime}</div>
         </td>
+        <td>${checkOutDisplay}</td>
         <td>${lateBadge}</td>
         <td>
           <span class="status-badge-pill ${l.status === 'Hadir Tepat Waktu' ? 'status-selesai' : 'status-hold'}">

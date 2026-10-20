@@ -593,6 +593,11 @@
               <i data-feather="check-circle"></i> AMBIL SELFIE & PRESENSI MASUK
             </button>
 
+            <!-- Check-out Action Button (Presensi Pulang) -->
+            <button class="btn-secondary" type="button" style="width:100%; justify-content:center; padding:13px; font-size:13px; margin-top:10px; background:#fef3c7; color:#92400e; border-color:#fde68a;" id="btn-submit-checkout" onclick="window.submitAttendanceCheckOut && window.submitAttendanceCheckOut()">
+              <i data-feather="log-out" style="width:14px; height:14px;"></i> PRESENSI PULANG (CHECK-OUT)
+            </button>
+
             <!-- SPL Overtime Button -->
             <button class="btn-secondary" type="button" style="width:100%; margin-top:8px; justify-content:center;" onclick="openSplModal()">
               <i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Surat Perintah Lembur (SPL) Digital
@@ -604,7 +609,7 @@
             <div class="card-title-row">
               <div>
                 <h3>Riwayat Presensi Hari Ini</h3>
-                <p style="font-size:11px; color:#64748b;">Perhitungan otomatis jam masuk, keterlambatan, dan denda lembur</p>
+                <p style="font-size:11px; color:#64748b;">Perhitungan otomatis jam masuk, jam pulang, keterlambatan, dan denda lembur</p>
               </div>
               <button class="btn-secondary" onclick="loadAttendanceLogs()">
                 <i data-feather="refresh-cw" style="width:12px; height:12px;"></i> Segarkan
@@ -619,6 +624,7 @@
                     <th>Nama & Divisi</th>
                     <th>Outlet & Jarak</th>
                     <th>Shift & Jam Masuk</th>
+                    <th>Jam Pulang</th>
                     <th>Keterlambatan</th>
                     <th>Status</th>
                   </tr>
@@ -890,9 +896,15 @@
 
       <!-- VIEW 6: KPI & ANALISIS KINERJA -->
       <section class="view-panel" id="view-kpi">
+
+        <!-- Personal KPI card (visible only for non-admin users — shows their own data) -->
+        <div class="modern-card" id="kpi-personal-card" style="display:none; margin-bottom:20px;">
+          <!-- Filled dynamically by renderPersonalKpi() -->
+        </div>
+
         <div style="display:grid; grid-template-columns: 1fr 360px; gap:24px;">
-          
-          <div class="modern-card">
+
+          <div class="modern-card" id="kpi-admin-table-card">
             <div class="card-title-row">
               <div>
                 <h3>Analisis & Evaluasi KPI per Divisi</h3>
@@ -920,7 +932,7 @@
             </div>
           </div>
 
-          <div class="modern-card">
+          <div class="modern-card" id="kpi-leaderboard-card">
             <div class="card-title-row">
               <h3>Star of the Month</h3>
               <span class="card-badge-tag" style="background:#fef08a; color:#854d0e;">🏆 Top Ratings</span>
