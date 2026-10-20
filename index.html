@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>TERTIB DISIPLIN - Sistem Kontrol Operasional & Disiplin Karyawan</title>
   
   <!-- PWA Meta Tags -->
@@ -54,38 +54,40 @@
     </div>
 
     <!-- FORM 1: LOGIN -->
-    <form id="form-auth-login" onsubmit="handleAuthLogin(event)">
-      <!-- Quick Demo Access Banner -->
-      <div class="auth-quick-hint">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <strong style="color:var(--burgundy-primary);">Akun Siap Pakai:</strong>
-          <span style="font-size:10px; color:#64748b;">(Klik untuk isi otomatis)</span>
-        </div>
-        <div class="auth-quick-btns">
-          <button type="button" class="auth-quick-btn" onclick="quickFillLogin('ADM001', 'admin123')" style="width:100%; justify-content:center;">
-            👑 Masuk Cepat: Master Admin (ADM001 / admin123)
-          </button>
-        </div>
-      </div>
-
+    <form id="form-auth-login" onsubmit="handleAuthLogin(event)" autocomplete="off">
       <div class="form-group">
         <label class="form-label required">NIP atau Email Terdaftar</label>
-        <input type="text" class="form-control" id="login-identifier" placeholder="Contoh: ADM001 atau admin@tertibdisiplin.com" value="ADM001" required>
+        <input type="text" class="form-control" id="login-identifier" placeholder="Contoh: ADM001 atau admin@tertibdisiplin.com" autocomplete="username" required>
       </div>
 
       <div class="form-group">
         <label class="form-label required">Password atau PIN 6-Digit</label>
         <div style="position:relative;">
-          <input type="password" class="form-control" id="login-password" placeholder="Masukkan password atau PIN akun" value="admin123" required style="padding-right:40px;">
-          <button type="button" onclick="togglePasswordVisibility('login-password', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;">
+          <input type="password" class="form-control" id="login-password" placeholder="Masukkan password atau PIN akun" autocomplete="current-password" required style="padding-right:40px;">
+          <button type="button" onclick="togglePasswordVisibility('login-password', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;" aria-label="Tampilkan / sembunyikan password">
             <i data-feather="eye" style="width:16px; height:16px;"></i>
           </button>
         </div>
       </div>
 
+      <!-- Row: Remember Me + Forgot Password -->
+      <div class="auth-options-row">
+        <label class="auth-remember">
+          <input type="checkbox" id="login-remember-me">
+          <span>Ingat saya di perangkat ini</span>
+        </label>
+        <a href="javascript:void(0)" class="auth-forgot-link" onclick="showForgotPasswordHelp()">Lupa Password?</a>
+      </div>
+
       <button type="submit" class="auth-submit-btn" id="btn-login-submit">
         Masuk ke Sistem TERTIB DISIPLIN
       </button>
+
+      <!-- Security Notice -->
+      <div class="auth-security-notice">
+        <i data-feather="lock" style="width:11px; height:11px; vertical-align:middle;"></i>
+        Sistem privat &amp; terlindungi. Hanya karyawan terdaftar yang dapat mengakses. Setiap aktivitas dicatat dalam log audit.
+      </div>
     </form>
 
     <!-- FORM 2: REGISTRASI -->
@@ -162,8 +164,16 @@
 
 <div class="app-layout">
 
+  <!-- Mobile Sidebar Overlay Backdrop (click to close drawer) -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebarDrawer()"></div>
+
   <!-- Left Sidebar (Burgundy Theme Matching Mockup) -->
   <aside class="sidebar" id="sidebar">
+    <!-- Mobile close button (visible only when sidebar is opened as a drawer) -->
+    <button class="sidebar-close-btn" id="sidebar-close-btn" onclick="closeSidebarDrawer()" aria-label="Tutup menu">
+      <i data-feather="x"></i>
+    </button>
+
     <div class="brand-area">
       <img src="icons/logo.png" alt="Logo TERTIB DISIPLIN" class="brand-logo-img">
       <div class="brand-info">
@@ -256,7 +266,7 @@
     <!-- Top Navigation Bar -->
     <header class="topbar">
       <div class="topbar-left">
-        <button class="icon-action-btn" id="btn-toggle-sidebar" style="display:none;">
+        <button class="icon-action-btn btn-toggle-sidebar" id="btn-toggle-sidebar" onclick="openSidebarDrawer()" aria-label="Buka menu navigasi">
           <i data-feather="menu"></i>
         </button>
         <div class="topbar-title-wrap">
@@ -672,7 +682,7 @@
         </div>
 
         <!-- 3-Column Kanban Board for Proses - Hold - Selesai -->
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:20px;">
+        <div class="kanban-board" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:20px;">
           
           <!-- Column 1: PROSES -->
           <div class="modern-card" style="border-top: 4px solid #3b82f6;">
@@ -1340,7 +1350,7 @@
       <h4 style="font-size:14px; margin-bottom:6px;">Masukkan PIN Keamanan</h4>
       <p style="font-size:12px; color:#64748b; margin-bottom:18px;">Slip gaji bersifat rahasia dan hanya dapat diakses dengan PIN 6 digit pemilik akun.</p>
       <div class="form-group">
-        <input type="password" maxlength="6" class="form-control" id="input-pin-auth" placeholder="Default PIN: 123456" style="text-align:center; font-size:22px; letter-spacing:8px; font-weight:bold;">
+        <input type="password" maxlength="6" inputmode="numeric" class="form-control" id="input-pin-auth" placeholder="Masukkan 6 digit PIN" style="text-align:center; font-size:22px; letter-spacing:8px; font-weight:bold;" autocomplete="off">
       </div>
     </div>
     <div class="modal-footer" style="justify-content:center;">

@@ -111,9 +111,13 @@ Aplikasi kini dapat dibuka dari laptop, tablet, maupun smartphone Android & iPho
 
 Setelah setup dijalankan, sistem hanya memiliki 1 akun utama bersih:
 
-| Peran | NIP / Identitas | Email Terdaftar | Password | PIN Slip Gaji |
+| Peran | NIP / Identitas | Email Terdaftar | Password Default | PIN Slip Gaji Default |
 | :--- | :--- | :--- | :--- | :--- |
 | **Master Admin** | `ADM001` | `admin@tertibdisiplin.com` | `admin123` | `123456` |
+
+> ⚠️ **PENTING — Keamanan**: Password & PIN di atas adalah **kredensial awal** yang HARUS diubah segera setelah login pertama melalui sheet `Employees` di Google Spreadsheet Anda. Panel "Masuk Cepat" yang sebelumnya muncul di halaman login kini **telah dihapus** demi keamanan produksi. Selain itu, celah keamanan universal-bypass (login dengan `admin123`/`123456` pada akun manapun) **telah ditutup** — verifikasi kini ketat: hanya password atau PIN yang benar-benar tersimpan untuk pengguna tersebut yang diterima.
+
+*Login juga mendukung opsi **"Ingat saya di perangkat ini"** — jika tidak dicentang, sesi hanya tersimpan di `sessionStorage` (hilang saat browser ditutup) untuk perlindungan ekstra di perangkat umum/bersama.*
 
 *Karyawan baru dapat didaftarkan langsung lewat form **Daftar Akun Baru** pada aplikasi web, atau ditambahkan langsung pada sheet `Employees` di Google Spreadsheet Anda.*
 

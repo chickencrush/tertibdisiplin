@@ -359,18 +359,21 @@ const showToast = (message, type = 'info') => {
 // Authentication Gate & Session Management
 // ==========================================
 const initAuthSession = () => {
-  const savedUserStr = localStorage.getItem('tertib_disiplin_auth_user');
+  // Check persistent (localStorage) first, then session (sessionStorage)
+  const savedUserStr = localStorage.getItem('tertib_disiplin_auth_user')
+    || sessionStorage.getItem('tertib_disiplin_auth_user');
   const authScreen = document.getElementById('auth-gate-screen');
 
   if (savedUserStr) {
     try {
       const user = JSON.parse(savedUserStr);
       AppState.currentUser = user;
-      setCurrentUser(user);
+      setCurrentUser(user, true);
       if (authScreen) authScreen.classList.add('hidden');
       return true;
     } catch (e) {
       localStorage.removeItem('tertib_disiplin_auth_user');
+      sessionStorage.removeItem('tertib_disiplin_auth_user');
     }
   }
 
@@ -401,9 +404,13 @@ const switchAuthTab = (tab) => {
 };
 
 const quickFillLogin = (nip, password) => {
-  document.getElementById('login-identifier').value = nip;
-  document.getElementById('login-password').value = password;
-  showToast(`Akun ${nip} siap untuk login!`, 'info');
+  // Deprecated: Quick login panel has been removed for production security.
+  // Function kept as no-op for backward compatibility in case of cached HTML.
+  return;
+};
+
+const showForgotPasswordHelp = () => {
+  showToast('Silakan hubungi HRD / Master Admin untuk reset password & PIN Anda.', 'info');
 };
 
 const togglePasswordVisibility = (fieldId, btn) => {
@@ -552,9 +559,15 @@ const populateRegisterOutlets = () => {
 const logoutUser = () => {
   if (!confirm('Apakah Anda yakin ingin keluar (Logout) dari TERTIB DISIPLIN?')) return;
   localStorage.removeItem('tertib_disiplin_auth_user');
+  sessionStorage.removeItem('tertib_disiplin_auth_user');
   AppState.currentUser = null;
   const authScreen = document.getElementById('auth-gate-screen');
   if (authScreen) authScreen.classList.remove('hidden');
+  // Clear login form fields
+  const identInput = document.getElementById('login-identifier');
+  const pwdInput = document.getElementById('login-password');
+  if (identInput) identInput.value = '';
+  if (pwdInput) pwdInput.value = '';
   switchAuthTab('login');
   showToast('Anda telah keluar dari aplikasi.', 'info');
 };
@@ -678,7 +691,42 @@ const switchView = (viewName) => {
   }
 
   if (window.feather) feather.replace();
+
+  // Auto-close mobile sidebar drawer after navigation
+  closeSidebarDrawer();
 };
+
+// ==========================================
+// RESPONSIVE SIDEBAR DRAWER (Mobile / Tablet)
+// ==========================================
+const openSidebarDrawer = () => {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!sidebar || !overlay) return;
+  sidebar.classList.add('open');
+  overlay.classList.add('active');
+  document.body.style.overflow = 'hidden'; // lock background scroll
+};
+
+const closeSidebarDrawer = () => {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!sidebar || !overlay) return;
+  if (!sidebar.classList.contains('open')) return;
+  sidebar.classList.remove('open');
+  overlay.classList.remove('active');
+  document.body.style.overflow = '';
+};
+
+// Close drawer when Esc is pressed
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSidebarDrawer();
+});
+
+// Auto-close drawer if user resizes back to desktop
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 1080) closeSidebarDrawer();
+});
 
 // Switch Dashboard Mode: Management vs Tim Operasional
 const switchDashboardMode = (mode) => {
@@ -697,7 +745,7 @@ const switchDashboardMode = (mode) => {
   if (window.feather) feather.replace();
 };
 
-const setCurrentUser = (user) => {
+const setCurrentUser = (user, skipStorageRewrite = false) => {
   if (!user) return;
   AppState.currentUser = user;
   const nameEl = document.getElementById('current-user-name');
@@ -706,7 +754,21 @@ const setCurrentUser = (user) => {
   if (nameEl) nameEl.textContent = user.name;
   if (roleEl) roleEl.textContent = `${user.role} (${user.division})`;
   if (avatarEl) avatarEl.src = user.avatar_url || 'icons/logo.png';
-  localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(user));
+
+  // Skip storage rewrite when restoring an existing session to preserve
+  // the original storage medium (localStorage vs sessionStorage).
+  if (skipStorageRewrite) return;
+
+  // Decide storage medium based on "Remember Me" checkbox
+  const rememberChk = document.getElementById('login-remember-me');
+  const usePersistent = rememberChk ? rememberChk.checked : true;
+
+  // Clear both stores first to avoid stale data
+  localStorage.removeItem('tertib_disiplin_auth_user');
+  sessionStorage.removeItem('tertib_disiplin_auth_user');
+
+  const store = usePersistent ? localStorage : sessionStorage;
+  store.setItem('tertib_disiplin_auth_user', JSON.stringify(user));
 };
 
 // Load Outlets from API
