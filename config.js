@@ -10,7 +10,7 @@
 window.APP_CONFIG = {
   // Masukkan URL Google Apps Script Web App Anda di sini (akhiran /exec):
   // Contoh: "https://script.google.com/macros/s/AKfycbx.../exec"
-  GAS_WEBAPP_URL: "",
+  GAS_WEBAPP_URL: "https://script.google.com/macros/s/AKfycbw_8hZ8MTeXQtEWaIYGkr83m9H1icf56m_0g_Rv_PzP--OE-kqluosg_xtYxAR6kJk/exec",
 
   // Konfigurasi Brand & Identitas
   APP_NAME: "TERTIB DISIPLIN",
