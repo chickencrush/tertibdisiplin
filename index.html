@@ -1496,6 +1496,490 @@
 
 <script src="./config.js"></script>
 <script src="./api-client.js"></script>
-<script src="./app.js"></script>
+<script src="./app.js"></script>(() => {
+  "use strict";
+
+  const OWNER_FIELD = "employee_id";
+  const UNKNOWN = "Belum tersedia";
+
+  function start() {
+    const dashboard = document.getElementById("view-dashboard");
+    if (!dashboard || document.getElementById("dashboard-akun-host")) return;
+
+    // Pertahankan elemen lama agar controller lama tidak kehilangan target DOM.
+    const isolation = document.createElement("style");
+    isolation.textContent = `
+      #view-dashboard > :not(#dashboard-akun-host) {
+        display: none !important;
+      }
+      body.td-personal-dashboard .mode-switcher-container,
+      body.td-personal-dashboard #filter-outlet-select,
+      body.td-personal-dashboard #filter-period-select {
+        display: none !important;
+      }
+    `;
+    document.head.append(isolation);
+
+    const host = document.createElement("div");
+    host.id = "dashboard-akun-host";
+    dashboard.prepend(host);
+
+    const root = host.attachShadow({ mode: "open" });
+
+    // Template tetap. Nilai dari akun/API dimasukkan melalui textContent.
+    root.innerHTML = `
+      <style>
+        :host {
+          display: block;
+          color: #1e293b;
+          font: 14px/1.5 system-ui, sans-serif;
+        }
+        * { box-sizing: border-box; }
+        h2, h3, p { margin: 0; }
+        .card {
+          padding: 20px;
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          background: #fff;
+          margin-bottom: 18px;
+        }
+        .welcome {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+        }
+        .muted { color: #64748b; margin-top: 6px; }
+        .metrics {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 14px;
+        }
+        .metric strong {
+          display: block;
+          margin-top: 10px;
+          color: #701c34;
+          font-size: 25px;
+        }
+        .metric small { color: #64748b; }
+        .actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          margin-top: 14px;
+        }
+        button {
+          padding: 10px 15px;
+          border: 1px solid #701c34;
+          border-radius: 9px;
+          background: #701c34;
+          color: #fff;
+          font: inherit;
+          cursor: pointer;
+        }
+        button:disabled { opacity: .5; cursor: not-allowed; }
+        button:focus-visible {
+          outline: 3px solid #2563eb;
+          outline-offset: 3px;
+        }
+        .scroll { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td {
+          padding: 12px;
+          border-bottom: 1px solid #e2e8f0;
+          text-align: left;
+          overflow-wrap: anywhere;
+        }
+        #notice { margin: 12px 0 18px; color: #64748b; }
+        @media (max-width: 900px) {
+          .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 520px) {
+          .metrics { grid-template-columns: 1fr; }
+        }
+      </style>
+
+      <section class="card welcome">
+        <div>
+          <h2 id="name">Dashboard Saya</h2>
+          <p id="identity" class="muted">Menunggu sesi akun.</p>
+          <p id="outlet" class="muted"></p>
+        </div>
+        <button id="refresh" type="button">Perbarui saldo cuti</button>
+      </section>
+
+      <p id="notice" role="status" aria-live="polite"></p>
+
+      <div class="metrics">
+        <section class="card metric">
+          Presensi saya
+          <strong id="attendance">—</strong>
+          <small>Rekaman pribadi yang termuat</small>
+        </section>
+        <section class="card metric">
+          Laporan saya
+          <strong id="reports">—</strong>
+          <small>Rekaman pribadi yang termuat</small>
+        </section>
+        <section class="card metric">
+          Arsip slip gaji
+          <strong id="payslips">—</strong>
+          <small>Nominal tetap melalui panel ber-PIN</small>
+        </section>
+        <section class="card metric">
+          Sisa cuti
+          <strong id="leave">—</strong>
+          <small id="leave-note">Belum dimuat dari server</small>
+        </section>
+      </div>
+
+      <section class="card">
+        <h3>Akses cepat</h3>
+        <div class="actions">
+          <button type="button" data-view="presensi">Presensi</button>
+          <button type="button" data-view="daily-report">Laporan harian</button>
+          <button type="button" data-view="kpi">KPI pribadi</button>
+          <button type="button" data-view="cuti">Cuti & Izin</button>
+          <button type="button" data-view="payroll">Slip gaji saya</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Status laporan saya</h3>
+        <p id="report-summary" class="muted"></p>
+        <div class="scroll">
+          <table>
+            <caption>Hingga 10 rekaman dari urutan data yang termuat</caption>
+            <thead>
+              <tr><th>ID laporan</th><th>Status</th></tr>
+            </thead>
+            <tbody id="report-rows"></tbody>
+          </table>
+        </div>
+      </section>
+    `;
+
+    const el = id => root.getElementById(id);
+    const string = value => value == null ? "" : String(value);
+
+    let accountKey = "";
+    let signature = "";
+    let leaveValue = "—";
+    let leaveNote = "Belum dimuat dari server";
+    let leaveRequest = null;
+    let generation = 0;
+    let blocked = false;
+
+    function state() {
+      return typeof AppState === "undefined" ? null : AppState;
+    }
+
+    function user() {
+      const gate = document.getElementById("auth-gate-screen");
+      if (blocked || gate && !gate.classList.contains("hidden")) return null;
+      return state()?.currentUser || null;
+    }
+
+    function validId(value) {
+      return (typeof value === "string" || typeof value === "number")
+        && string(value).trim() !== "";
+    }
+
+    function owns(record, current) {
+      return validId(current?.id)
+        && validId(record?.[OWNER_FIELD])
+        && string(record[OWNER_FIELD]) === string(current.id);
+    }
+
+    function personal(records, current) {
+      return Array.isArray(records)
+        ? records.filter(record => owns(record, current))
+        : [];
+    }
+
+    // State lama tidak membedakan array kosong dari kegagalan pemuatan.
+    // Karena itu, tanpa rekaman cocok, jangan mengarang angka nol.
+    function countLabel(records) {
+      return records.length ? String(records.length) : UNKNOWN;
+    }
+
+    function reset() {
+      generation++;
+      leaveRequest?.abort();
+      leaveRequest = null;
+      accountKey = "";
+      signature = "";
+      leaveValue = "—";
+      leaveNote = "Belum dimuat dari server";
+
+      ["attendance", "reports", "payslips", "leave"].forEach(id => {
+        el(id).textContent = "—";
+      });
+
+      el("name").textContent = "Dashboard Saya";
+      el("identity").textContent = "Masuk untuk melihat data pribadi.";
+      el("outlet").textContent = "";
+      el("notice").textContent = "";
+      el("leave-note").textContent = leaveNote;
+      el("report-summary").textContent = "";
+      el("report-rows").replaceChildren();
+      el("refresh").disabled = true;
+
+      root.querySelectorAll("[data-view]").forEach(button => {
+        button.disabled = true;
+      });
+    }
+
+    function sync() {
+      const current = user();
+
+      if (!current || !validId(current.id)) {
+        if (accountKey || !signature) reset();
+        signature = "signed-out";
+        return;
+      }
+
+      const key = string(current.id);
+      if (key !== accountKey) {
+        reset();
+        accountKey = key;
+      }
+
+      const app = state();
+      const attendance = personal(app.attendanceLogs, current);
+      const reports = personal(app.dailyReports, current);
+      const payslips = personal(app.payslips, current);
+
+      const outlet = Array.isArray(app.outlets)
+        ? app.outlets.find(item =>
+            validId(current.outlet_id)
+            && string(item.id) === string(current.outlet_id))
+        : null;
+
+      const next = JSON.stringify({
+        key,
+        name: current.name,
+        division: current.division,
+        role: current.role,
+        outlet: outlet?.name,
+        attendance: attendance.length,
+        payslips: payslips.length,
+        reports: reports.map(item => [item.id, item.status]),
+        leaveValue,
+        leaveNote
+      });
+
+      // Hak akses dapat berubah tanpa isi laporan berubah.
+      root.querySelectorAll("[data-view]").forEach(button => {
+        button.disabled = typeof canAccessView !== "function"
+          || !canAccessView(button.dataset.view);
+      });
+
+      if (next === signature) return;
+      signature = next;
+
+      el("name").textContent = current.name
+        ? "Dashboard " + current.name
+        : "Dashboard Saya";
+
+      el("identity").textContent = [
+        current.role,
+        current.division
+      ].filter(Boolean).join(" · ") || "Identitas belum lengkap";
+
+      el("outlet").textContent = "Outlet: "
+        + (outlet?.name || "belum tersedia");
+
+      el("attendance").textContent = countLabel(attendance);
+      el("reports").textContent = countLabel(reports);
+      el("payslips").textContent = countLabel(payslips);
+      el("leave").textContent = leaveValue;
+      el("leave-note").textContent = leaveNote;
+      el("refresh").disabled = leaveRequest !== null;
+
+      el("notice").textContent =
+        "Ringkasan hanya mencakup rekaman yang termuat dan memiliki "
+        + "ID pemilik cocok. Ini bukan total bulanan atau seluruh arsip.";
+
+      const totals = {};
+      reports.forEach(record => {
+        const status = string(record.status).trim() || "Tanpa status";
+        totals[status] = (totals[status] || 0) + 1;
+      });
+
+      el("report-summary").textContent = reports.length
+        ? Object.entries(totals)
+            .map(([status, total]) => status + ": " + total)
+            .join(" · ")
+        : "Belum ada rekaman pribadi yang dapat dicocokkan.";
+
+      const rows = el("report-rows");
+      rows.replaceChildren();
+
+      reports.slice(0, 10).forEach(record => {
+        const row = document.createElement("tr");
+
+        [record.id, record.status].forEach(value => {
+          const cell = document.createElement("td");
+          cell.textContent = string(value) || "—";
+          row.append(cell);
+        });
+
+        rows.append(row);
+      });
+    }
+
+    async function refreshLeave() {
+      sync();
+      const current = user();
+      if (!current || !accountKey || leaveRequest) return;
+
+      const key = accountKey;
+      const version = generation;
+      const controller = new AbortController();
+      leaveRequest = controller;
+      el("refresh").disabled = true;
+      el("leave-note").textContent = "Memuat saldo dari server...";
+
+      const timeout = setTimeout(() => controller.abort(), 20000);
+
+      try {
+        // api-client.js lama belum meneruskan signal untuk /api/.
+        // Race membatasi waktu tunggu UI, bukan menjamin request terhenti.
+        const result = await Promise.race([
+          fetch("/api/leave/me").then(async response => {
+            if (!response.ok) {
+              throw new Error(
+                [404, 501].includes(response.status)
+                  ? "Backend cuti belum tersedia"
+                  : "Saldo gagal dimuat (" + response.status + ")"
+              );
+            }
+            return response.json();
+          }),
+          new Promise((_, reject) => {
+            controller.signal.addEventListener("abort", () => {
+              reject(new Error("Pemuatan saldo dihentikan"));
+            }, { once: true });
+          })
+        ]);
+
+        if (version !== generation || key !== accountKey
+            || string(user()?.id) !== key) return;
+
+        if (!validId(result?.employee?.id)
+            || string(result.employee.id) !== key) {
+          throw new Error("Identitas pemilik saldo tidak cocok");
+        }
+
+        const balance = result.balance;
+        if (balance === null) {
+          leaveValue = "—";
+          leaveNote = "Hak cuti belum dikonfigurasi";
+        } else if (
+          typeof balance?.remaining === "number"
+          && Number.isFinite(balance.remaining)
+          && typeof balance.period === "string"
+        ) {
+          leaveValue = balance.remaining + " hari";
+          leaveNote = "Periode: " + balance.period;
+        } else {
+          throw new Error("Format saldo belum sesuai");
+        }
+      } catch (error) {
+        if (version !== generation || key !== accountKey) return;
+        leaveValue = "—";
+        leaveNote = error.message;
+      } finally {
+        clearTimeout(timeout);
+        if (leaveRequest === controller) {
+          leaveRequest = null;
+          signature = "";
+          sync();
+        }
+      }
+    }
+
+    root.querySelectorAll("[data-view]").forEach(button => {
+      button.addEventListener("click", () => {
+        const view = button.dataset.view;
+        if (!user() || typeof canAccessView !== "function"
+            || !canAccessView(view)) return;
+
+        // Gunakan handler sidebar, termasuk handler khusus panel Cuti.
+        const nav = document.querySelector(
+          '.nav-item[data-view="' + view + '"]'
+        );
+
+        if (nav) nav.click();
+      });
+    });
+
+    el("refresh").addEventListener("click", refreshLeave);
+
+    function syncVisibility() {
+      const visible = dashboard.classList.contains("active");
+      document.body.classList.toggle("td-personal-dashboard", visible);
+
+      if (visible) {
+        sync();
+        const title = document.getElementById("page-title");
+        const subtitle = document.getElementById("page-subtitle");
+
+        if (title) title.textContent = "Dashboard Saya";
+        if (subtitle) {
+          subtitle.textContent = "Ringkasan pribadi akun aktif";
+        }
+      }
+    }
+
+    const gate = document.getElementById("auth-gate-screen");
+    if (gate) {
+      new MutationObserver(() => {
+        if (!gate.classList.contains("hidden")) {
+          reset();
+        } else {
+          blocked = false;
+          sync();
+        }
+      }).observe(gate, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+    }
+
+    new MutationObserver(syncVisibility).observe(dashboard, {
+      attributes: true,
+      attributeFilter: ["class"]
+    });
+
+    window.addEventListener("td-session-expired", () => {
+      blocked = true;
+      reset();
+    });
+
+    window.addEventListener("storage", event => {
+      if (event.key === "td_token" || event.key === null) {
+        blocked = true;
+        reset();
+      }
+    });
+
+    // Membaca perubahan state lokal; tidak mengirim polling API.
+    setInterval(() => {
+      if (!document.hidden) sync();
+    }, 1000);
+
+    reset();
+    syncVisibility();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start, { once: true });
+  } else {
+    start();
+  }
+})();
 </body>
 </html>
