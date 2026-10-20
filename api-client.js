@@ -107,3 +107,42 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   };
 })();
+
+// Bootstrap a separate-page link without joining app.js's data-view router.
+(function () {
+  function mountLeaveLink() {
+    var menu = document.querySelector('#sidebar .nav-menu');
+    if (!menu || document.getElementById('td-leave-sidebar-link')) return;
+    var style = document.createElement('style');
+    style.textContent = '#sidebar .td-leave-nav-link{display:flex;align-items:center;gap:14px;padding:12px 16px;border-radius:14px;color:rgba(255,255,255,.85);font-size:13.5px;font-weight:600;text-decoration:none;cursor:pointer;transition:background .2s,color .2s}#sidebar .td-leave-nav-link:hover{background:rgba(255,255,255,.1);color:#fff}#sidebar .td-leave-nav-link:focus-visible{outline:2px solid #fff;outline-offset:2px}#td-leave-sidebar-item[hidden]{display:none!important}';
+    document.head.appendChild(style);
+    var item = document.createElement('li');
+    item.id = 'td-leave-sidebar-item';
+    var link = document.createElement('a');
+    link.id = 'td-leave-sidebar-link';
+    link.className = 'td-leave-nav-link';
+    link.setAttribute('href', './cuti.html');
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '24'); svg.setAttribute('height', '24');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
+    svg.style.flexShrink = '0';
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2M8 16l3 3 5-5');
+    svg.appendChild(path);
+    var label = document.createElement('span'); label.textContent = 'Cuti & Izin';
+    link.appendChild(svg); link.appendChild(label); item.appendChild(link);
+    var attendance = menu.querySelector('[data-view="presensi"]');
+    var anchor = attendance && attendance.closest('li');
+    if (anchor && anchor.parentNode === menu) menu.insertBefore(item, anchor.nextSibling);
+    else menu.appendChild(item);
+    var gate = document.getElementById('auth-gate-screen');
+    function syncVisibility() { item.hidden = !!gate && !gate.classList.contains('hidden'); }
+    syncVisibility();
+    if (gate) new MutationObserver(syncVisibility).observe(gate, {attributes:true, attributeFilter:['class']});
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountLeaveLink, {once:true});
+  else mountLeaveLink();
+})();
