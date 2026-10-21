@@ -30,3 +30,31 @@ window.TD_CONFIG = {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded',loadModernUi,{once:true}); else loadModernUi();
 })();
+// PCD is a registration division option only; permissions remain server-managed.
+(function () {
+  function mountPcdOption() {
+    const type = document.getElementById('reg-type');
+    const division = document.getElementById('reg-division');
+    if (!type || !division || division.__tdPcdMounted) return;
+    division.__tdPcdMounted = true;
+    function syncPcdOption() {
+      const matches = Array.from(division.options).filter(option => option.value === 'PCD');
+      if (type.value !== 'Management') {
+        matches.forEach(option => option.remove());
+        return;
+      }
+      if (!matches.length) {
+        const option = document.createElement('option');
+        option.value = 'PCD'; option.textContent = 'PCD';
+        division.append(option);
+      } else {
+        matches.slice(1).forEach(option => option.remove());
+      }
+    }
+    type.addEventListener('change', syncPcdOption);
+    new MutationObserver(syncPcdOption).observe(division, {childList:true});
+    syncPcdOption();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountPcdOption, {once:true});
+  else mountPcdOption();
+})();
