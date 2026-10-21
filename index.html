@@ -241,9 +241,21 @@
         </a>
       </li>
       <li>
+        <a class="nav-item" data-view="leaves">
+          <i data-feather="briefcase"></i>
+          <span>Cuti & Ijin</span>
+        </a>
+      </li>
+      <li>
         <a class="nav-item" data-view="outlets">
           <i data-feather="settings"></i>
           <span>Titik Lokasi Outlet</span>
+        </a>
+      </li>
+      <li>
+        <a class="nav-item" data-view="data-center" data-restricted="om-only">
+          <i data-feather="edit-3"></i>
+          <span>Input Data Center</span>
         </a>
       </li>
       <li>
@@ -995,7 +1007,7 @@
       <!-- VIEW 8: KALENDER & MEETING -->
       <section class="view-panel" id="view-calendar">
         <div style="display:grid; grid-template-columns: 1fr 340px; gap:24px;">
-          
+
           <div class="modern-card">
             <div class="card-title-row">
               <div>
@@ -1020,6 +1032,50 @@
               <p style="font-weight:700; color:var(--burgundy-primary); margin-bottom:4px;">Notifikasi Email Otomatis</p>
               <p style="color:#64748b;">Setiap agenda yang didaftarkan otomatis mengirimkan notifikasi 1 jam sebelum jadwal briefing atau review.</p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 8.5: CUTI & IJIN -->
+      <section class="view-panel" id="view-leaves">
+        <div style="display:grid; grid-template-columns: 1fr 340px; gap:24px;">
+
+          <!-- Left: Leave Requests List -->
+          <div class="modern-card">
+            <div class="card-title-row">
+              <div>
+                <h3 id="leaves-list-title">Pengajuan Cuti & Ijin Saya</h3>
+                <p style="font-size:12px; color:#64748b;">Riwayat pengajuan cuti dan ijin karyawan</p>
+              </div>
+              <button class="btn-primary" onclick="openCreateLeaveModal()">
+                <i data-feather="plus"></i> Ajukan Cuti/Ijin Baru
+              </button>
+            </div>
+
+            <div style="overflow-x:auto; margin-top:14px;">
+              <table class="payslip-table" id="leave-requests-table">
+                <thead>
+                  <tr>
+                    <th>Nama & Divisi</th>
+                    <th>Tipe</th>
+                    <th>Tanggal</th>
+                    <th>Hari</th>
+                    <th>Alasan</th>
+                    <th>Lampiran</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="leaves-tbody">
+                  <!-- Dynamically populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Right: Leave Balance Card -->
+          <div class="modern-card" id="leave-balance-card">
+            <!-- Filled dynamically by renderLeaveBalance() -->
           </div>
         </div>
       </section>
@@ -1052,6 +1108,60 @@
               </thead>
               <tbody id="outlets-table-tbody">
                 <!-- Dynamically loaded -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 9.5: INPUT DATA CENTER (Khusus Super Admin OM) -->
+      <section class="view-panel" id="view-data-center">
+
+        <!-- Header Card -->
+        <div class="modern-card" style="margin-bottom:20px; border-left:4px solid var(--burgundy-primary);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                <span class="card-badge-tag" style="background:#fef2f2; color:#991b1b; font-size:12px; font-weight:700;">👑 Khusus Super Admin (OM)</span>
+                <span style="font-size:12px; color:#64748b;">Edit data karyawan, gaji, dan KPI langsung terhubung ke akun masing-masing</span>
+              </div>
+              <h3 style="font-size:18px; color:var(--text-dark); margin:0 0 4px 0;">Pusat Input Data Karyawan</h3>
+              <p style="font-size:13px; color:#64748b; margin:0;">Semua perubahan di sini langsung tersimpan ke database karyawan dan terhubung ke akun yang bersangkutan.</p>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+              <div class="search-pill" style="width:240px;">
+                <i data-feather="search" style="width:14px; height:14px; color:#94a3b8;"></i>
+                <input type="text" id="dc-search-input" placeholder="Cari nama, NIP, jabatan, divisi..." oninput="window.dcSearchEmployees && window.dcSearchEmployees(this)">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Employee List Table -->
+        <div class="modern-card">
+          <div class="card-title-row">
+            <div>
+              <h3>Daftar Karyawan</h3>
+              <p style="font-size:12px; color:#64748b;">Klik tombol "Edit" untuk mengubah data, gaji, atau KPI karyawan</p>
+            </div>
+            <span class="card-badge-tag" id="dc-emp-count-badge">0 karyawan</span>
+          </div>
+
+          <div style="overflow-x:auto; margin-top:14px;">
+            <table class="payslip-table" id="dc-employees-table">
+              <thead>
+                <tr>
+                  <th>Nama & NIP</th>
+                  <th>Tipe & Divisi</th>
+                  <th>Jabatan & Outlet</th>
+                  <th>Gaji & Uang Hadir</th>
+                  <th>Rating & KPI</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="dc-employees-tbody">
+                <!-- Populated dynamically -->
               </tbody>
             </table>
           </div>
@@ -1491,499 +1601,182 @@
   </div>
 </div>
 
+<!-- 8. Modal: Ajukan Cuti / Ijin Baru -->
+<div class="modal-overlay" id="modal-leave-create">
+  <div class="modal-card" style="max-width:540px;">
+    <div class="modal-header">
+      <h3>Ajukan Cuti / Ijin Baru</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-leave-create')">&times;</button>
+    </div>
+    <form onsubmit="window.submitLeaveRequest && window.submitLeaveRequest(event)">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label required">Tipe Cuti / Ijin</label>
+          <select class="form-control" id="leave-form-type" required>
+            <option value="Cuti Tahunan">Cuti Tahunan (potong jatah 12 hari/tahun)</option>
+            <option value="Cuti Sakit">Cuti Sakit (wajib lampirkan surat dokter)</option>
+            <option value="Izin">Izin (keperluan pribadi, tidak potong jatah cuti)</option>
+            <option value="Cuti Melahirkan">Cuti Melahirkan (90 hari)</option>
+            <option value="Cuti Menikah">Cuti Menikah (3 hari)</option>
+            <option value="Cuti Duka">Cuti Duka (2 hari)</option>
+          </select>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="form-group">
+            <label class="form-label required">Tanggal Mulai</label>
+            <input type="date" class="form-control" id="leave-form-start" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label required">Tanggal Selesai</label>
+            <input type="date" class="form-control" id="leave-form-end" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label required">Alasan / Keterangan</label>
+          <textarea class="form-control" id="leave-form-reason" rows="3" placeholder="Contoh: Libur keluarga, kontrol dokter, urusan keluarga, dll." required></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Lampiran (URL surat dokter / bukti) — opsional</label>
+          <input type="text" class="form-control" id="leave-form-attachment" placeholder="Tempel URL surat dokter / bukti (jika ada)">
+          <p style="font-size:11px; color:#94a3b8; margin-top:4px;">Untuk Cuti Sakit &gt; 2 hari, lampirkan surat dokter.</p>
+        </div>
+
+        <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:10px 12px; font-size:11.5px; color:#92400e; margin-top:8px;">
+          <i data-feather="info" style="width:12px; height:12px; vertical-align:middle;"></i>
+          <strong>Info:</strong> Hari Minggu tidak dihitung sebagai hari kerja. Jumlah hari akan dihitung otomatis.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('modal-leave-create')">Batal</button>
+        <button type="submit" class="btn-primary" id="btn-submit-leave">
+          <i data-feather="send" style="width:13px; height:13px;"></i> Kirim Pengajuan
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 9. Modal: Edit Data Karyawan (Data Center — Khusus OM) -->
+<div class="modal-overlay" id="modal-dc-edit-employee">
+  <div class="modal-card" style="max-width:680px;">
+    <div class="modal-header">
+      <h3>Edit Data Karyawan: <span id="dc-modal-emp-name" style="color:var(--burgundy-primary);">-</span></h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-dc-edit-employee')">&times;</button>
+    </div>
+    <form onsubmit="window.submitEditEmployee && window.submitEditEmployee(event)">
+      <input type="hidden" id="dc-edit-id">
+      <div class="modal-body">
+
+        <!-- Section 1: Data Karyawan -->
+        <div style="background:#f8fafc; padding:12px 14px; border-radius:10px; margin-bottom:14px;">
+          <p style="font-size:11px; color:var(--burgundy-primary); font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">📋 1. Data Karyawan</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Nama Lengkap</label>
+              <input type="text" class="form-control" id="dc-edit-name" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">NIP (tidak bisa diubah)</label>
+              <input type="text" class="form-control" id="dc-edit-nip-display" readonly style="background:#f1f5f9; color:#64748b;">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">No. HP / WhatsApp</label>
+              <input type="tel" class="form-control" id="dc-edit-phone" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Status Kerja</label>
+              <select class="form-control" id="dc-edit-status" required>
+                <option value="Tetap">Tetap</option>
+                <option value="Kontrak">Kontrak</option>
+                <option value="Probation">Probation</option>
+                <option value="Resign">Resign</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Tipe Akun</label>
+              <select class="form-control" id="dc-edit-type" onchange="window.dcSyncDivisions && window.dcSyncDivisions()" required>
+                <option value="Operasional">Tim Operasional</option>
+                <option value="Management">Management</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Divisi</label>
+              <select class="form-control" id="dc-edit-division" required>
+                <!-- Populated dynamically by dcSyncDivisions() -->
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Jabatan / Role</label>
+              <input type="text" class="form-control" id="dc-edit-role" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Titik Outlet</label>
+              <select class="form-control" id="dc-edit-outlet" required>
+                <!-- Populated dynamically by loadDataCenterOutlets() -->
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Data Gaji -->
+        <div style="background:#fef3c7; padding:12px 14px; border-radius:10px; margin-bottom:14px;">
+          <p style="font-size:11px; color:#92400e; font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">💰 2. Data Gaji & Tunjangan</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Gaji Pokok Bulanan (Rp)</label>
+              <input type="number" class="form-control" id="dc-edit-base-salary" min="0" max="100000000" step="100000" required>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Akan dipakai saat payroll autopilot bulanan</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Uang Hadir Harian (Rp)</label>
+              <input type="number" class="form-control" id="dc-edit-daily-allowance" min="0" max="1000000" step="5000" required>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dikali jumlah hari hadir dalam sebulan</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Data KPI -->
+        <div style="background:#ecfdf5; padding:12px 14px; border-radius:10px;">
+          <p style="font-size:11px; color:#065f46; font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">📊 3. Data KPI & Rating</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Rating Karyawan (0-5)</label>
+              <input type="number" class="form-control" id="dc-edit-rating" min="0" max="5" step="0.1" required>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Rating tampil di KPI pribadi karyawan</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Skor KPI (%)</label>
+              <input type="number" class="form-control" id="dc-edit-kpi-score" min="0" max="100" step="1" required>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Penilaian performa keseluruhan (0-100%)</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('modal-dc-edit-employee')">Batal</button>
+        <button type="submit" class="btn-primary" id="btn-dc-save">
+          <i data-feather="save" style="width:13px; height:13px;"></i> Simpan Perubahan
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
 <script src="./config.js"></script>
 <script src="./api-client.js"></script>
 <script src="./app.js"></script>
-
-<script>
-(() => {
-  "use strict";
-
-  const OWNER_FIELD = "employee_id";
-  const UNKNOWN = "Belum tersedia";
-
-  function start() {
-    const dashboard = document.getElementById("view-dashboard");
-    if (!dashboard || document.getElementById("dashboard-akun-host")) return;
-
-    // Pertahankan elemen lama agar controller lama tidak kehilangan target DOM.
-    const isolation = document.createElement("style");
-    isolation.textContent = `
-      #view-dashboard > :not(#dashboard-akun-host) {
-        display: none !important;
-      }
-      body.td-personal-dashboard .mode-switcher-container,
-      body.td-personal-dashboard #filter-outlet-select,
-      body.td-personal-dashboard #filter-period-select {
-        display: none !important;
-      }
-    `;
-    document.head.append(isolation);
-
-    const host = document.createElement("div");
-    host.id = "dashboard-akun-host";
-    dashboard.prepend(host);
-
-    const root = host.attachShadow({ mode: "open" });
-
-    // Template tetap. Nilai dari akun/API dimasukkan melalui textContent.
-    root.innerHTML = `
-      <style>
-        :host {
-          display: block;
-          color: #1e293b;
-          font: 14px/1.5 system-ui, sans-serif;
-        }
-        * { box-sizing: border-box; }
-        h2, h3, p { margin: 0; }
-        .card {
-          padding: 20px;
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          background: #fff;
-          margin-bottom: 18px;
-        }
-        .welcome {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 16px;
-          flex-wrap: wrap;
-        }
-        .muted { color: #64748b; margin-top: 6px; }
-        .metrics {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 14px;
-        }
-        .metric strong {
-          display: block;
-          margin-top: 10px;
-          color: #701c34;
-          font-size: 25px;
-        }
-        .metric small { color: #64748b; }
-        .actions {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          margin-top: 14px;
-        }
-        button {
-          padding: 10px 15px;
-          border: 1px solid #701c34;
-          border-radius: 9px;
-          background: #701c34;
-          color: #fff;
-          font: inherit;
-          cursor: pointer;
-        }
-        button:disabled { opacity: .5; cursor: not-allowed; }
-        button:focus-visible {
-          outline: 3px solid #2563eb;
-          outline-offset: 3px;
-        }
-        .scroll { overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td {
-          padding: 12px;
-          border-bottom: 1px solid #e2e8f0;
-          text-align: left;
-          overflow-wrap: anywhere;
-        }
-        #notice { margin: 12px 0 18px; color: #64748b; }
-        @media (max-width: 900px) {
-          .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        }
-        @media (max-width: 520px) {
-          .metrics { grid-template-columns: 1fr; }
-        }
-      </style>
-
-      <section class="card welcome">
-        <div>
-          <h2 id="name">Dashboard Saya</h2>
-          <p id="identity" class="muted">Menunggu sesi akun.</p>
-          <p id="outlet" class="muted"></p>
-        </div>
-        <button id="refresh" type="button">Perbarui saldo cuti</button>
-      </section>
-
-      <p id="notice" role="status" aria-live="polite"></p>
-
-      <div class="metrics">
-        <section class="card metric">
-          Presensi saya
-          <strong id="attendance">—</strong>
-          <small>Rekaman pribadi yang termuat</small>
-        </section>
-        <section class="card metric">
-          Laporan saya
-          <strong id="reports">—</strong>
-          <small>Rekaman pribadi yang termuat</small>
-        </section>
-        <section class="card metric">
-          Arsip slip gaji
-          <strong id="payslips">—</strong>
-          <small>Nominal tetap melalui panel ber-PIN</small>
-        </section>
-        <section class="card metric">
-          Sisa cuti
-          <strong id="leave">—</strong>
-          <small id="leave-note">Belum dimuat dari server</small>
-        </section>
-      </div>
-
-      <section class="card">
-        <h3>Akses cepat</h3>
-        <div class="actions">
-          <button type="button" data-view="presensi">Presensi</button>
-          <button type="button" data-view="daily-report">Laporan harian</button>
-          <button type="button" data-view="kpi">KPI pribadi</button>
-          <button type="button" data-view="cuti">Cuti & Izin</button>
-          <button type="button" data-view="payroll">Slip gaji saya</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <h3>Status laporan saya</h3>
-        <p id="report-summary" class="muted"></p>
-        <div class="scroll">
-          <table>
-            <caption>Hingga 10 rekaman dari urutan data yang termuat</caption>
-            <thead>
-              <tr><th>ID laporan</th><th>Status</th></tr>
-            </thead>
-            <tbody id="report-rows"></tbody>
-          </table>
-        </div>
-      </section>
-    `;
-
-    const el = id => root.getElementById(id);
-    const string = value => value == null ? "" : String(value);
-
-    let accountKey = "";
-    let signature = "";
-    let leaveValue = "—";
-    let leaveNote = "Belum dimuat dari server";
-    let leaveRequest = null;
-    let generation = 0;
-    let blocked = false;
-
-    function state() {
-      return typeof AppState === "undefined" ? null : AppState;
-    }
-
-    function user() {
-      const gate = document.getElementById("auth-gate-screen");
-      if (blocked || gate && !gate.classList.contains("hidden")) return null;
-      return state()?.currentUser || null;
-    }
-
-    function validId(value) {
-      return (typeof value === "string" || typeof value === "number")
-        && string(value).trim() !== "";
-    }
-
-    function owns(record, current) {
-      return validId(current?.id)
-        && validId(record?.[OWNER_FIELD])
-        && string(record[OWNER_FIELD]) === string(current.id);
-    }
-
-    function personal(records, current) {
-      return Array.isArray(records)
-        ? records.filter(record => owns(record, current))
-        : [];
-    }
-
-    // State lama tidak membedakan array kosong dari kegagalan pemuatan.
-    // Karena itu, tanpa rekaman cocok, jangan mengarang angka nol.
-    function countLabel(records) {
-      return records.length ? String(records.length) : UNKNOWN;
-    }
-
-    function reset() {
-      generation++;
-      leaveRequest?.abort();
-      leaveRequest = null;
-      accountKey = "";
-      signature = "";
-      leaveValue = "—";
-      leaveNote = "Belum dimuat dari server";
-
-      ["attendance", "reports", "payslips", "leave"].forEach(id => {
-        el(id).textContent = "—";
-      });
-
-      el("name").textContent = "Dashboard Saya";
-      el("identity").textContent = "Masuk untuk melihat data pribadi.";
-      el("outlet").textContent = "";
-      el("notice").textContent = "";
-      el("leave-note").textContent = leaveNote;
-      el("report-summary").textContent = "";
-      el("report-rows").replaceChildren();
-      el("refresh").disabled = true;
-
-      root.querySelectorAll("[data-view]").forEach(button => {
-        button.disabled = true;
-      });
-    }
-
-    function sync() {
-      const current = user();
-
-      if (!current || !validId(current.id)) {
-        if (accountKey || !signature) reset();
-        signature = "signed-out";
-        return;
-      }
-
-      const key = string(current.id);
-      if (key !== accountKey) {
-        reset();
-        accountKey = key;
-      }
-
-      const app = state();
-      const attendance = personal(app.attendanceLogs, current);
-      const reports = personal(app.dailyReports, current);
-      const payslips = personal(app.payslips, current);
-
-      const outlet = Array.isArray(app.outlets)
-        ? app.outlets.find(item =>
-            validId(current.outlet_id)
-            && string(item.id) === string(current.outlet_id))
-        : null;
-
-      const next = JSON.stringify({
-        key,
-        name: current.name,
-        division: current.division,
-        role: current.role,
-        outlet: outlet?.name,
-        attendance: attendance.length,
-        payslips: payslips.length,
-        reports: reports.map(item => [item.id, item.status]),
-        leaveValue,
-        leaveNote
-      });
-
-      // Hak akses dapat berubah tanpa isi laporan berubah.
-      root.querySelectorAll("[data-view]").forEach(button => {
-        button.disabled = typeof canAccessView !== "function"
-          || !canAccessView(button.dataset.view);
-      });
-
-      if (next === signature) return;
-      signature = next;
-
-      el("name").textContent = current.name
-        ? "Dashboard " + current.name
-        : "Dashboard Saya";
-
-      el("identity").textContent = [
-        current.role,
-        current.division
-      ].filter(Boolean).join(" · ") || "Identitas belum lengkap";
-
-      el("outlet").textContent = "Outlet: "
-        + (outlet?.name || "belum tersedia");
-
-      el("attendance").textContent = countLabel(attendance);
-      el("reports").textContent = countLabel(reports);
-      el("payslips").textContent = countLabel(payslips);
-      el("leave").textContent = leaveValue;
-      el("leave-note").textContent = leaveNote;
-      el("refresh").disabled = leaveRequest !== null;
-
-      el("notice").textContent =
-        "Ringkasan hanya mencakup rekaman yang termuat dan memiliki "
-        + "ID pemilik cocok. Ini bukan total bulanan atau seluruh arsip.";
-
-      const totals = {};
-      reports.forEach(record => {
-        const status = string(record.status).trim() || "Tanpa status";
-        totals[status] = (totals[status] || 0) + 1;
-      });
-
-      el("report-summary").textContent = reports.length
-        ? Object.entries(totals)
-            .map(([status, total]) => status + ": " + total)
-            .join(" · ")
-        : "Belum ada rekaman pribadi yang dapat dicocokkan.";
-
-      const rows = el("report-rows");
-      rows.replaceChildren();
-
-      reports.slice(0, 10).forEach(record => {
-        const row = document.createElement("tr");
-
-        [record.id, record.status].forEach(value => {
-          const cell = document.createElement("td");
-          cell.textContent = string(value) || "—";
-          row.append(cell);
-        });
-
-        rows.append(row);
-      });
-    }
-
-    async function refreshLeave() {
-      sync();
-      const current = user();
-      if (!current || !accountKey || leaveRequest) return;
-
-      const key = accountKey;
-      const version = generation;
-      const controller = new AbortController();
-      leaveRequest = controller;
-      el("refresh").disabled = true;
-      el("leave-note").textContent = "Memuat saldo dari server...";
-
-      const timeout = setTimeout(() => controller.abort(), 20000);
-
-      try {
-        // api-client.js lama belum meneruskan signal untuk /api/.
-        // Race membatasi waktu tunggu UI, bukan menjamin request terhenti.
-        const result = await Promise.race([
-          fetch("/api/leave/me").then(async response => {
-            if (!response.ok) {
-              throw new Error(
-                [404, 501].includes(response.status)
-                  ? "Backend cuti belum tersedia"
-                  : "Saldo gagal dimuat (" + response.status + ")"
-              );
-            }
-            return response.json();
-          }),
-          new Promise((_, reject) => {
-            controller.signal.addEventListener("abort", () => {
-              reject(new Error("Pemuatan saldo dihentikan"));
-            }, { once: true });
-          })
-        ]);
-
-        if (version !== generation || key !== accountKey
-            || string(user()?.id) !== key) return;
-
-        if (!validId(result?.employee?.id)
-            || string(result.employee.id) !== key) {
-          throw new Error("Identitas pemilik saldo tidak cocok");
-        }
-
-        const balance = result.balance;
-        if (balance === null) {
-          leaveValue = "—";
-          leaveNote = "Hak cuti belum dikonfigurasi";
-        } else if (
-          typeof balance?.remaining === "number"
-          && Number.isFinite(balance.remaining)
-          && typeof balance.period === "string"
-        ) {
-          leaveValue = balance.remaining + " hari";
-          leaveNote = "Periode: " + balance.period;
-        } else {
-          throw new Error("Format saldo belum sesuai");
-        }
-      } catch (error) {
-        if (version !== generation || key !== accountKey) return;
-        leaveValue = "—";
-        leaveNote = error.message;
-      } finally {
-        clearTimeout(timeout);
-        if (leaveRequest === controller) {
-          leaveRequest = null;
-          signature = "";
-          sync();
-        }
-      }
-    }
-
-    root.querySelectorAll("[data-view]").forEach(button => {
-      button.addEventListener("click", () => {
-        const view = button.dataset.view;
-        if (!user() || typeof canAccessView !== "function"
-            || !canAccessView(view)) return;
-
-        // Gunakan handler sidebar, termasuk handler khusus panel Cuti.
-        const nav = document.querySelector(
-          '.nav-item[data-view="' + view + '"]'
-        );
-
-        if (nav) nav.click();
-      });
-    });
-
-    el("refresh").addEventListener("click", refreshLeave);
-
-    function syncVisibility() {
-      const visible = dashboard.classList.contains("active");
-      document.body.classList.toggle("td-personal-dashboard", visible);
-
-      if (visible) {
-        sync();
-        const title = document.getElementById("page-title");
-        const subtitle = document.getElementById("page-subtitle");
-
-        if (title) title.textContent = "Dashboard Saya";
-        if (subtitle) {
-          subtitle.textContent = "Ringkasan pribadi akun aktif";
-        }
-      }
-    }
-
-    const gate = document.getElementById("auth-gate-screen");
-    if (gate) {
-      new MutationObserver(() => {
-        if (!gate.classList.contains("hidden")) {
-          reset();
-        } else {
-          blocked = false;
-          sync();
-        }
-      }).observe(gate, {
-        attributes: true,
-        attributeFilter: ["class"]
-      });
-    }
-
-    new MutationObserver(syncVisibility).observe(dashboard, {
-      attributes: true,
-      attributeFilter: ["class"]
-    });
-
-    window.addEventListener("td-session-expired", () => {
-      blocked = true;
-      reset();
-    });
-
-    window.addEventListener("storage", event => {
-      if (event.key === "td_token" || event.key === null) {
-        blocked = true;
-        reset();
-      }
-    });
-
-    // Membaca perubahan state lokal; tidak mengirim polling API.
-    setInterval(() => {
-      if (!document.hidden) sync();
-    }, 1000);
-
-    reset();
-    syncVisibility();
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start, { once: true });
-  } else {
-    start();
-  }
-})();
-</script>
 </body>
 </html>

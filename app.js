@@ -72,6 +72,8 @@ const showToast = (message, type = 'info') => {
 // Ubah daftar di bawah untuk menyesuaikan. Server (Code.gs) memakai aturan yang sama.
 const FULL_ACCESS_DIVISIONS = ['OM', 'HRD'];
 const PAYROLL_DIVISIONS = ['OM', 'HRD', 'Finance'];
+// Divisi yang bisa approve/reject pengajuan cuti (lihat Code.gs LEAVE_APPROVERS)
+const LEAVE_APPROVER_DIVISIONS = ['OM', 'HRD', 'BM', 'HRGA'];
 const VIEW_ACCESS = {
   'dashboard': 'all',
   'presensi': 'all',
@@ -79,9 +81,12 @@ const VIEW_ACCESS = {
   'payroll': 'all',            // karyawan biasa hanya melihat slip sendiri (butuh PIN)
   'chat': 'all',               // saluran dibatasi lagi di CHAT_CHANNEL_RULES
   'calendar': 'all',
+  'leaves': 'all',             // semua karyawan bisa ajukan cuti & lihat pengajuan sendiri
   'employees': ['OM', 'HRD', 'Finance', 'BM', 'HRGA'],
   // KPI: semua karyawan bisa lihat (data sendiri); admin lihat semua (dipisah di backend h_kpi_)
   'kpi': 'all',
+  // Input Data Center: HANYA Super Admin (OM) — bisa edit semua data karyawan, gaji, KPI
+  'data-center': ['OM'],
   'outlets': ['OM', 'HRD'],
   'database': ['OM', 'HRD']
 };
@@ -199,6 +204,9 @@ const loadAllAppData = async () => {
   const jobs = [loadDailyReports(), loadAttendanceLogs(), loadPayslips(), loadCalendarEvents()];
   if (canAccessView('employees')) jobs.push(loadEmployees());
   if (canAccessView('kpi')) jobs.push(loadKpiSummary());
+  // Always load leave balance (every employee has cuti balance) & requests
+  jobs.push(loadLeaveBalance());
+  jobs.push(loadLeaveRequests());
   await Promise.all(jobs);
   populateDivisionDropdowns();
   switchView('dashboard');
@@ -573,6 +581,8 @@ const switchView = (viewName) => {
     'kpi': ['Analisis Kinerja & KPI', 'Evaluasi Kinerja Otomatis Manajemen & Tim Operasional'],
     'chat': ['Chat Room Internal', 'Saluran Komunikasi Antar Divisi & Direct Messages'],
     'calendar': ['Kalender & Agenda Meeting', 'Jadwal Briefing, Audit QC, dan Agenda Operasional'],
+    'leaves': ['Cuti & Ijin Karyawan', 'Pengajuan cuti, Ijin, dan Sisa Cuti Tahunan'],
+    'data-center': ['Input Data Center', 'Edit data karyawan, gaji, dan KPI — Khusus Super Admin'],
     'outlets': ['Pengaturan Titik Outlet', 'Konfigurasi Titik Koordinat GPS dan Toleransi Radius Geofencing'],
     'database': ['Pusat Kontrol Database & Backup', 'Kelola Penyimpanan SQLite, Unduh Cadangan .db, Ekspor CSV & Live Inspector']
   };
@@ -598,6 +608,17 @@ const switchView = (viewName) => {
     }
     window.checkGpsDistance && window.checkGpsDistance();
     loadAttendanceLogs && loadAttendanceLogs();
+  } else if (viewName === 'leaves') {
+    // Refresh leave data when entering the leaves view
+    stopCamera();
+    loadLeaveBalance && loadLeaveBalance();
+    loadLeaveRequests && loadLeaveRequests();
+  } else if (viewName === 'data-center') {
+    // Input Data Center — load employees & outlets
+    stopCamera();
+    loadEmployees && loadEmployees();
+    loadDataCenterOutlets && loadDataCenterOutlets();
+    renderDataCenterEmployeeList && renderDataCenterEmployeeList();
   } else if (viewName === 'database') {
     stopCamera();
     loadDatabaseOverview();
@@ -771,12 +792,27 @@ const renderPersonalKpi = (data) => {
         <p style="font-size:11px; color:#94a3b8; margin:2px 0 0 0;">${p.late_count || 0}x terlambat</p>
       </div>
     </div>
+    <!-- Sisa Cuti Widget (loaded asynchronously from /api/leaves/balance) -->
+    <div style="margin-top:14px; padding:14px; background:linear-gradient(135deg, #ecfdf5, #d1fae5); border:1px solid #a7f3d0; border-radius:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <p style="font-size:11px; color:#065f46; margin:0; text-transform:uppercase; font-weight:700;">Sisa Cuti Tahunan</p>
+        <p style="font-size:13px; color:#475569; margin:2px 0 0 0;">Berdasarkan UU Ketenagakerjaan (12 hari/tahun)</p>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:28px; font-weight:800; color:#059669; line-height:1;">
+          <span id="kpi-leave-balance">-</span>
+        </div>
+        <div style="font-size:10px; color:#065f46; font-weight:700; text-transform:uppercase;">hari tersisa</div>
+      </div>
+    </div>
     <div style="margin-top:14px; padding:12px 14px; background:#fef3c7; border:1px solid #fde68a; border-radius:10px; font-size:12px; color:#92400e;">
       <i data-feather="info" style="width:13px; height:13px; vertical-align:middle;"></i>
       <strong>Catatan:</strong> Data KPI hanya menampilkan performa pribadi Anda. Hubungi HRD untuk evaluasi lengkap.
     </div>
   `;
   if (window.feather) feather.replace();
+  // After rendering, fetch & display leave balance in the widget
+  loadLeaveBalance && loadLeaveBalance();
 };
 
 // Load Attendance Logs
@@ -2281,6 +2317,456 @@ const openCreateEventModal = () => {
   });
 };
 
+// ================= LEAVE REQUESTS (CUTI & IJIN) =================
+const isLeaveApprover = (user = AppState.currentUser) => !!user && LEAVE_APPROVER_DIVISIONS.includes(user.division);
+
+// State for leave requests
+AppState.leaveRequests = [];
+AppState.leaveBalance = null;
+
+const loadLeaveBalance = async () => {
+  try {
+    const res = await fetch('/api/leaves/balance');
+    if (!res.ok) return;
+    const data = await res.json();
+    AppState.leaveBalance = data;
+    renderLeaveBalance(data);
+    // Also update the leave balance widget on KPI personal card (if visible)
+    const kpiBalance = document.getElementById('kpi-leave-balance');
+    if (kpiBalance) {
+      kpiBalance.textContent = (data.remaining || 0) + ' hari';
+    }
+  } catch (err) {
+    console.error('Failed loading leave balance:', err);
+  }
+};
+
+const loadLeaveRequests = async () => {
+  try {
+    const res = await fetch('/api/leaves');
+    if (!res.ok) return;
+    const data = await res.json();
+    AppState.leaveRequests = data;
+    renderLeaveRequestsList(data);
+  } catch (err) {
+    console.error('Failed loading leave requests:', err);
+  }
+};
+
+const renderLeaveBalance = (b) => {
+  const card = document.getElementById('leave-balance-card');
+  if (!card || !b) return;
+  const remainingColor = (b.remaining || 0) >= 6 ? '#10b981' : ((b.remaining || 0) >= 3 ? '#f59e0b' : '#ef4444');
+  const usedPct = b.entitlement > 0 ? Math.min(100, Math.round((b.used / b.entitlement) * 100)) : 0;
+  card.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
+      <div>
+        <h3 style="margin:0; font-size:16px;">Sisa Cuti Tahunan ${b.year || ''}</h3>
+        <p style="margin:4px 0 0 0; font-size:12px; color:#64748b;">Berdasarkan UU Ketenagakerjaan (12 hari/tahun)</p>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:32px; font-weight:800; color:${remainingColor}; line-height:1;">${b.remaining || 0}</div>
+        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">hari tersisa</div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-bottom:14px;">
+      <div style="background:#f8fafc; padding:10px 12px; border-radius:10px; border:1px solid #e2e8f0;">
+        <p style="font-size:10px; color:#64748b; margin:0; text-transform:uppercase; font-weight:700;">Hak Cuti</p>
+        <p style="font-size:18px; font-weight:800; color:var(--burgundy-primary); margin:2px 0 0 0;">${b.entitlement || 0}</p>
+      </div>
+      <div style="background:#f8fafc; padding:10px 12px; border-radius:10px; border:1px solid #e2e8f0;">
+        <p style="font-size:10px; color:#64748b; margin:0; text-transform:uppercase; font-weight:700;">Terpakai</p>
+        <p style="font-size:18px; font-weight:800; color:#ef4444; margin:2px 0 0 0;">${b.used || 0}</p>
+      </div>
+      <div style="background:#f8fafc; padding:10px 12px; border-radius:10px; border:1px solid #e2e8f0;">
+        <p style="font-size:10px; color:#64748b; margin:0; text-transform:uppercase; font-weight:700;">Pending</p>
+        <p style="font-size:18px; font-weight:800; color:#f59e0b; margin:2px 0 0 0;">${b.pending || 0}</p>
+      </div>
+    </div>
+    <div style="background:#e2e8f0; border-radius:8px; height:8px; overflow:hidden;">
+      <div style="background:linear-gradient(90deg, var(--burgundy-primary), var(--burgundy-light)); height:100%; width:${usedPct}%; transition:width 0.3s;"></div>
+    </div>
+    <p style="font-size:11px; color:#94a3b8; margin:6px 0 0 0;">${usedPct}% dari hak cuti telah terpakai</p>
+  `;
+};
+
+const renderLeaveRequestsList = (requests) => {
+  const tbody = document.getElementById('leaves-tbody');
+  if (!tbody) return;
+  if (!requests || requests.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">Belum ada pengajuan cuti/ijin.</td></tr>';
+    return;
+  }
+  const isApprover = isLeaveApprover();
+  const me = AppState.currentUser;
+
+  tbody.innerHTML = requests.map(l => {
+    let statusBadge = '';
+    if (l.status === 'Pending') statusBadge = '<span class="status-badge-pill status-proses" style="background:#fef3c7; color:#92400e;">Menunggu Approval</span>';
+    else if (l.status === 'Approved') statusBadge = '<span class="status-badge-pill status-selesai" style="background:#d1fae5; color:#065f46;">Disetujui</span>';
+    else if (l.status === 'Rejected') statusBadge = '<span class="status-badge-pill status-hold" style="background:#fee2e2; color:#991b1b;">Ditolak</span>';
+    else if (l.status === 'Canceled') statusBadge = '<span class="status-badge-pill" style="background:#f1f5f9; color:#475569;">Dibatalkan</span>';
+
+    let actions = '';
+    if (isApprover && l.status === 'Pending' && l.employee_id !== me.id) {
+      actions = `
+        <button class="btn-primary" style="padding:5px 10px; font-size:11px; margin-right:4px;" onclick="window.approveLeaveRequest('${l.id}')"><i data-feather="check" style="width:11px; height:11px;"></i> Setujui</button>
+        <button class="btn-secondary" style="padding:5px 10px; font-size:11px; color:#dc2626; border-color:#fca5a5;" onclick="window.rejectLeaveRequest('${l.id}')"><i data-feather="x" style="width:11px; height:11px;"></i> Tolak</button>
+      `;
+    } else if (l.status === 'Pending' && l.employee_id === me.id) {
+      actions = `<button class="btn-secondary" style="padding:5px 10px; font-size:11px; color:#dc2626; border-color:#fca5a5;" onclick="window.cancelLeaveRequest('${l.id}')"><i data-feather="x-circle" style="width:11px; height:11px;"></i> Batalkan</button>`;
+    } else if (l.approver_note) {
+      actions = `<span style="font-size:10.5px; color:#64748b; font-style:italic;">"${l.approver_note}"</span>`;
+    }
+
+    const attachmentLink = l.attachment_url
+      ? `<a href="${l.attachment_url}" target="_blank" style="color:var(--burgundy-primary); font-size:11px; font-weight:600;">📎 Lampir</a>`
+      : '<span style="font-size:10px; color:#94a3b8;">-</span>';
+
+    return `
+      <tr>
+        <td>
+          <strong>${l.employee_name}</strong>
+          <div style="font-size:11px; color:#64748b;">${l.division}</div>
+        </td>
+        <td><span class="card-badge-tag" style="font-size:10px;">${l.type}</span></td>
+        <td style="font-size:12px;">${l.start_date}${l.start_date !== l.end_date ? ' s/d ' + l.end_date : ''}</td>
+        <td style="text-align:center; font-weight:700;">${l.days}</td>
+        <td style="font-size:11.5px; max-width:220px;">${l.reason || '-'}</td>
+        <td style="text-align:center;">${attachmentLink}</td>
+        <td>${statusBadge}</td>
+        <td style="font-size:11px;">${actions || '<span style="color:#cbd5e1;">—</span>'}</td>
+      </tr>
+    `;
+  }).join('');
+  if (window.feather) feather.replace();
+};
+
+const submitLeaveRequest = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const typeEl = document.getElementById('leave-form-type');
+  const startEl = document.getElementById('leave-form-start');
+  const endEl = document.getElementById('leave-form-end');
+  const reasonEl = document.getElementById('leave-form-reason');
+  const attachmentEl = document.getElementById('leave-form-attachment');
+  const submitBtn = document.getElementById('btn-submit-leave');
+
+  if (!typeEl || !startEl || !endEl || !reasonEl) {
+    showToast('Form pengajuan cuti tidak ditemukan.', 'error');
+    return;
+  }
+  const type = typeEl.value;
+  const start = startEl.value;
+  const end = endEl.value;
+  const reason = reasonEl.value.trim();
+  if (!type || !start || !end || !reason) {
+    showToast('Mohon lengkapi semua kolom wajib (Tipe, Tanggal Mulai, Tanggal Selesai, Alasan).', 'warning');
+    return;
+  }
+  if (start > end) {
+    showToast('Tanggal mulai tidak boleh setelah tanggal selesai.', 'warning');
+    return;
+  }
+  if (reason.length < 3) {
+    showToast('Alasan terlalu singkat (minimal 3 karakter).', 'warning');
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Mengirim pengajuan...';
+
+  try {
+    const res = await fetch('/api/leaves', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: type,
+        start_date: start,
+        end_date: end,
+        reason: reason,
+        attachment_url: attachmentEl ? attachmentEl.value.trim() : ''
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || `Pengajuan ${type} berhasil dikirim. Menunggu approval.`, 'success');
+      // Reset form
+      typeEl.value = 'Cuti Tahunan';
+      startEl.value = '';
+      endEl.value = '';
+      reasonEl.value = '';
+      if (attachmentEl) attachmentEl.value = '';
+      // Reload list & balance
+      await loadLeaveRequests();
+      await loadLeaveBalance();
+      // Close modal if open
+      const modal = document.getElementById('modal-leave-create');
+      if (modal) modal.classList.remove('active');
+    } else {
+      showToast(data.detail || data.message || 'Gagal mengajukan cuti. Coba lagi.', 'error');
+    }
+  } catch (err) {
+    showToast('Terjadi kesalahan koneksi saat mengajukan cuti.', 'error');
+    console.error('Leave request error:', err);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = '<i data-feather="send" style="width:13px; height:13px;"></i> Kirim Pengajuan';
+    if (window.feather) feather.replace();
+  }
+};
+
+window.approveLeaveRequest = async (id) => {
+  const note = prompt('Catatan approver (opsional):', 'Disetujui.');
+  if (note === null) return;
+  try {
+    const res = await fetch(`/api/leaves/${id}/approve`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note || '' })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Pengajuan disetujui.', 'success');
+      await loadLeaveRequests();
+      await loadLeaveBalance();
+    } else {
+      showToast(data.detail || data.message || 'Gagal approve.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat approve.', 'error');
+  }
+};
+
+window.rejectLeaveRequest = async (id) => {
+  const note = prompt('Alasan menolak (wajib):', '');
+  if (note === null) return;
+  if (!note || note.trim().length < 3) {
+    showToast('Alasan menolak wajib diisi (minimal 3 karakter).', 'warning');
+    return;
+  }
+  try {
+    const res = await fetch(`/api/leaves/${id}/reject`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note.trim() })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Pengajuan ditolak.', 'success');
+      await loadLeaveRequests();
+    } else {
+      showToast(data.detail || data.message || 'Gagal reject.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat reject.', 'error');
+  }
+};
+
+window.cancelLeaveRequest = async (id) => {
+  if (!confirm('Batalkan pengajuan cuti ini? Tindakan tidak bisa dibatalkan.')) return;
+  try {
+    const res = await fetch(`/api/leaves/${id}/cancel`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Pengajuan dibatalkan.', 'success');
+      await loadLeaveRequests();
+      await loadLeaveBalance();
+    } else {
+      showToast(data.detail || data.message || 'Gagal membatalkan.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat cancel.', 'error');
+  }
+};
+
+// Expose to window
+window.submitLeaveRequest = submitLeaveRequest;
+
+// ================= INPUT DATA CENTER (Khusus Super Admin OM) =================
+// Panel ini hanya untuk Super Admin (OM). Berisi 3 fitur:
+// 1. Edit data karyawan (nama, divisi, role, outlet, dll)
+// 2. Edit data gaji (gaji pokok, uang hadir harian)
+// 3. Edit data KPI (rating, skor KPI)
+
+// Populate outlet dropdown in the Data Center modal
+const loadDataCenterOutlets = () => {
+  const select = document.getElementById('dc-edit-outlet');
+  if (!select) return;
+  if (!AppState.outlets || AppState.outlets.length === 0) return;
+  select.innerHTML = AppState.outlets.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+};
+
+// Render daftar karyawan di panel Data Center
+const renderDataCenterEmployeeList = (filterText = '') => {
+  const tbody = document.getElementById('dc-employees-tbody');
+  if (!tbody) return;
+  const allEmps = AppState.employees || [];
+  // Update badge count
+  const badge = document.getElementById('dc-emp-count-badge');
+  if (badge) badge.textContent = allEmps.length + ' karyawan';
+
+  if (allEmps.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Memuat data karyawan...</td></tr>';
+    return;
+  }
+  let filtered = allEmps;
+  const q = (filterText || '').toLowerCase().trim();
+  if (q) {
+    filtered = allEmps.filter(e =>
+      (e.name || '').toLowerCase().includes(q) ||
+      (e.nip || '').toLowerCase().includes(q) ||
+      (e.role || '').toLowerCase().includes(q) ||
+      (e.division || '').toLowerCase().includes(q)
+    );
+  }
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan yang cocok.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(e => {
+    return `
+      <tr>
+        <td>
+          <strong>${e.name}</strong>
+          <div style="font-size:11px; color:#64748b;">${e.nip} • ${e.email || ''}</div>
+        </td>
+        <td>
+          <span class="card-badge-tag" style="font-size:10px; color:${e.type === 'Management' ? 'var(--burgundy-primary)' : '#0284c7'};">${e.type}</span>
+          <div style="font-size:11px; color:#64748b; margin-top:2px;">${e.division}</div>
+        </td>
+        <td>${e.role}<div style="font-size:11px; color:#64748b;">${e.outlet_name || '-'}</div></td>
+        <td><strong>${formatRupiah(e.base_salary)}</strong><div style="font-size:11px; color:#64748b;">+ ${formatRupiah(e.daily_allowance)}/hari</div></td>
+        <td>
+          <span style="color:#f59e0b; font-weight:700;">⭐ ${e.rating || 0}</span>
+          <span style="color:#cbd5e1; margin:0 4px;">|</span>
+          <span style="color:var(--burgundy-primary); font-weight:700;">${e.kpi_score || 0}%</span>
+        </td>
+        <td>${e.employment_status || 'Tetap'}</td>
+        <td>
+          <button class="btn-primary" style="padding:5px 10px; font-size:11px;" onclick="window.openEditEmployeeModal('${e.id}')">
+            <i data-feather="edit-2" style="width:11px; height:11px;"></i> Edit
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  if (window.feather) feather.replace();
+};
+
+// Search input handler
+window.dcSearchEmployees = (input) => {
+  const text = (input && input.value) || '';
+  renderDataCenterEmployeeList(text);
+};
+
+// Open modal to edit employee data (data + gaji + KPI in one form)
+window.openEditEmployeeModal = (employeeId) => {
+  const emp = (AppState.employees || []).find(e => e.id === employeeId);
+  if (!emp) {
+    showToast('Data karyawan tidak ditemukan.', 'error');
+    return;
+  }
+  // Fill form fields
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val !== undefined && val !== null ? val : ''; };
+  setVal('dc-edit-id', emp.id);
+  setVal('dc-edit-name', emp.name);
+  setVal('dc-edit-nip-display', emp.nip); // read-only display
+  setVal('dc-edit-phone', emp.phone);
+  setVal('dc-edit-type', emp.type);
+  setVal('dc-edit-division', emp.division);
+  setVal('dc-edit-role', emp.role);
+  setVal('dc-edit-outlet', emp.outlet_id);
+  setVal('dc-edit-status', emp.employment_status || 'Tetap');
+  setVal('dc-edit-base-salary', emp.base_salary);
+  setVal('dc-edit-daily-allowance', emp.daily_allowance);
+  setVal('dc-edit-rating', emp.rating);
+  setVal('dc-edit-kpi-score', emp.kpi_score);
+  // Update header
+  const titleEl = document.getElementById('dc-modal-emp-name');
+  if (titleEl) titleEl.textContent = emp.name + ' (' + emp.nip + ')';
+  // Show modal
+  const modal = document.getElementById('modal-dc-edit-employee');
+  if (modal) {
+    modal.classList.add('active');
+    if (window.feather) feather.replace();
+  }
+};
+
+// Submit edit form — calls PUT /api/employees/{id}
+window.submitEditEmployee = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const empId = getVal('dc-edit-id');
+  if (!empId) {
+    showToast('ID karyawan tidak ditemukan.', 'error');
+    return;
+  }
+  const submitBtn = document.getElementById('btn-dc-save');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Menyimpan...'; }
+
+  const body = {
+    name: getVal('dc-edit-name'),
+    phone: getVal('dc-edit-phone'),
+    type: getVal('dc-edit-type'),
+    division: getVal('dc-edit-division'),
+    role: getVal('dc-edit-role'),
+    outlet_id: getVal('dc-edit-outlet'),
+    employment_status: getVal('dc-edit-status'),
+    base_salary: Number(getVal('dc-edit-base-salary')) || 0,
+    daily_allowance: Number(getVal('dc-edit-daily-allowance')) || 0,
+    rating: Number(getVal('dc-edit-rating')) || 0,
+    kpi_score: Number(getVal('dc-edit-kpi-score')) || 0
+  };
+
+  try {
+    const res = await fetch(`/api/employees/${empId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || `Data karyawan berhasil diupdate.`, 'success');
+      // Close modal
+      const modal = document.getElementById('modal-dc-edit-employee');
+      if (modal) modal.classList.remove('active');
+      // Reload employees
+      await loadEmployees();
+      renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || '');
+    } else {
+      showToast(data.detail || data.message || 'Gagal update data karyawan.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat update karyawan.', 'error');
+    console.error('Update employee error:', err);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan Perubahan';
+      if (window.feather) feather.replace();
+    }
+  }
+};
+
+// Division dropdown options
+const DC_DIVISIONS_MGMT = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM"];
+const DC_DIVISIONS_OPS = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
+
+// Populate division dropdown based on selected type
+window.dcSyncDivisions = () => {
+  const typeSel = document.getElementById('dc-edit-type');
+  const divSel = document.getElementById('dc-edit-division');
+  if (!typeSel || !divSel) return;
+  const currentVal = divSel.value;
+  const list = typeSel.value === 'Management' ? DC_DIVISIONS_MGMT : DC_DIVISIONS_OPS;
+  divSel.innerHTML = list.map(d => `<option value="${d}">${d}</option>`).join('');
+  // Restore previous value if still valid
+  if (list.indexOf(currentVal) >= 0) divSel.value = currentVal;
+};
+
 // ================= PENGATURAN TITIK OUTLET =================
 const renderOutletsTable = () => {
   const tbody = document.getElementById('outlets-table-tbody');
@@ -2424,6 +2910,37 @@ const closeModal = (id) => {
   const modal = document.getElementById(id);
   if (modal) modal.classList.remove('active');
 };
+
+// Open the leave create modal — exposes to window so inline onclick can call it
+window.openCreateLeaveModal = () => {
+  const modal = document.getElementById('modal-leave-create');
+  if (!modal) {
+    showToast('Form pengajuan cuti tidak ditemukan.', 'error');
+    return;
+  }
+  // Reset form fields
+  const typeEl = document.getElementById('leave-form-type');
+  const startEl = document.getElementById('leave-form-start');
+  const endEl = document.getElementById('leave-form-end');
+  const reasonEl = document.getElementById('leave-form-reason');
+  const attachmentEl = document.getElementById('leave-form-attachment');
+  if (typeEl) typeEl.value = 'Cuti Tahunan';
+  if (startEl) startEl.value = '';
+  if (endEl) endEl.value = '';
+  if (reasonEl) reasonEl.value = '';
+  if (attachmentEl) attachmentEl.value = '';
+  // Set min date to today
+  const today = new Date().toISOString().split('T')[0];
+  if (startEl) startEl.min = today;
+  if (endEl) endEl.min = today;
+  // Auto-update end date min when start date changes
+  if (startEl && endEl) {
+    startEl.onchange = () => { endEl.min = startEl.value || today; if (endEl.value && endEl.value < startEl.value) endEl.value = startEl.value; };
+  }
+  modal.classList.add('active');
+  if (window.feather) feather.replace();
+};
+const openCreateLeaveModal = window.openCreateLeaveModal;
 
 const openLightbox = (imgUrl, caption) => {
   document.getElementById('lightbox-image').src = imgUrl;

@@ -1,37 +1,40 @@
-// Cache only public application assets within this service worker scope.
-const CACHE_PREFIX = 'tertib-disiplin:' + self.registration.scope + ':';
-const CACHE_NAME = CACHE_PREFIX + 'v9-modern-ui';
+// TERTIB DISIPLIN - Service Worker
+// Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
+const CACHE_NAME = 'tertib-disiplin-v12';  // bumped v8 → v9 (setupAwal error fix + setupLeaveSheetOnly)
 const SHELL = [
-  './', './index.html', './style.css', './app.js', './api-client.js',
-  './config.js', './modern-ui.css', './modern-ui.js', './manifest.json', './logo.png', './favicon.png',
-  './icon-192.png', './icon-512.png'
+  './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
+  './manifest.json', './icons/logo.png', './icons/icon-192.png'
 ];
-const ASSET_URLS = new Set(SHELL.map(path => new URL(path, self.registration.scope).href));
-self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL)));
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => Promise.allSettled(SHELL.map((u) => cache.add(u))))
+  );
+  self.skipWaiting();
 });
-self.addEventListener('activate', event => {
-  event.waitUntil((async () => {
-    const keys = await caches.keys();
-    await Promise.all(keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME).map(key => caches.delete(key)));
-    await self.clients.claim();
-  })());
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+  );
+  self.clients.claim();
 });
-self.addEventListener('fetch', event => {
-  const req = event.request, url = new URL(req.url);
-  if (req.method !== 'GET' || url.origin !== self.location.origin || url.search || !ASSET_URLS.has(url.href)) return;
-  event.respondWith((async () => {
-    const cache = await caches.open(CACHE_NAME);
-    try {
-      const response = await fetch(req);
-      if (response.status === 200 && response.type === 'basic') {
-        const copy = response.clone(); event.waitUntil(cache.put(req, copy).catch(() => {}));
-      }
-      if (response.status >= 500) { const cached = await cache.match(req); if (cached) return cached; }
-      return response;
-    } catch (error) {
-      const cached = await cache.match(req); if (cached) return cached;
-      return new Response('Aset tidak tersedia saat offline. Hubungkan internet lalu muat ulang.', {status:503,headers:{'Content-Type':'text/plain;charset=utf-8'}});
-    }
-  })());
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  const url = new URL(req.url);
+  // Hanya file milik aplikasi ini; panggilan ke Apps Script / CDN tidak disentuh
+  if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        if (res && res.status === 200 && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req).then((hit) => hit || (req.mode === 'navigate' ? caches.match('./index.html') : undefined)))
+  );
 });
