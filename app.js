@@ -35,7 +35,8 @@ const AppState = {
   cameraStream: null,
   cameraReady: false,    // true after stream attached & video dimensions known
   cameraLoading: false,
-  deferredPwaPrompt: null
+  deferredPwaPrompt: null,
+  outletsLoadError: ''  // pesan error kalau loadOutlets gagal (untuk feedback di geofence banner)
 };
 
 // Formatting Utilities
@@ -681,6 +682,10 @@ const switchView = (viewName) => {
     if (!AppState.gpsOk && !AppState.gpsLoading) {
       window.detectDeviceGPS && window.detectDeviceGPS();
     }
+    // Auto-retry loading outlets if they failed before or are still empty
+    if (!AppState.outlets || AppState.outlets.length === 0 || AppState.outletsLoadError) {
+      loadOutlets && loadOutlets();
+    }
     window.checkGpsDistance && window.checkGpsDistance();
     loadAttendanceLogs && loadAttendanceLogs();
   } else if (viewName === 'leaves') {
@@ -754,23 +759,44 @@ const setCurrentUser = (user) => {
 const loadOutlets = async () => {
   try {
     const res = await fetch('/api/outlets');
-    if (!res.ok) return;
+    if (!res.ok) {
+      // Parse error message dari response
+      let errMsg = 'Gagal memuat daftar outlet (HTTP ' + res.status + ')';
+      try {
+        const errData = await res.json();
+        if (errData.detail) errMsg = errData.detail;
+        else if (errData.message) errMsg = errData.message;
+      } catch (e) { /* response body bukan JSON */ }
+      console.error('loadOutlets error:', errMsg);
+      AppState.outlets = [];
+      AppState.outletsLoadError = errMsg;
+      // Update geofence banner dengan error
+      window.checkGpsDistance && window.checkGpsDistance();
+      return;
+    }
     const data = await res.json();
     AppState.outlets = data;
+    AppState.outletsLoadError = '';
 
     // Populate presensi outlet select
     const pSelect = document.getElementById('presensi-outlet-select');
     const rSelect = document.getElementById('rep-form-outlet');
-    if (pSelect) {
-      pSelect.innerHTML = data.map(o => `<option value="${o.id}">${o.name} (Radius: ${o.radius_meters}m)</option>`).join('');
+    if (pSelect && Array.isArray(data) && data.length > 0) {
+      pSelect.innerHTML = '<option value="">— Pilih outlet —</option>' + 
+        data.map(o => `<option value="${o.id}">${o.name}${o.radius_meters ? ' (Radius: ' + o.radius_meters + 'm)' : ''}</option>`).join('');
     }
-    if (rSelect) {
+    if (rSelect && Array.isArray(data) && data.length > 0) {
       rSelect.innerHTML = data.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
     }
 
     renderOutletsTable();
+    // Update geofence banner sekarang outlets sudah ada
+    window.checkGpsDistance && window.checkGpsDistance();
   } catch (err) {
     console.error('Failed loading outlets:', err);
+    AppState.outlets = [];
+    AppState.outletsLoadError = (err && err.message) ? err.message : 'Kesalahan koneksi saat memuat outlet.';
+    window.checkGpsDistance && window.checkGpsDistance();
   }
 };
 
@@ -1537,12 +1563,24 @@ window.checkGpsDistance = () => {
   const icon = document.getElementById('geofence-icon');
   if (!outletSelect || !banner || !text) return;
 
-  // Outlet may not be loaded yet — show waiting state
+  // === STATE: Outlet gagal dimuat — tampilkan error + tombol retry ===
+  if (AppState.outletsLoadError) {
+    banner.className = 'geofence-alert geofence-invalid';
+    text.innerHTML = `<strong>Gagal memuat daftar outlet:</strong> ${AppState.outletsLoadError}
+      <br><button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px;" onclick="window.retryLoadOutlets && window.retryLoadOutlets()">
+        <i data-feather="refresh-cw" style="width:11px; height:11px;"></i> Coba Muat Ulang
+      </button>`;
+    if (window.feather) feather.replace();
+    return;
+  }
+
+  // === STATE: Outlet masih loading (belum ada error, belum ada data) ===
   if (!AppState.outlets || AppState.outlets.length === 0) {
     banner.className = 'geofence-alert geofence-warning';
     text.innerHTML = '<strong>Memuat daftar outlet...</strong> Mohon tunggu sebentar.';
     return;
   }
+
   const outlet = AppState.outlets.find(o => o.id === outletSelect.value) || AppState.outlets[0];
   if (!outlet) {
     banner.className = 'geofence-alert geofence-invalid';
@@ -1587,6 +1625,15 @@ window.checkGpsDistance = () => {
   }
 };
 const checkGpsDistance = window.checkGpsDistance;
+
+// Retry loading outlets (dipanggil dari tombol di geofence banner)
+window.retryLoadOutlets = async () => {
+  AppState.outletsLoadError = '';
+  window.checkGpsDistance && window.checkGpsDistance(); // show "loading..." again
+  await loadOutlets();
+  // If still failed, checkGpsDistance will show error (called inside loadOutlets)
+  // If success, checkGpsDistance will show outlet info (called inside loadOutlets)
+};
 
 // --- Snapshot from video to canvas ---
 const captureSelfieSnapshot = () => {
