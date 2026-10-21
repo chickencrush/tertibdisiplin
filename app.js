@@ -54,15 +54,88 @@ const showToast = (message, type = 'info') => {
   const toast = document.createElement('div');
   toast.className = 'toast';
   let icon = 'ℹ️';
-  if (type === 'success') icon = '✅';
-  if (type === 'error') icon = '❌';
-  if (type === 'warning') icon = '⚠️';
+  let borderColor = 'rgba(255,255,255,0.08)';
+  if (type === 'success') { icon = '✅'; borderColor = 'rgba(16, 185, 129, 0.4)'; }
+  if (type === 'error') { icon = '❌'; borderColor = 'rgba(239, 68, 68, 0.4)'; }
+  if (type === 'warning') { icon = '⚠️'; borderColor = 'rgba(245, 158, 11, 0.4)'; }
+  toast.style.borderLeft = `4px solid ${borderColor}`;
   toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
   container.appendChild(toast);
+  // Auto-remove after 4s with smooth fade
   setTimeout(() => {
+    toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
     toast.style.opacity = '0';
+    toast.style.transform = 'translateX(20px)';
     setTimeout(() => toast.remove(), 300);
   }, 4000);
+};
+
+// === MODERN UI HELPERS ===
+// Animate number count-up for stat cards
+const animateCountUp = (el, target, duration = 800) => {
+  if (!el) return;
+  const start = 0;
+  const startTime = performance.now();
+  const isPercent = String(target).indexOf('%') >= 0;
+  const isDecimal = String(target).indexOf('.') >= 0 && !isPercent;
+  const numericTarget = parseFloat(String(target).replace(/[^\d.-]/g, '')) || 0;
+  const suffix = isPercent ? '%' : '';
+
+  const step = (now) => {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    // ease-out cubic
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const value = start + (numericTarget - start) * eased;
+    if (isDecimal) {
+      el.textContent = value.toFixed(1) + suffix;
+    } else {
+      el.textContent = Math.round(value).toLocaleString('id-ID') + suffix;
+    }
+    if (progress < 1) requestAnimationFrame(step);
+    else el.textContent = (isDecimal ? numericTarget.toFixed(1) : numericTarget.toLocaleString('id-ID')) + suffix;
+  };
+  requestAnimationFrame(step);
+};
+
+// Auto-animate stat numbers when view becomes active
+const animateStatCards = () => {
+  setTimeout(() => {
+    document.querySelectorAll('.stat-main-number').forEach((el, idx) => {
+      // Skip if already animated
+      if (el.dataset.animated === '1') return;
+      el.dataset.animated = '1';
+      // Get text content as target (might include HTML like "<span>/ 5</span>")
+      const text = el.textContent || '';
+      const match = text.match(/[\d.,]+%?/);
+      if (match) {
+        const target = match[0];
+        // Preserve any suffix (like " / 5")
+        const suffix = text.substring(text.indexOf(target) + target.length);
+        setTimeout(() => {
+          animateCountUp(el, target, 700);
+          // Re-append suffix after animation
+          if (suffix) setTimeout(() => {
+            const currentText = el.textContent;
+            if (currentText && !currentText.includes(suffix)) {
+              el.innerHTML = currentText + ' <span style="font-size:14px; color:#94a3b8;">' + suffix + '</span>';
+            }
+          }, 750);
+        }, idx * 80);
+      }
+    });
+  }, 200);
+};
+
+// Stagger animation for cards in active view
+const staggerViewCards = (view) => {
+  if (!view) return;
+  const cards = view.querySelectorAll('.modern-card, .stat-card');
+  cards.forEach((card, idx) => {
+    card.style.animation = 'none';
+    card.offsetHeight; // trigger reflow
+    card.style.animation = `fadeInUp 0.5s var(--ease-smooth) ${idx * 0.05}s backwards`;
+  });
 };
 
 // ==========================================
@@ -634,6 +707,12 @@ const switchView = (viewName) => {
   }
 
   if (window.feather) feather.replace();
+
+  // Modern UI: animate stat cards & stagger view cards
+  if (activePanel) {
+    staggerViewCards(activePanel);
+    if (viewName === 'dashboard') animateStatCards();
+  }
 };
 
 // Switch Dashboard Mode: Management vs Tim Operasional
