@@ -259,6 +259,12 @@
         </a>
       </li>
       <li>
+        <a class="nav-item" data-view="profile">
+          <i data-feather="user"></i>
+          <span>Profil Saya</span>
+        </a>
+      </li>
+      <li>
         <a class="nav-item" data-view="database">
           <i data-feather="database"></i>
           <span>Database & Backup</span>
@@ -1164,6 +1170,201 @@
                 <!-- Populated dynamically -->
               </tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 9.7: PROFIL SAYA (Edit Data Diri, Foto, Password, PIN) -->
+      <section class="view-panel" id="view-profile">
+        <div style="display:grid; grid-template-columns: 360px 1fr; gap:24px;">
+
+          <!-- Left: Avatar + Identity Card -->
+          <div class="modern-card" style="text-align:center;">
+            <h3 style="margin:0 0 20px 0; font-size:16px;">Foto Profil</h3>
+            <!-- Avatar Preview -->
+            <div style="position:relative; width:180px; height:180px; margin:0 auto 16px auto; border-radius:50%; overflow:hidden; border:4px solid var(--burgundy-soft); box-shadow:0 8px 20px rgba(112, 28, 52, 0.15);">
+              <img id="profile-avatar-preview" src="./icons/logo.png" alt="Foto Profil" style="width:100%; height:100%; object-fit:cover;">
+              <div style="position:absolute; inset:0; background:linear-gradient(180deg, transparent 60%, rgba(0,0,0,0.4) 100%); pointer-events:none;"></div>
+            </div>
+            <!-- Upload button -->
+            <input type="file" id="profile-avatar-input" accept="image/jpeg,image/png,image/webp" style="display:none;" onchange="window.uploadProfileAvatar && window.uploadProfileAvatar(this)">
+            <button class="btn-primary" type="button" id="btn-upload-avatar" style="width:100%; justify-content:center;" onclick="document.getElementById('profile-avatar-input').click()">
+              <i data-feather="camera" style="width:13px; height:13px;"></i> Ganti Foto
+            </button>
+            <p style="font-size:11px; color:#94a3b8; margin-top:8px;">JPG/PNG/WEBP, maksimal 3MB</p>
+
+            <div style="margin-top:24px; padding-top:20px; border-top:1px solid #e2e8f0;">
+              <h3 id="profile-display-name" style="margin:0 0 4px 0; font-size:18px; color:var(--burgundy-dark);">-</h3>
+              <p style="margin:0 0 12px 0; font-size:12px; color:#64748b;">
+                <span id="profile-role">-</span> • <span id="profile-division">-</span>
+              </p>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; text-align:left;">
+                <div style="background:#f8fafc; padding:8px 10px; border-radius:8px;">
+                  <p style="margin:0; color:#94a3b8; font-weight:700; text-transform:uppercase;">NIP</p>
+                  <p style="margin:2px 0 0 0; color:var(--text-dark); font-weight:700;" id="profile-nip">-</p>
+                </div>
+                <div style="background:#f8fafc; padding:8px 10px; border-radius:8px;">
+                  <p style="margin:0; color:#94a3b8; font-weight:700; text-transform:uppercase;">Grade</p>
+                  <p style="margin:2px 0 0 0; color:var(--text-dark); font-weight:700;" id="profile-grade">-</p>
+                </div>
+                <div style="background:#f8fafc; padding:8px 10px; border-radius:8px; grid-column:1/-1;">
+                  <p style="margin:0; color:#94a3b8; font-weight:700; text-transform:uppercase;">Email</p>
+                  <p style="margin:2px 0 0 0; color:var(--text-dark); font-size:11px;" id="profile-email">-</p>
+                </div>
+                <div style="background:#f8fafc; padding:8px 10px; border-radius:8px;">
+                  <p style="margin:0; color:#94a3b8; font-weight:700; text-transform:uppercase;">Tipe</p>
+                  <p style="margin:2px 0 0 0; color:var(--text-dark); font-weight:700;" id="profile-type">-</p>
+                </div>
+                <div style="background:#f8fafc; padding:8px 10px; border-radius:8px;">
+                  <p style="margin:0; color:#94a3b8; font-weight:700; text-transform:uppercase;">Outlet</p>
+                  <p style="margin:2px 0 0 0; color:var(--text-dark); font-size:10px;" id="profile-outlet">-</p>
+                </div>
+                <div style="background:#f8fafc; padding:8px 10px; border-radius:8px; grid-column:1/-1;">
+                  <p style="margin:0; color:#94a3b8; font-weight:700; text-transform:uppercase;">Bergabung Sejak</p>
+                  <p style="margin:2px 0 0 0; color:var(--text-dark); font-weight:700;" id="profile-join-date">-</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Edit Forms -->
+          <div style="display:flex; flex-direction:column; gap:20px;">
+
+            <!-- Form 1: Data Diri -->
+            <div class="modern-card">
+              <div class="card-title-row">
+                <div>
+                  <h3>Data Diri</h3>
+                  <p style="font-size:12px; color:#64748b;">Ubah nama, no. HP, dan informasi bank Anda</p>
+                </div>
+                <span class="card-badge-tag">Dapat Diedit Sendiri</span>
+              </div>
+              <form onsubmit="window.submitProfileUpdate && window.submitProfileUpdate(event)" style="margin-top:14px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label required">Nama Lengkap</label>
+                    <input type="text" class="form-control" id="profile-name" required minlength="2" maxlength="100">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">No. HP / WhatsApp</label>
+                    <input type="tel" class="form-control" id="profile-phone" required minlength="5" maxlength="20">
+                  </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label">Nama Bank</label>
+                    <input type="text" class="form-control" id="profile-bank-name" placeholder="Contoh: Bank BCA" maxlength="50">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">No. Rekening</label>
+                    <input type="text" class="form-control" id="profile-bank-account" placeholder="Nomor rekening untuk slip gaji" maxlength="30">
+                  </div>
+                </div>
+                <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:10px 12px; font-size:11.5px; color:#92400e; margin-bottom:12px;">
+                  <i data-feather="info" style="width:12px; height:12px; vertical-align:middle;"></i>
+                  NIP, email, divisi, jabatan, dan outlet tidak bisa diubah sendiri. Hubungi Super Admin (OM) via menu <strong>Input Data Center</strong>.
+                </div>
+                <button type="submit" class="btn-primary" id="btn-save-profile">
+                  <i data-feather="save" style="width:13px; height:13px;"></i> Simpan Profil
+                </button>
+              </form>
+            </div>
+
+            <!-- Form 2: Ganti Password -->
+            <div class="modern-card">
+              <div class="card-title-row">
+                <div>
+                  <h3>Ganti Password Akun</h3>
+                  <p style="font-size:12px; color:#64748b;">Password digunakan untuk login ke aplikasi</p>
+                </div>
+                <span class="card-badge-tag" style="background:#fef2f2; color:#991b1b;">Keamanan</span>
+              </div>
+              <form onsubmit="window.submitChangePassword && window.submitChangePassword(event)" style="margin-top:14px;">
+                <div class="form-group">
+                  <label class="form-label required">Password Saat Ini</label>
+                  <div style="position:relative;">
+                    <input type="password" class="form-control" id="profile-current-password" required style="padding-right:40px;">
+                    <button type="button" onclick="window.toggleProfileFieldVisibility && window.toggleProfileFieldVisibility('profile-current-password', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;">
+                      <i data-feather="eye" style="width:14px; height:14px;"></i>
+                    </button>
+                  </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label required">Password Baru</label>
+                    <div style="position:relative;">
+                      <input type="password" class="form-control" id="profile-new-password" required minlength="8" style="padding-right:40px;">
+                      <button type="button" onclick="window.toggleProfileFieldVisibility && window.toggleProfileFieldVisibility('profile-new-password', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;">
+                        <i data-feather="eye" style="width:14px; height:14px;"></i>
+                      </button>
+                    </div>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Minimal 8 karakter</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Konfirmasi Password Baru</label>
+                    <div style="position:relative;">
+                      <input type="password" class="form-control" id="profile-confirm-password" required minlength="8" style="padding-right:40px;">
+                      <button type="button" onclick="window.toggleProfileFieldVisibility && window.toggleProfileFieldVisibility('profile-confirm-password', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;">
+                        <i data-feather="eye" style="width:14px; height:14px;"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <button type="submit" class="btn-secondary" id="btn-change-password" style="background:#fef2f2; color:#dc2626; border-color:#fecaca;">
+                  <i data-feather="key" style="width:13px; height:13px;"></i> Ganti Password
+                </button>
+              </form>
+            </div>
+
+            <!-- Form 3: Ganti PIN Slip Gaji -->
+            <div class="modern-card">
+              <div class="card-title-row">
+                <div>
+                  <h3>Ganti PIN Slip Gaji</h3>
+                  <p style="font-size:12px; color:#64748b;">PIN 6-digit digunakan untuk membuka slip gaji online</p>
+                </div>
+                <span class="card-badge-tag" style="background:#ecfdf5; color:#065f46;">Rahasia</span>
+              </div>
+              <form onsubmit="window.submitChangePin && window.submitChangePin(event)" style="margin-top:14px;">
+                <div class="form-group">
+                  <label class="form-label required">PIN Saat Ini (6 digit)</label>
+                  <div style="position:relative;">
+                    <input type="password" class="form-control" id="profile-current-pin" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric" style="padding-right:40px; text-align:center; letter-spacing:6px; font-weight:bold;">
+                    <button type="button" onclick="window.toggleProfileFieldVisibility && window.toggleProfileFieldVisibility('profile-current-pin', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;">
+                      <i data-feather="eye" style="width:14px; height:14px;"></i>
+                    </button>
+                  </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label required">PIN Baru (6 digit)</label>
+                    <div style="position:relative;">
+                      <input type="password" class="form-control" id="profile-new-pin" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric" style="padding-right:40px; text-align:center; letter-spacing:6px; font-weight:bold;">
+                      <button type="button" onclick="window.toggleProfileFieldVisibility && window.toggleProfileFieldVisibility('profile-new-pin', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;">
+                        <i data-feather="eye" style="width:14px; height:14px;"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Konfirmasi PIN Baru</label>
+                    <div style="position:relative;">
+                      <input type="password" class="form-control" id="profile-confirm-pin" required maxlength="6" pattern="[0-9]{6}" inputmode="numeric" style="padding-right:40px; text-align:center; letter-spacing:6px; font-weight:bold;">
+                      <button type="button" onclick="window.toggleProfileFieldVisibility && window.toggleProfileFieldVisibility('profile-confirm-pin', this)" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#94a3b8; cursor:pointer;">
+                        <i data-feather="eye" style="width:14px; height:14px;"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:10px 12px; font-size:11.5px; color:#92400e; margin-bottom:12px;">
+                  <i data-feather="alert-triangle" style="width:12px; height:12px; vertical-align:middle;"></i>
+                  Setelah 5x salah PIN, akun akan terkunci 5 menit demi keamanan.
+                </div>
+                <button type="submit" class="btn-secondary" id="btn-change-pin" style="background:#ecfdf5; color:#065f46; border-color:#a7f3d0;">
+                  <i data-feather="lock" style="width:13px; height:13px;"></i> Ganti PIN
+                </button>
+              </form>
+            </div>
+
           </div>
         </div>
       </section>

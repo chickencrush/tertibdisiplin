@@ -82,6 +82,7 @@ const VIEW_ACCESS = {
   'chat': 'all',               // saluran dibatasi lagi di CHAT_CHANNEL_RULES
   'calendar': 'all',
   'leaves': 'all',             // semua karyawan bisa ajukan cuti & lihat pengajuan sendiri
+  'profile': 'all',            // semua karyawan bisa edit profil sendiri
   'employees': ['OM', 'HRD', 'Finance', 'BM', 'HRGA'],
   // KPI: semua karyawan bisa lihat (data sendiri); admin lihat semua (dipisah di backend h_kpi_)
   'kpi': 'all',
@@ -582,6 +583,7 @@ const switchView = (viewName) => {
     'chat': ['Chat Room Internal', 'Saluran Komunikasi Antar Divisi & Direct Messages'],
     'calendar': ['Kalender & Agenda Meeting', 'Jadwal Briefing, Audit QC, dan Agenda Operasional'],
     'leaves': ['Cuti & Ijin Karyawan', 'Pengajuan cuti, Ijin, dan Sisa Cuti Tahunan'],
+    'profile': ['Profil Saya', 'Edit data diri, foto profil, password, dan PIN slip gaji'],
     'data-center': ['Input Data Center', 'Edit data karyawan, gaji, dan KPI — Khusus Super Admin'],
     'outlets': ['Pengaturan Titik Outlet', 'Konfigurasi Titik Koordinat GPS dan Toleransi Radius Geofencing'],
     'database': ['Pusat Kontrol Database & Backup', 'Kelola Penyimpanan SQLite, Unduh Cadangan .db, Ekspor CSV & Live Inspector']
@@ -619,6 +621,10 @@ const switchView = (viewName) => {
     loadEmployees && loadEmployees();
     loadDataCenterOutlets && loadDataCenterOutlets();
     renderDataCenterEmployeeList && renderDataCenterEmployeeList();
+  } else if (viewName === 'profile') {
+    // Profile view — render current user data
+    stopCamera();
+    renderProfileView && renderProfileView();
   } else if (viewName === 'database') {
     stopCamera();
     loadDatabaseOverview();
@@ -2765,6 +2771,295 @@ window.dcSyncDivisions = () => {
   divSel.innerHTML = list.map(d => `<option value="${d}">${d}</option>`).join('');
   // Restore previous value if still valid
   if (list.indexOf(currentVal) >= 0) divSel.value = currentVal;
+};
+
+// ================= PROFIL SAYA (Edit Data Diri) =================
+// Semua karyawan bisa akses. Bisa ubah: nama, no. HP, foto profil, info bank, password, PIN.
+// Tidak bisa ubah sendiri: NIP, email, divisi, role, outlet, gaji, KPI (hanya admin via Data Center).
+
+const LOGO_URI_PROFILE = './icons/logo.png';
+
+// Render profil view dengan data user yang login
+const renderProfileView = () => {
+  const u = AppState.currentUser;
+  if (!u) {
+    showToast('Sesi login tidak ditemukan. Silakan login kembali.', 'error');
+    return;
+  }
+  // Avatar preview
+  const avatarImg = document.getElementById('profile-avatar-preview');
+  if (avatarImg) {
+    avatarImg.src = u.avatar_url || LOGO_URI_PROFILE;
+    avatarImg.onerror = function() { this.onerror = null; this.src = LOGO_URI_PROFILE; };
+  }
+  // Info badges
+  const nipEl = document.getElementById('profile-nip');
+  if (nipEl) nipEl.textContent = u.nip || '-';
+  const emailEl = document.getElementById('profile-email');
+  if (emailEl) emailEl.textContent = u.email || '-';
+  const divisionEl = document.getElementById('profile-division');
+  if (divisionEl) divisionEl.textContent = u.division || '-';
+  const roleEl = document.getElementById('profile-role');
+  if (roleEl) roleEl.textContent = u.role || '-';
+  const outletEl = document.getElementById('profile-outlet');
+  if (outletEl) outletEl.textContent = u.outlet_name || '-';
+  const gradeEl = document.getElementById('profile-grade');
+  if (gradeEl) gradeEl.textContent = u.grade || '-';
+  const typeEl = document.getElementById('profile-type');
+  if (typeEl) typeEl.textContent = u.type || '-';
+  const joinEl = document.getElementById('profile-join-date');
+  if (joinEl) joinEl.textContent = u.join_date || '-';
+
+  // Form fields
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val !== undefined && val !== null ? val : ''; };
+  setVal('profile-name', u.name);
+  setVal('profile-phone', u.phone);
+  setVal('profile-bank-name', u.bank_name || '');
+  setVal('profile-bank-account', u.bank_account || '');
+
+  // Top bar avatar also update
+  const topAvatar = document.getElementById('current-user-avatar');
+  if (topAvatar) {
+    topAvatar.src = u.avatar_url || LOGO_URI_PROFILE;
+    topAvatar.onerror = function() { this.onerror = null; this.src = LOGO_URI_PROFILE; };
+  }
+  const sidebarAvatar = document.getElementById('sidebar-user-avatar');
+  if (sidebarAvatar) {
+    sidebarAvatar.src = u.avatar_url || LOGO_URI_PROFILE;
+    sidebarAvatar.onerror = function() { this.onerror = null; this.src = LOGO_URI_PROFILE; };
+  }
+  // Also update display name in identity card
+  const displayName = document.getElementById('profile-display-name');
+  if (displayName) displayName.textContent = u.name || '-';
+};
+// Expose to window so switchView can call it
+window.renderProfileView = renderProfileView;
+
+// Upload avatar — convert file ke base64, kirim ke /api/profile/avatar
+window.uploadProfileAvatar = async (inputEl) => {
+  if (!inputEl || !inputEl.files || inputEl.files.length === 0) return;
+  const file = inputEl.files[0];
+  // Validate file type
+  if (!file.type.startsWith('image/')) {
+    showToast('File harus berupa gambar (JPG, PNG, atau WEBP).', 'warning');
+    inputEl.value = '';
+    return;
+  }
+  // Validate file size (max 3MB)
+  if (file.size > 3 * 1024 * 1024) {
+    showToast('Ukuran foto maksimal 3MB.', 'warning');
+    inputEl.value = '';
+    return;
+  }
+  const submitBtn = document.getElementById('btn-upload-avatar');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengupload...'; }
+  const previewImg = document.getElementById('profile-avatar-preview');
+
+  try {
+    // Read file as base64
+    const base64Data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const commaIdx = result.indexOf(',');
+        resolve(commaIdx >= 0 ? result.substring(commaIdx + 1) : result);
+      };
+      reader.onerror = () => reject(new Error('Gagal membaca file'));
+      reader.readAsDataURL(file);
+    });
+
+    // Show preview immediately (optimistic)
+    if (previewImg) previewImg.src = URL.createObjectURL(file);
+
+    // Upload to API
+    const res = await fetch('/api/profile/avatar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: base64Data })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Foto profil berhasil diupload.', 'success');
+      // Update current user state
+      if (AppState.currentUser) {
+        AppState.currentUser.avatar_url = data.url;
+        // Also update localStorage
+        try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(AppState.currentUser)); } catch (e) { /* ignore */ }
+      }
+      // Update top bar & sidebar avatar
+      const topAvatar = document.getElementById('current-user-avatar');
+      if (topAvatar) topAvatar.src = data.url;
+      const sidebarAvatar = document.getElementById('sidebar-user-avatar');
+      if (sidebarAvatar) sidebarAvatar.src = data.url;
+      // Update preview with the real URL from server
+      if (previewImg) previewImg.src = data.url;
+    } else {
+      showToast(data.detail || data.message || 'Gagal upload foto profil.', 'error');
+      // Revert preview
+      if (previewImg && AppState.currentUser) {
+        previewImg.src = AppState.currentUser.avatar_url || LOGO_URI_PROFILE;
+      }
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat upload foto.', 'error');
+    console.error('Avatar upload error:', err);
+    // Revert preview
+    if (previewImg && AppState.currentUser) {
+      previewImg.src = AppState.currentUser.avatar_url || LOGO_URI_PROFILE;
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-feather="camera" style="width:13px; height:13px;"></i> Ganti Foto';
+      if (window.feather) feather.replace();
+    }
+    inputEl.value = '';
+  }
+};
+
+// Submit profile update (nama, phone, bank info)
+window.submitProfileUpdate = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const name = getVal('profile-name');
+  const phone = getVal('profile-phone');
+  const bankName = getVal('profile-bank-name');
+  const bankAccount = getVal('profile-bank-account');
+  if (!name || name.length < 2) { showToast('Nama minimal 2 karakter.', 'warning'); return; }
+  if (!phone || phone.length < 5) { showToast('No. HP minimal 5 karakter.', 'warning'); return; }
+  const submitBtn = document.getElementById('btn-save-profile');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Menyimpan...'; }
+  try {
+    const res = await fetch('/api/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, bank_name: bankName, bank_account: bankAccount })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Profil berhasil diupdate.', 'success');
+      // Update current user state
+      if (data.user) {
+        // Preserve avatar_url since profile update doesn't return it (use existing)
+        const currentAvatar = AppState.currentUser ? AppState.currentUser.avatar_url : '';
+        AppState.currentUser = Object.assign({}, AppState.currentUser, data.user, { avatar_url: data.user.avatar_url || currentAvatar });
+        try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(AppState.currentUser)); } catch (e) { /* ignore */ }
+        // Update top bar display
+        const nameEl = document.getElementById('current-user-name');
+        if (nameEl) nameEl.textContent = AppState.currentUser.name;
+        const roleEl = document.getElementById('current-user-role');
+        if (roleEl) roleEl.textContent = `${AppState.currentUser.role} (${AppState.currentUser.division})`;
+        const sName = document.getElementById('sidebar-user-name');
+        if (sName) sName.textContent = AppState.currentUser.name;
+        const sRole = document.getElementById('sidebar-user-role');
+        if (sRole) sRole.textContent = `${AppState.currentUser.role} (${AppState.currentUser.division})`;
+      }
+    } else {
+      showToast(data.detail || data.message || 'Gagal update profil.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat update profil.', 'error');
+    console.error('Profile update error:', err);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan Profil';
+      if (window.feather) feather.replace();
+    }
+  }
+};
+
+// Change password
+window.submitChangePassword = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const getVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const cur = getVal('profile-current-password');
+  const np = getVal('profile-new-password');
+  const cf = getVal('profile-confirm-password');
+  if (!cur) { showToast('Password saat ini wajib diisi.', 'warning'); return; }
+  if (np.length < 8) { showToast('Password baru minimal 8 karakter.', 'warning'); return; }
+  if (np !== cf) { showToast('Konfirmasi password tidak cocok.', 'warning'); return; }
+  const submitBtn = document.getElementById('btn-change-password');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengubah...'; }
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: cur, new_password: np })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Password berhasil diganti.', 'success');
+      // Clear fields
+      document.getElementById('profile-current-password').value = '';
+      document.getElementById('profile-new-password').value = '';
+      document.getElementById('profile-confirm-password').value = '';
+    } else {
+      showToast(data.detail || data.message || 'Gagal ganti password.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat ganti password.', 'error');
+    console.error('Change password error:', err);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-feather="key" style="width:13px; height:13px;"></i> Ganti Password';
+      if (window.feather) feather.replace();
+    }
+  }
+};
+
+// Change PIN
+window.submitChangePin = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const getVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const cur = getVal('profile-current-pin');
+  const np = getVal('profile-new-pin');
+  const cf = getVal('profile-confirm-pin');
+  if (!cur) { showToast('PIN saat ini wajib diisi.', 'warning'); return; }
+  if (!/^\d{6}$/.test(np)) { showToast('PIN baru harus 6 digit angka.', 'warning'); return; }
+  if (np !== cf) { showToast('Konfirmasi PIN tidak cocok.', 'warning'); return; }
+  const submitBtn = document.getElementById('btn-change-pin');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengubah...'; }
+  try {
+    const res = await fetch('/api/auth/change-pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_pin: cur, new_pin: np })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'PIN berhasil diganti.', 'success');
+      document.getElementById('profile-current-pin').value = '';
+      document.getElementById('profile-new-pin').value = '';
+      document.getElementById('profile-confirm-pin').value = '';
+    } else {
+      showToast(data.detail || data.message || 'Gagal ganti PIN.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat ganti PIN.', 'error');
+    console.error('Change PIN error:', err);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-feather="lock" style="width:13px; height:13px;"></i> Ganti PIN';
+      if (window.feather) feather.replace();
+    }
+  }
+};
+
+// Toggle password/PIN visibility
+window.toggleProfileFieldVisibility = (fieldId, btn) => {
+  const field = document.getElementById(fieldId);
+  if (!field) return;
+  if (field.type === 'password') {
+    field.type = 'text';
+    if (btn) btn.innerHTML = '<i data-feather="eye-off" style="width:14px; height:14px;"></i>';
+  } else {
+    field.type = 'password';
+    if (btn) btn.innerHTML = '<i data-feather="eye" style="width:14px; height:14px;"></i>';
+  }
+  if (window.feather) feather.replace();
 };
 
 // ================= PENGATURAN TITIK OUTLET =================
