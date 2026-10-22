@@ -565,9 +565,14 @@
             </div>
 
             <!-- Trigger GPS Detection Manually -->
-            <button class="btn-secondary" type="button" style="width:100%; justify-content:center; margin-bottom:12px;" onclick="window.detectDeviceGPS && window.detectDeviceGPS()">
-              <i data-feather="map-pin" style="width:14px; height:14px;"></i> Deteksi Lokasi GPS Saya
-            </button>
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+              <button class="btn-secondary" type="button" style="flex:1; justify-content:center;" onclick="window.detectDeviceGPS && window.detectDeviceGPS()">
+                <i data-feather="map-pin" style="width:14px; height:14px;"></i> Deteksi Lokasi GPS
+              </button>
+              <button class="btn-secondary" type="button" style="flex:1; justify-content:center; background:#eff6ff; color:#1e40af; border-color:#bfdbfe;" onclick="window.diagnosePresensi && window.diagnosePresensi()">
+                <i data-feather="activity" style="width:14px; height:14px;"></i> Diagnosa
+              </button>
+            </div>
 
             <!-- Live Geofence Distance Warning/Valid Pill -->
             <div id="geofence-status-banner" class="geofence-alert geofence-warning">

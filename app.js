@@ -761,26 +761,48 @@ const setCurrentUser = (user) => {
 
 // Load Outlets from API
 const loadOutlets = async () => {
+  // === CHECK 1: Pastikan API_URL sudah diisi di config.js ===
+  const cfg = window.TD_CONFIG || {};
+  if (!cfg.API_URL || cfg.API_URL.indexOf('GANTI_DENGAN') >= 0 || cfg.API_URL.indexOf('script.google.com') < 0) {
+    const errMsg = 'API_URL belum diisi di config.js. Buka file config.js, ganti nilai API_URL dengan link /exec dari Apps Script Anda.';
+    console.error('loadOutlets:', errMsg);
+    AppState.outlets = [];
+    AppState.outletsLoadError = errMsg;
+    window.checkGpsDistance && window.checkGpsDistance();
+    return;
+  }
+
   try {
     const res = await fetch('/api/outlets');
+    // Log full response untuk debugging
+    console.log('loadOutlets response: HTTP', res.status, res.statusText);
+
     if (!res.ok) {
-      // Parse error message dari response
-      let errMsg = 'Gagal memuat daftar outlet (HTTP ' + res.status + ')';
+      let errMsg = 'Gagal memuat outlet (HTTP ' + res.status + ')';
+      let errDetail = '';
       try {
         const errData = await res.json();
-        if (errData.detail) errMsg = errData.detail;
-        else if (errData.message) errMsg = errData.message;
+        errDetail = errData.detail || errData.message || '';
+        if (errDetail) errMsg = errDetail;
       } catch (e) { /* response body bukan JSON */ }
-      console.error('loadOutlets error:', errMsg);
+      console.error('loadOutlets error:', errMsg, errDetail);
       AppState.outlets = [];
-      AppState.outletsLoadError = errMsg;
-      // Update geofence banner dengan error
+      // Berikan pesan error yang lebih actionable
+      if (res.status === 500) {
+        AppState.outletsLoadError = 'Server error (500). Kemungkinan: (1) Sheet "outlets" belum dibuat — jalankan setupBaru di Apps Script. (2) Code.gs belum di-deploy ulang. Detail: ' + errMsg;
+      } else if (res.status === 401) {
+        AppState.outletsLoadError = 'Sesi login berakhir. Silakan login kembali.';
+      } else {
+        AppState.outletsLoadError = errMsg;
+      }
       window.checkGpsDistance && window.checkGpsDistance();
       return;
     }
     const data = await res.json();
-    // Pastikan data adalah array (kadang backend return object lain kalau error)
-    const outletList = Array.isArray(data) ? data : (data.body && Array.isArray(data.body) ? data.body : []);
+    console.log('loadOutlets data:', Array.isArray(data) ? data.length + ' outlets' : typeof data, data);
+
+    // Pastikan data adalah array
+    const outletList = Array.isArray(data) ? data : (data && data.body && Array.isArray(data.body) ? data.body : []);
     AppState.outlets = outletList;
     AppState.outletsLoadError = '';
 
@@ -790,22 +812,99 @@ const loadOutlets = async () => {
     if (pSelect && outletList.length > 0) {
       pSelect.innerHTML = '<option value="">— Pilih outlet —</option>' + 
         outletList.map(o => `<option value="${o.id}">${o.name}${o.radius_meters ? ' (Radius: ' + o.radius_meters + 'm)' : ''}</option>`).join('');
+      console.log('Dropdown presensi terisi dengan', outletList.length, 'outlet');
     } else if (pSelect) {
       pSelect.innerHTML = '<option value="">— Belum ada outlet —</option>';
+      AppState.outletsLoadError = 'Tidak ada outlet di database. Jalankan setupBaru di Apps Script, atau tambah outlet via menu "Titik Lokasi Outlet".';
     }
     if (rSelect && outletList.length > 0) {
       rSelect.innerHTML = outletList.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
     }
 
     renderOutletsTable();
-    // Update geofence banner sekarang outlets sudah ada
     window.checkGpsDistance && window.checkGpsDistance();
   } catch (err) {
     console.error('Failed loading outlets:', err);
     AppState.outlets = [];
-    AppState.outletsLoadError = (err && err.message) ? err.message : 'Kesalahan koneksi saat memuat outlet.';
+    AppState.outletsLoadError = (err && err.message) ? err.message : 'Kesalahan koneksi saat memuat outlet. Periksa internet & pastikan API_URL di config.js benar.';
     window.checkGpsDistance && window.checkGpsDistance();
   }
+};
+
+// === DIAGNOSTIC TOOL: Cek koneksi API & outlet ===
+// Bisa dipanggil dari tombol di halaman presensi atau dari console browser
+window.diagnosePresensi = async () => {
+  const results = [];
+  const log = (msg) => { results.push(msg); console.log('[DIAGNOSE]', msg); };
+
+  log('=== DIAGNOSTIC PRESENSI ===');
+  log('Waktu: ' + new Date().toString());
+
+  // Check 1: config.js
+  const cfg = window.TD_CONFIG || {};
+  log('1. Config TD_CONFIG: ' + (cfg ? 'OK' : 'TIDAK DITEMUKAN'));
+  log('   API_URL: ' + (cfg.API_URL || '(kosong)'));
+  if (!cfg.API_URL) {
+    log('   ❌ API_URL belum diisi! Buka config.js, isi dengan link /exec dari Apps Script.');
+  } else if (cfg.API_URL.indexOf('GANTI_DENGAN') >= 0) {
+    log('   ❌ API_URL masih placeholder! Ganti dengan link /exec asli dari Apps Script Anda.');
+  } else if (cfg.API_URL.indexOf('script.google.com') < 0) {
+    log('   ❌ API_URL tidak valid! Harus berformat https://script.google.com/macros/s/.../exec');
+  } else {
+    log('   ✅ API_URL terlihat valid.');
+  }
+
+  // Check 2: Token login
+  const token = localStorage.getItem('td_token');
+  log('2. Token login: ' + (token ? 'Ada (' + token.substring(0, 20) + '...)' : 'TIDAK ADA — silakan login dulu'));
+
+  // Check 3: currentUser
+  log('3. Current user: ' + (AppState.currentUser ? AppState.currentUser.name + ' (' + AppState.currentUser.nip + ')' : 'TIDAK ADA — silakan login'));
+
+  // Check 4: Test API /api/outlets
+  log('4. Test API /api/outlets...');
+  try {
+    const res = await fetch('/api/outlets');
+    log('   HTTP status: ' + res.status + ' ' + res.statusText);
+    if (res.ok) {
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : [];
+      log('   ✅ Berhasil! Jumlah outlet: ' + list.length);
+      if (list.length > 0) {
+        list.forEach(function (o, i) {
+          log('   Outlet ' + (i + 1) + ': ' + o.name + ' (id=' + o.id + ', lat=' + (o.lat || 'N/A') + ', lon=' + (o.lon || 'N/A') + ', radius=' + (o.radius_meters || 'N/A') + 'm)');
+        });
+      } else {
+        log('   ⚠️ Array kosong — sheet outlets mungkin belum diisi. Jalankan setupBaru di Apps Script.');
+      }
+    } else {
+      const errData = await res.json().catch(() => ({}));
+      log('   ❌ Gagal! Detail: ' + (errData.detail || errData.message || res.statusText));
+      if (res.status === 500) {
+        log('   Kemungkinan: Code.gs belum di-deploy ulang, atau sheet outlets belum dibuat.');
+      } else if (res.status === 401) {
+        log('   Kemungkinan: Token login expired. Logout & login kembali.');
+      }
+    }
+  } catch (err) {
+    log('   ❌ Error koneksi: ' + err.message);
+    log('   Kemungkinan: API_URL salah, internet mati, atau Apps Script tidak aktif.');
+  }
+
+  // Check 5: GPS status
+  log('5. GPS status: ' + (AppState.gpsOk ? 'AKTIF (' + AppState.deviceCoordinates.lat + ', ' + AppState.deviceCoordinates.lon + ')' : 'BELUM AKTIF'));
+  if (AppState.gpsLastError) log('   GPS error terakhir: ' + AppState.gpsLastError);
+
+  // Check 6: Outlets di AppState
+  log('6. Outlets di AppState: ' + (AppState.outlets ? AppState.outlets.length + ' outlet' : 'tidak ada'));
+  if (AppState.outletsLoadError) log('   Error: ' + AppState.outletsLoadError);
+
+  log('=== DIAGNOSTIC SELESAI ===');
+
+  // Tampilkan hasil di alert
+  const msg = results.join('\n');
+  try { alert(msg); } catch (e) { /* abaikan */ }
+  return results;
 };
 
 // Load Employees from API
@@ -1571,12 +1670,15 @@ window.checkGpsDistance = () => {
   const icon = document.getElementById('geofence-icon');
   if (!outletSelect || !banner || !text) return;
 
-  // === STATE: Outlet gagal dimuat — tampilkan error + tombol retry ===
+  // === STATE: Outlet gagal dimuat — tampilkan error + tombol retry + diagnosa ===
   if (AppState.outletsLoadError) {
     banner.className = 'geofence-alert geofence-invalid';
     text.innerHTML = `<strong>Gagal memuat daftar outlet:</strong> ${AppState.outletsLoadError}
-      <br><button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px;" onclick="window.retryLoadOutlets && window.retryLoadOutlets()">
+      <br><button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px; margin-right:4px;" onclick="window.retryLoadOutlets && window.retryLoadOutlets()">
         <i data-feather="refresh-cw" style="width:11px; height:11px;"></i> Coba Muat Ulang
+      </button>
+      <button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px; background:#eff6ff; color:#1e40af; border-color:#bfdbfe;" onclick="window.diagnosePresensi && window.diagnosePresensi()">
+        <i data-feather="activity" style="width:11px; height:11px;"></i> Diagnosa Masalah
       </button>`;
     if (window.feather) feather.replace();
     return;
