@@ -779,18 +779,22 @@ const loadOutlets = async () => {
       return;
     }
     const data = await res.json();
-    AppState.outlets = data;
+    // Pastikan data adalah array (kadang backend return object lain kalau error)
+    const outletList = Array.isArray(data) ? data : (data.body && Array.isArray(data.body) ? data.body : []);
+    AppState.outlets = outletList;
     AppState.outletsLoadError = '';
 
     // Populate presensi outlet select
     const pSelect = document.getElementById('presensi-outlet-select');
     const rSelect = document.getElementById('rep-form-outlet');
-    if (pSelect && Array.isArray(data) && data.length > 0) {
+    if (pSelect && outletList.length > 0) {
       pSelect.innerHTML = '<option value="">— Pilih outlet —</option>' + 
-        data.map(o => `<option value="${o.id}">${o.name}${o.radius_meters ? ' (Radius: ' + o.radius_meters + 'm)' : ''}</option>`).join('');
+        outletList.map(o => `<option value="${o.id}">${o.name}${o.radius_meters ? ' (Radius: ' + o.radius_meters + 'm)' : ''}</option>`).join('');
+    } else if (pSelect) {
+      pSelect.innerHTML = '<option value="">— Belum ada outlet —</option>';
     }
-    if (rSelect && Array.isArray(data) && data.length > 0) {
-      rSelect.innerHTML = data.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+    if (rSelect && outletList.length > 0) {
+      rSelect.innerHTML = outletList.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
     }
 
     renderOutletsTable();
