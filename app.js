@@ -142,28 +142,30 @@ const staggerViewCards = (view) => {
 // ==========================================
 // Hak akses panel per divisi
 // ==========================================
-// Super admin (OM) dan HRD membuka SEMUA panel. Divisi lain hanya panel yang relevan.
-// Ubah daftar di bawah untuk menyesuaikan. Server (Code.gs) memakai aturan yang sama.
-const FULL_ACCESS_DIVISIONS = ['OM', 'HRD'];
-const PAYROLL_DIVISIONS = ['OM', 'HRD', 'Finance'];
-// Divisi yang bisa approve/reject pengajuan cuti (lihat Code.gs LEAVE_APPROVERS)
-const LEAVE_APPROVER_DIVISIONS = ['OM', 'HRD', 'BM', 'HRGA'];
+// Super Admin (full akses semua panel): OM + PCD
+const FULL_ACCESS_DIVISIONS = ['OM', 'PCD'];
+const PAYROLL_DIVISIONS = ['OM', 'PCD', 'HRD', 'Finance'];
+// Divisi yang bisa approve/reject pengajuan cuti
+const LEAVE_APPROVER_DIVISIONS = ['OM', 'PCD', 'HRD', 'BM', 'HRGA'];
 const VIEW_ACCESS = {
   'dashboard': 'all',
   'presensi': 'all',
-  'daily-report': 'all',
+  'daily-report': 'all',       // semua bisa akses — BM lihat semua divisi, lainnya lihat sendiri (filter di backend)
   'payroll': 'all',            // karyawan biasa hanya melihat slip sendiri (butuh PIN)
   'chat': 'all',               // saluran dibatasi lagi di CHAT_CHANNEL_RULES
   'calendar': 'all',
   'leaves': 'all',             // semua karyawan bisa ajukan cuti & lihat pengajuan sendiri
   'profile': 'all',            // semua karyawan bisa edit profil sendiri
-  'employees': ['OM', 'HRD', 'Finance', 'BM', 'HRGA'],
-  // KPI: semua karyawan bisa lihat (data sendiri); admin lihat semua (dipisah di backend h_kpi_)
+  // Database Karyawan: hanya Super Admin + HRD + Finance + HRGA
+  'employees': ['OM', 'PCD', 'HRD', 'Finance', 'HRGA'],
+  // KPI: semua bisa buka panel — TAPI non-Super-Admin hanya lihat data PRIBADI (dipisah di backend h_kpi_)
   'kpi': 'all',
-  // Input Data Center: HANYA Super Admin (OM) — bisa edit semua data karyawan, gaji, KPI
-  'data-center': ['OM'],
-  'outlets': ['OM', 'HRD'],
-  'database': ['OM', 'HRD']
+  // Input Data Center: HANYA Super Admin (OM + PCD)
+  'data-center': ['OM', 'PCD'],
+  // Titik Lokasi Outlet: hanya Super Admin
+  'outlets': ['OM', 'PCD'],
+  // Database & Backup: hanya Super Admin
+  'database': ['OM', 'PCD']
 };
 const CHAT_CHANNEL_RULES = {
   '#general': null,
@@ -493,7 +495,7 @@ const syncRegisterDivisions = (type) => {
   const divSelect = document.getElementById('reg-division');
   if (!divSelect) return;
 
-  const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM"];
+  const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM", "PCD"];
   const opsDivs = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
 
   const list = (type === 'Management') ? mgmtDivs : opsDivs;
@@ -1075,7 +1077,7 @@ const populateDivisionDropdowns = () => {
   const empDivFilter = document.getElementById('emp-filter-division');
   if (!empDivFilter) return;
 
-  const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM"];
+  const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM", "PCD"];
   const opsDivs = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
 
   let html = '<option value="all">Semua Divisi</option>';
@@ -3099,7 +3101,7 @@ window.submitEditEmployee = async (e) => {
 };
 
 // Division dropdown options
-const DC_DIVISIONS_MGMT = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM"];
+const DC_DIVISIONS_MGMT = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM", "PCD"];
 const DC_DIVISIONS_OPS = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
 
 // Populate division dropdown based on selected type
