@@ -287,6 +287,7 @@ const loadAllAppData = async () => {
   await Promise.all(jobs);
   populateDivisionDropdowns();
   switchView('dashboard');
+  updateDashboardStats && updateDashboardStats();
   if (window.feather) feather.replace();
 };
 
@@ -722,7 +723,10 @@ const switchView = (viewName) => {
   // Modern UI: animate stat cards & stagger view cards
   if (activePanel) {
     staggerViewCards(activePanel);
-    if (viewName === 'dashboard') animateStatCards();
+    if (viewName === 'dashboard') {
+      animateStatCards();
+      updateDashboardStats && updateDashboardStats();
+    }
   }
 };
 
@@ -1198,17 +1202,85 @@ const initMockupCharts = () => {
 };
 
 // ================= DASHBOARD STREAM & STAFF RATINGS =================
+// Helper: apakah user saat ini bisa lihat semua data di dashboard (Super Admin)
+const isDashboardAdmin = (user = AppState.currentUser) => !!user && FULL_ACCESS_DIVISIONS.includes(user.division);
+
+// Update stat cards berdasarkan data user (pribadi untuk non-admin, semua untuk admin)
+const updateDashboardStats = () => {
+  if (!AppState.currentUser) return;
+  const u = AppState.currentUser;
+  const adminMode = isDashboardAdmin();
+
+  // Stat 1: Reports count
+  const reportsEl = document.getElementById('stat-reports-value');
+  if (reportsEl) {
+    let myReports = AppState.dailyReports || [];
+    if (!adminMode) {
+      myReports = myReports.filter(r => r.reporter_id === u.id);
+    }
+    reportsEl.textContent = myReports.length;
+  }
+
+  // Stat 2: Rating (pribadi untuk semua)
+  const ratingsEl = document.getElementById('stat-ratings-value');
+  const ratingsSubEl = document.getElementById('stat-ratings-subtitle');
+  if (ratingsEl) {
+    if (adminMode) {
+      // Admin: tampilkan rata-rata semua karyawan
+      const emps = AppState.employees || [];
+      const avgRating = emps.length > 0
+        ? (emps.reduce((sum, e) => sum + (e.rating || 0), 0) / emps.length).toFixed(1)
+        : '-';
+      ratingsEl.innerHTML = avgRating + ' <span>/ 5</span>';
+      if (ratingsSubEl) ratingsSubEl.textContent = '⭐ Rata-rata ' + emps.length + ' karyawan';
+    } else {
+      ratingsEl.innerHTML = (u.rating || 0) + ' <span>/ 5</span>';
+      if (ratingsSubEl) ratingsSubEl.textContent = '⭐ Rating pribadi Anda';
+    }
+  }
+
+  // Stat 3: Attendance rate (pribadi)
+  const attEl = document.getElementById('stat-attendance-value');
+  const attSubEl = document.getElementById('stat-attendance-subtitle');
+  if (attEl) {
+    let myLogs = AppState.attendanceLogs || [];
+    if (!adminMode && u.id) {
+      myLogs = myLogs.filter(a => a.employee_id === u.id);
+    }
+    const today = new Date().toISOString().split('T')[0];
+    const todayLogs = myLogs.filter(a => a.date === today);
+    if (adminMode) {
+      // Admin: tampilkan persentase kehadiran hari ini dari semua karyawan
+      const totalEmps = (AppState.employees || []).length;
+      const pct = totalEmps > 0 ? Math.round((todayLogs.length / totalEmps) * 100) : 0;
+      attEl.textContent = pct + '%';
+      if (attSubEl) attSubEl.textContent = '❤️ ' + todayLogs.length + ' dari ' + totalEmps + ' karyawan hadir hari ini';
+    } else {
+      // Personal: tampilkan jumlah hari hadir
+      attEl.textContent = myLogs.length;
+      if (attSubEl) attSubEl.textContent = '❤️ Total hari presensi Anda';
+    }
+  }
+};
+
 const renderDashboardReportsStream = (filterStatus = 'All') => {
   const container = document.getElementById('dashboard-reports-stream');
   if (!container) return;
 
   let reports = AppState.dailyReports;
+  // Non-Super-Admin: hanya tampilkan laporan sendiri di dashboard
+  if (!isDashboardAdmin() && AppState.currentUser) {
+    reports = reports.filter(r => r.reporter_id === AppState.currentUser.id);
+  }
   if (filterStatus !== 'All') {
     reports = reports.filter(r => r.status.toLowerCase() === filterStatus.toLowerCase());
   }
 
   if (reports.length === 0) {
-    container.innerHTML = `<p style="text-align:center; color:#94a3b8; font-size:12px; padding:20px;">Tidak ada aktivitas harian pada status ini.</p>`;
+    const msg = isDashboardAdmin()
+      ? 'Tidak ada aktivitas harian pada status ini.'
+      : 'Anda belum memiliki laporan harian. Buat laporan pertama Anda di menu Daily Report.';
+    container.innerHTML = `<p style="text-align:center; color:#94a3b8; font-size:12px; padding:20px;">${msg}</p>`;
     return;
   }
 
@@ -1231,10 +1303,10 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
 
     return `
       <div class="stream-item-row">
-        <img src="https://images.unsplash.com/photo-1534528741775?w=100&auto=format&fit=crop&q=80" class="stream-avatar" alt="Avatar">
+        <img src="${r.reporter_avatar || 'https://images.unsplash.com/photo-1534528741775?w=100&auto=format&fit=crop&q=80'}" class="stream-avatar" alt="Avatar">
         <div class="stream-author-outlet">
           <h5>${r.reporter_name}</h5>
-          <p>${r.outlet_name || 'Outlet Pusat'}</p>
+          <p>${r.outlet_name || 'Outlet'}</p>
           <span style="font-size:10px; color:#94a3b8;">${r.division}</span>
         </div>
         <div>
@@ -1268,6 +1340,14 @@ const filterDashboardReports = (status, btn) => {
 
 // Render Staff Ratings Cards (Exact Match Georgy, Emma, Akash from Mockup)
 const renderStaffRatingsCards = (staffList) => {
+  // Staff ratings (leaderboard) hanya tampil untuk Super Admin di dashboard
+  if (!isDashboardAdmin()) {
+    const container = document.getElementById('dashboard-staff-ratings-list');
+    if (container) {
+      container.innerHTML = '<p style="text-align:center; color:#94a3b8; font-size:12px; padding:20px;">Leaderboard staff hanya tersedia untuk Super Admin.</p>';
+    }
+    return;
+  }
   const container = document.getElementById('dashboard-staff-ratings-list');
   const kpiLeader = document.getElementById('kpi-leaderboard-list');
   if (!container && !kpiLeader) return;
