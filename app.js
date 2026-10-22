@@ -693,6 +693,10 @@ const switchView = (viewName) => {
     stopCamera();
     loadLeaveBalance && loadLeaveBalance();
     loadLeaveRequests && loadLeaveRequests();
+  } else if (viewName === 'chat') {
+    // Auto-load chat messages saat masuk view chat
+    stopCamera();
+    loadChatMessages && loadChatMessages(AppState.activeChatChannel || '#general');
   } else if (viewName === 'data-center') {
     // Input Data Center — load employees & outlets
     stopCamera();
@@ -2310,41 +2314,70 @@ const renderKpiTable = (stats) => {
 };
 
 // ================= CHAT ROOM INTERNAL =================
-const switchChatChannel = (channel, el) => {
+// Expose to window so inline onclick/onsubmit di HTML bisa panggil
+window.switchChatChannel = (channel, el) => {
   if (!canAccessChannel(channel)) {
     showToast('Anda tidak memiliki akses ke saluran ini.', 'warning');
     return;
   }
   AppState.activeChatChannel = channel;
   document.querySelectorAll('.chat-channel-item').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('active-chat-channel-name').textContent = channel;
+  if (el) el.classList.add('active');
+  const nameEl = document.getElementById('active-chat-channel-name');
+  if (nameEl) nameEl.textContent = channel;
   loadChatMessages(channel);
 };
+const switchChatChannel = window.switchChatChannel;
 
-const loadChatMessages = async (channel = AppState.activeChatChannel) => {
+const loadChatMessages = async (channel) => {
+  const ch = channel || AppState.activeChatChannel || '#general';
+  const container = document.getElementById('chat-messages-stream');
+  if (container) {
+    container.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:20px; font-size:12px;">Memuat pesan...</div>';
+  }
   try {
-    const res = await fetch(`/api/chat/messages?channel=${encodeURIComponent(channel)}`);
-    if (!res.ok) return;
+    const res = await fetch(`/api/chat/messages?channel=${encodeURIComponent(ch)}`);
+    if (!res.ok) {
+      let errMsg = 'Gagal memuat pesan (HTTP ' + res.status + ')';
+      try {
+        const errData = await res.json();
+        if (errData.detail) errMsg = errData.detail;
+      } catch (e) { /* ignore */ }
+      if (container) {
+        container.innerHTML = `<div style="text-align:center; color:#ef4444; padding:20px; font-size:12px;">⚠️ ${errMsg}<br><button type="button" class="btn-secondary" style="margin-top:8px; padding:5px 10px; font-size:11px;" onclick="window.loadChatMessages && window.loadChatMessages('${ch}')">Coba Lagi</button></div>`;
+      }
+      return;
+    }
     const data = await res.json();
     renderChatMessages(data);
   } catch (err) {
     console.error('Failed loading chat:', err);
+    if (container) {
+      container.innerHTML = `<div style="text-align:center; color:#ef4444; padding:20px; font-size:12px;">⚠️ Kesalahan koneksi. <button type="button" class="btn-secondary" style="margin-top:8px; padding:5px 10px; font-size:11px;" onclick="window.loadChatMessages && window.loadChatMessages('${ch}')">Coba Lagi</button></div>`;
+    }
   }
 };
+window.loadChatMessages = loadChatMessages;
 
 const renderChatMessages = (messages) => {
   const container = document.getElementById('chat-messages-stream');
   if (!container) return;
 
+  if (!messages || messages.length === 0) {
+    container.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:40px 20px; font-size:13px;">💬 Belum ada pesan di saluran ini.<br>Mulai percakapan dengan menulis pesan di bawah.</div>';
+    return;
+  }
+
+  const myId = AppState.currentUser ? AppState.currentUser.id : '';
   container.innerHTML = messages.map(m => {
-    const isMe = m.sender_id === AppState.currentUser.id;
+    const isMe = m.sender_id === myId;
+    const time = m.timestamp ? String(m.timestamp).split(' ')[1] || m.timestamp : '';
     return `
       <div class="chat-message-bubble ${isMe ? 'me' : ''}">
         <div class="chat-bubble-content">
-          <div class="chat-sender-info">${m.sender_name} (${m.sender_division})</div>
-          <div>${m.message}</div>
-          <div class="chat-timestamp">${m.timestamp}</div>
+          <div class="chat-sender-info">${m.sender_name || 'Anon'} (${m.sender_division || '-'})</div>
+          <div>${escapeHtml(m.message || '')}</div>
+          <div class="chat-timestamp">${time}</div>
         </div>
       </div>
     `;
@@ -2353,11 +2386,19 @@ const renderChatMessages = (messages) => {
   container.scrollTop = container.scrollHeight;
 };
 
-const sendChatMessage = async (e) => {
-  e.preventDefault();
+window.sendChatMessage = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
   const input = document.getElementById('chat-text-input');
+  if (!input) return;
   const text = input.value.trim();
   if (!text) return;
+  if (!AppState.currentUser) {
+    showToast('Sesi login tidak ditemukan. Silakan login kembali.', 'error');
+    return;
+  }
+
+  const sendBtn = document.getElementById('chat-send-btn');
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Mengirim...'; }
 
   try {
     const res = await fetch('/api/chat/messages', {
@@ -2372,14 +2413,25 @@ const sendChatMessage = async (e) => {
         message: text
       })
     });
+    const data = await res.json();
     if (res.ok) {
       input.value = '';
       await loadChatMessages(AppState.activeChatChannel);
+    } else {
+      showToast(data.detail || data.message || 'Gagal mengirim pesan.', 'error');
     }
   } catch (err) {
-    showToast('Gagal mengirim pesan', 'error');
+    showToast('Gagal mengirim pesan. Periksa koneksi internet.', 'error');
+    console.error('Chat send error:', err);
+  } finally {
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.innerHTML = '<i data-feather="send" style="width:14px; height:14px;"></i>';
+      if (window.feather) feather.replace();
+    }
   }
 };
+const sendChatMessage = window.sendChatMessage;
 
 // ================= KALENDER & AGENDA =================
 const loadCalendarEvents = async () => {

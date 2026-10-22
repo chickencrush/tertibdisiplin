@@ -1870,9 +1870,12 @@ body[data-access="staff"] .topbar-right .search-pill { display: none; }
   .topbar-right { flex: 1 1 100%; width: 100%; gap: 8px; flex-wrap: nowrap; justify-content: flex-end; min-width: 0; }
   .topbar-right .select-filter#filter-period-select, .topbar-right .search-pill { display: none; }
   .topbar-right .select-filter { flex: 1 1 auto; min-width: 0; max-width: none; font-size: 12px; }
-  .user-meta, .user-profile-pill > svg, .user-profile-pill > i { display: none; }
-  .user-profile-pill { padding: 4px; gap: 0; }
-  .btn-logout { display: none; }
+  /* Di mobile: tetap tampilkan nama profil, tapi sembunyikan role & chevron */
+  .user-role-label, .user-profile-pill > svg, .user-profile-pill > i { display: none; }
+  .user-name-label { font-size: 12px; max-width: 100px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .user-profile-pill { padding: 4px 8px 4px 4px; gap: 6px; }
+  .btn-logout span { display: none; }
+  .btn-logout { padding: 8px 10px; }
 
   .content-body { padding: 12px; }
   .modern-card { padding: 14px; border-radius: 18px; }
@@ -1957,8 +1960,8 @@ body { overflow: hidden; }
   .topbar-right .search-pill, .topbar-right #filter-period-select { display: none; }
 }
 @media (max-width: 1560px) {
-  .user-meta, .user-profile-pill > svg, .user-profile-pill > i { display: none; }
-  .user-profile-pill { padding: 4px; gap: 0; }
+  .user-role-label, .user-profile-pill > svg, .user-profile-pill > i { display: none; }
+  .user-profile-pill { padding: 4px 8px 4px 4px; gap: 6px; }
   .btn-logout span { display: none; }
   .btn-logout { padding: 9px 11px; }
 }

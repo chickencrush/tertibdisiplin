@@ -970,19 +970,19 @@
           <!-- Channels List -->
           <div class="chat-channels-sidebar">
             <h4 style="font-size:12px; text-transform:uppercase; color:#94a3b8; margin-bottom:12px;">Saluran Divisi</h4>
-            <div class="chat-channel-item active" onclick="switchChatChannel('#general', this)">
+            <div class="chat-channel-item active" onclick="window.switchChatChannel && window.switchChatChannel('#general', this)">
               <i data-feather="hash" style="width:14px; height:14px;"></i> #general-announcements
             </div>
-            <div class="chat-channel-item" onclick="switchChatChannel('#management', this)">
+            <div class="chat-channel-item" onclick="window.switchChatChannel && window.switchChatChannel('#management', this)">
               <i data-feather="hash" style="width:14px; height:14px;"></i> #management-executive
             </div>
-            <div class="chat-channel-item" onclick="switchChatChannel('#kitchen-bar', this)">
+            <div class="chat-channel-item" onclick="window.switchChatChannel && window.switchChatChannel('#kitchen-bar', this)">
               <i data-feather="hash" style="width:14px; height:14px;"></i> #kitchen-and-bar
             </div>
-            <div class="chat-channel-item" onclick="switchChatChannel('#service-crew', this)">
+            <div class="chat-channel-item" onclick="window.switchChatChannel && window.switchChatChannel('#service-crew', this)">
               <i data-feather="hash" style="width:14px; height:14px;"></i> #service-and-cashier
             </div>
-            <div class="chat-channel-item" onclick="switchChatChannel('#logistik', this)">
+            <div class="chat-channel-item" onclick="window.switchChatChannel && window.switchChatChannel('#logistik', this)">
               <i data-feather="hash" style="width:14px; height:14px;"></i> #logistik-gudang
             </div>
           </div>
@@ -1001,9 +1001,9 @@
               <!-- Dynamically loaded messages -->
             </div>
 
-            <form class="chat-input-bar" onsubmit="sendChatMessage(event)">
-              <input type="text" class="form-control" id="chat-text-input" placeholder="Tulis pesan ke saluran divisi..." required>
-              <button type="submit" class="btn-primary">
+            <form class="chat-input-bar" onsubmit="window.sendChatMessage && window.sendChatMessage(event)">
+              <input type="text" class="form-control" id="chat-text-input" placeholder="Tulis pesan ke saluran divisi..." required autocomplete="off">
+              <button type="submit" class="btn-primary" id="chat-send-btn">
                 <i data-feather="send"></i>
               </button>
             </form>
