@@ -1621,15 +1621,72 @@ window.checkGpsDistance = () => {
     return;
   }
 
+  // === AUTO-DETECT: Cari outlet terdekat yang dalam radius ===
+  // Bandingkan jarak ke semua outlet, pilih yang terdekat
+  let nearestOutlet = null;
+  let nearestDist = Infinity;
+  let nearestValid = false;
+  AppState.outlets.forEach(function (o) {
+    if (typeof o.lat !== 'number' || typeof o.lon !== 'number') return;
+    const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, o.lat, o.lon);
+    if (d < nearestDist) {
+      nearestDist = d;
+      nearestOutlet = o;
+      nearestValid = d <= (o.radius_meters || 100);
+    }
+  });
+
+  // Kalau ada outlet terdekat yang dalam radius DAN berbeda dari yang dipilih,
+  // auto-select outlet terdekat itu di dropdown
+  if (nearestOutlet && nearestValid && nearestOutlet.id !== outletSelect.value) {
+    outletSelect.value = nearestOutlet.id;
+    // Update outlet reference ke yang baru dipilih
+    const autoOutlet = nearestOutlet;
+    banner.className = 'geofence-alert geofence-valid';
+    text.innerHTML = `<strong>📍 Auto-Terdeteksi di Lokasi:</strong> ${autoOutlet.name} (${nearestDist} meter)
+      <br><span style="font-size:11px; opacity:0.8;">Outlet terdekat terpilih otomatis berdasarkan GPS Anda.</span>`;
+    return;
+  }
+
+  // Kalau outlet yang dipilih manual punya lat/lon, hitung jaraknya
   const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, outlet.lat, outlet.lon);
   const isValid = dist <= outlet.radius_meters;
 
   if (isValid) {
-    banner.className = 'geofence-alert geofence-valid';
-    text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m) — <strong>Valid Untuk Presensi</strong>`;
+    // Cek apakah ada outlet lain yang lebih dekat
+    let closerOutlet = null;
+    let closerDist = dist;
+    AppState.outlets.forEach(function (o) {
+      if (typeof o.lat !== 'number' || typeof o.lon !== 'number') return;
+      if (o.id === outlet.id) return;
+      const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, o.lat, o.lon);
+      if (d < closerDist && d <= (o.radius_meters || 100)) {
+        closerDist = d;
+        closerOutlet = o;
+      }
+    });
+
+    if (closerOutlet) {
+      banner.className = 'geofence-alert geofence-valid';
+      text.innerHTML = `<strong>Tervalidasi di ${outlet.name}:</strong> ${dist} meter (Radius: ${outlet.radius_meters}m).
+        <br><span style="font-size:11px; opacity:0.8;">💡 Anda juga dekat dengan <strong>${closerOutlet.name}</strong> (${closerDist}m). <a href="javascript:void(0)" style="color:inherit; text-decoration:underline;" onclick="document.getElementById('presensi-outlet-select').value='${closerOutlet.id}'; window.checkGpsDistance();">Pilih ${closerOutlet.name}</a></span>`;
+    } else {
+      banner.className = 'geofence-alert geofence-valid';
+      text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m) — <strong>Valid Untuk Presensi</strong>`;
+    }
   } else {
-    banner.className = 'geofence-alert geofence-invalid';
-    text.innerHTML = `<strong>Di Luar Radius:</strong> Anda berada ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m). <em>Presensi akan ditandai "Menunggu Approval" atasan.</em>`;
+    // User di luar radius outlet yang dipilih — cek apakah ada outlet lain yang dalam radius
+    if (nearestOutlet && nearestValid) {
+      banner.className = 'geofence-alert geofence-warning';
+      text.innerHTML = `<strong>Anda berada di ${nearestOutlet.name}:</strong> ${nearestDist} meter (Radius: ${nearestOutlet.radius_meters}m).
+        <br>Outlet yang dipilih (${outlet.name}) berjarak ${dist} meter — di luar radius.
+        <br><a href="javascript:void(0)" style="color:inherit; text-decoration:underline; font-weight:700;" onclick="document.getElementById('presensi-outlet-select').value='${nearestOutlet.id}'; window.checkGpsDistance();">📍 Pilih ${nearestOutlet.name} secara otomatis</a>`;
+    } else {
+      banner.className = 'geofence-alert geofence-invalid';
+      text.innerHTML = `<strong>Di Luar Radius:</strong> Anda berada ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m).
+        <br><span style="font-size:11px; opacity:0.8;">Outlet terdekat: ${nearestOutlet ? nearestOutlet.name + ' (' + nearestDist + 'm)' : 'tidak ditemukan'}.</span>
+        <br><em>Presensi akan ditandai "Menunggu Approval" atasan.</em>`;
+    }
   }
 };
 const checkGpsDistance = window.checkGpsDistance;
