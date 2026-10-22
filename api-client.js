@@ -44,7 +44,8 @@
 
   function callApi(payload, attempt) {
     var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 90000) : null;
+    // Timeout diperpendek: 30s (dari 90s) — kalau Apps Script lambat, lebih cepat fail
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 30000) : null;
     return origFetch(cfg.API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -59,7 +60,7 @@
       catch (e) { return { status: 502, body: { detail: 'Server tidak membalas dengan benar. Periksa link API_URL di config.js dan pengaturan Deploy Apps Script (Who has access: Anyone).' } }; }
     }).catch(function (err) {
       if (timer) clearTimeout(timer);
-      // Apps Script kadang lambat saat "bangun" pertama kali: coba ulang sekali untuk permintaan baca
+      // Retry sekali untuk GET (Apps Script kadang "bangun" lambat)
       if (attempt < 1 && payload.method === 'GET') return callApi(payload, attempt + 1);
       var offline = typeof navigator !== 'undefined' && navigator.onLine === false;
       return { status: 503, body: { detail: offline ? 'Tidak ada koneksi internet.' : 'Gagal menghubungi server. Periksa koneksi lalu coba lagi.' } };

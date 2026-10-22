@@ -1,12 +1,14 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v26';  // bumped v8 → v9 (setupAwal error fix + setupLeaveSheetOnly)
+const CACHE_NAME = 'tertib-disiplin-v27';  // performance optimization
+// Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
-  './manifest.json', './icons/logo.png', './icons/icon-192.png'
+  './manifest.json', './icons/logo.png'
 ];
 
 self.addEventListener('install', (event) => {
+  // Skip waiting agar SW baru langsung aktif
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => Promise.allSettled(SHELL.map((u) => cache.add(u))))
   );
@@ -14,6 +16,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  // Hapus cache lama + klaim client langsung
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
   );
@@ -23,18 +26,37 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  // Hanya file milik aplikasi ini; panggilan ke Apps Script / CDN tidak disentuh
+  // Hanya cache GET request dari same-origin
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
+  // Strategy: Network-first untuk HTML/JS/CSS (selalu ambil versi terbaru)
+  // Cache-first untuk gambar & font
+  if (req.destination === 'document' || req.destination === 'script' || req.destination === 'style') {
+    event.respondWith(
+      fetch(req, { cache: 'no-cache' })
+        .then((res) => {
+          if (res && res.status === 200 && res.type === 'basic') {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Cache-first untuk gambar/icon/font
   event.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res && res.status === 200 && res.type === 'basic') {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(req, copy));
+    caches.match(req).then((cached) => {
+      const fetchPromise = fetch(req).then((response) => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
         }
-        return res;
-      })
-      .catch(() => caches.match(req).then((hit) => hit || (req.mode === 'navigate' ? caches.match('./index.html') : undefined)))
+        return response;
+      }).catch(() => cached);
+      return cached || fetchPromise;
+    })
   );
 });

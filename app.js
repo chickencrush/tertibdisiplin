@@ -273,22 +273,40 @@ const showLoginError = (msg) => {
 // ==========================================
 // Authentication Gate & Session Management
 // ==========================================
-// Muat data aplikasi (hanya setelah login) - hanya yang boleh dilihat peran ini, dan paralel agar cepat
+// Muat data aplikasi (hanya setelah login)
+// Optimized: load outlets in parallel, skip non-essential data on first load
+// ==========================================
 const loadAllAppData = async () => {
   applyAccessControl();
-  await loadOutlets();
+
+  // Tahap 1: Load critical data secara paralel (outlets + reports + attendance)
+  const criticalJobs = [
+    loadOutlets(),
+    loadDailyReports(),
+    loadAttendanceLogs()
+  ];
+  // Load payslips & calendar in background (tidak block dashboard)
+  const backgroundJobs = [loadPayslips(), loadCalendarEvents()];
+  if (canAccessView('employees')) criticalJobs.push(loadEmployees());
+  if (canAccessView('kpi')) backgroundJobs.push(loadKpiSummary());
+  backgroundJobs.push(loadLeaveBalance());
+  backgroundJobs.push(loadLeaveRequests());
+
+  // Tunggu critical data dulu (untuk render dashboard cepat)
+  await Promise.all(criticalJobs);
+
   populateRegisterOutlets();
-  const jobs = [loadDailyReports(), loadAttendanceLogs(), loadPayslips(), loadCalendarEvents()];
-  if (canAccessView('employees')) jobs.push(loadEmployees());
-  if (canAccessView('kpi')) jobs.push(loadKpiSummary());
-  // Always load leave balance (every employee has cuti balance) & requests
-  jobs.push(loadLeaveBalance());
-  jobs.push(loadLeaveRequests());
-  await Promise.all(jobs);
   populateDivisionDropdowns();
   switchView('dashboard');
   updateDashboardStats && updateDashboardStats();
   if (window.feather) feather.replace();
+
+  // Tahap 2: Load non-critical data di background (user sudah bisa lihat dashboard)
+  Promise.all(backgroundJobs).then(() => {
+    // Refresh dashboard stats setelah semua data tersedia
+    updateDashboardStats && updateDashboardStats();
+    if (window.feather) feather.replace();
+  }).catch(err => console.warn('Background load error:', err));
 };
 
 const initAuthSession = () => {
@@ -601,12 +619,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Cek sesi login, data dimuat hanya jika sudah login
   const isLoggedIn = initAuthSession();
-  if (isLoggedIn) await loadAllAppData();
+  if (isLoggedIn) {
+    // Load data critical dulu, jangan tunggu chart init
+    await loadAllAppData();
+  }
 
-  // Initialize mockup charts (dilewati bila pustaka grafik gagal dimuat)
-  if (window.Chart) initMockupCharts();
+  // Initialize mockup charts (di background, tidak block UI)
+  if (window.Chart) {
+    requestIdleCallback ? requestIdleCallback(() => initMockupCharts()) : setTimeout(initMockupCharts, 100);
+  }
 
-  // Populate UI dropdowns
+  // Populate UI dropdowns (di background)
   populateDivisionDropdowns();
 
   if (window.feather) feather.replace();
