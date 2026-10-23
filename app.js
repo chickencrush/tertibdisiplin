@@ -1861,21 +1861,28 @@ window.checkGpsDistance = () => {
     return;
   }
 
-  // Outlet may be from public endpoint (no lat/lon) — skip client-side check
-  if (typeof outlet.lat !== 'number' || typeof outlet.lon !== 'number') {
+  // Pastikan lat/lon adalah number (parse kalau string)
+  const parseLat = parseFloat(outlet.lat);
+  const parseLon = parseFloat(outlet.lon);
+  if (isNaN(parseLat) || isNaN(parseLon)) {
     banner.className = 'geofence-alert geofence-warning';
-    text.innerHTML = `<strong>${outlet.name}</strong> dipilih. Validasi radius akan dilakukan di server saat presensi.`;
+    text.innerHTML = `<strong>${outlet.name}</strong> dipilih. Koordinat GPS outlet belum lengkap. Validasi radius akan dilakukan di server.`;
     return;
   }
+  // Gunakan nilai yang sudah diparse
+  outlet.lat = parseLat;
+  outlet.lon = parseLon;
 
   // === AUTO-DETECT: Cari outlet terdekat yang dalam radius ===
-  // Bandingkan jarak ke semua outlet, pilih yang terdekat
   let nearestOutlet = null;
   let nearestDist = Infinity;
   let nearestValid = false;
   AppState.outlets.forEach(function (o) {
-    if (typeof o.lat !== 'number' || typeof o.lon !== 'number') return;
-    const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, o.lat, o.lon);
+    const oLat = parseFloat(o.lat);
+    const oLon = parseFloat(o.lon);
+    if (isNaN(oLat) || isNaN(oLon)) return;
+    o.lat = oLat; o.lon = oLon; // update supaya konsisten
+    const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, oLat, oLon);
     if (d < nearestDist) {
       nearestDist = d;
       nearestOutlet = o;
