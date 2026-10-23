@@ -3846,9 +3846,184 @@ const openLightbox = (imgUrl, caption) => {
   openModal('modal-lightbox');
 };
 
-const showNotificationCenter = () => {
-  alert("🔔 Pusat Notifikasi Terintegrasi:\n- 3 Laporan Berstatus 'Hold' Memerlukan Tindak Lanjut\n- Briefing Pagi Seluruh Cabang Jam 09:00 WIB\n- 50 Slip Gaji Online Telah Terdistribusi ke Akun Karyawan");
+// === NOTIFICATION CENTER (real data) ===
+window.showNotificationCenter = () => {
+  const u = AppState.currentUser;
+  if (!u) return;
+
+  const notifications = [];
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+
+  // 1. Cek laporan dengan status Hold
+  const holdReports = (AppState.dailyReports || []).filter(r => r.status === 'Hold');
+  if (holdReports.length > 0) {
+    const myHold = isDashboardAdmin() ? holdReports : holdReports.filter(r => r.reporter_id === u.id);
+    if (myHold.length > 0) {
+      notifications.push({
+        icon: '⚠️',
+        title: myHold.length + ' Laporan Berstatus Hold',
+        desc: myHold.slice(0, 3).map(r => '• ' + r.title).join('\n') + (myHold.length > 3 ? '\n• ... dan ' + (myHold.length - 3) + ' lainnya' : ''),
+        time: 'Baru saja',
+        color: '#f59e0b',
+        action: 'daily-report'
+      });
+    }
+  }
+
+  // 2. Cek presensi hari ini — belum presensi masuk
+  const todayLogs = (AppState.attendanceLogs || []).filter(a => a.date === today);
+  const myTodayLog = todayLogs.find(a => a.employee_id === u.id);
+  if (!myTodayLog) {
+    const hour = now.getHours();
+    if (hour >= 7 && hour <= 23) {
+      notifications.push({
+        icon: '⏰',
+        title: 'Anda Belum Presensi Masuk Hari Ini',
+        desc: 'Klik untuk melakukan presensi GPS & selfie.',
+        time: 'Sekarang',
+        color: '#ef4444',
+        action: 'presensi'
+      });
+    }
+  } else if (!myTodayLog.check_out_time) {
+    // Sudah presensi masuk tapi belum pulang
+    const checkInTime = myTodayLog.check_in_time ? myTodayLog.check_in_time.split(' ')[1] : '';
+    notifications.push({
+      icon: '📍',
+      title: 'Sudah Presensi Masuk',
+      desc: 'Jam masuk: ' + checkInTime + '. Jangan lupa presensi pulang sebelum pulang.',
+      time: checkInTime,
+      color: '#10b981',
+      action: 'presensi'
+    });
+  }
+
+  // 3. Cek pengajuan cuti yang perlu di-approve (untuk approver)
+  if (LEAVE_APPROVER_DIVISIONS.includes(u.division)) {
+    const pendingLeaves = (AppState.leaveRequests || []).filter(l => l.status === 'Pending' && l.employee_id !== u.id);
+    if (pendingLeaves.length > 0) {
+      notifications.push({
+        icon: '📋',
+        title: pendingLeaves.length + ' Pengajuan Cuti Menunggu Approval',
+        desc: pendingLeaves.slice(0, 3).map(l => '• ' + l.employee_name + ' — ' + l.type + ' (' + l.days + ' hari)').join('\n') + (pendingLeaves.length > 3 ? '\n• ... dan ' + (pendingLeaves.length - 3) + ' lainnya' : ''),
+        time: 'Baru saja',
+        color: '#8b5cf6',
+        action: 'leaves'
+      });
+    }
+  }
+
+  // 4. Cek status pengajuan cuti sendiri yang baru di-approve/reject
+  const myLeaves = (AppState.leaveRequests || []).filter(l => l.employee_id === u.id && (l.status === 'Approved' || l.status === 'Rejected'));
+  const recentLeaves = myLeaves.filter(l => {
+    if (!l.updated_at) return false;
+    const updated = new Date(l.updated_at);
+    const diff = (now - updated) / (1000 * 60 * 60 * 24);
+    return diff < 3; // dalam 3 hari terakhir
+  });
+  recentLeaves.slice(0, 3).forEach(l => {
+    notifications.push({
+      icon: l.status === 'Approved' ? '✅' : '❌',
+      title: 'Pengajuan Cuti ' + (l.status === 'Approved' ? 'Disetujui' : 'Ditolak'),
+      desc: l.type + ' (' + l.start_date + ' s/d ' + l.end_date + ')' + (l.approver_note ? '\nCatatan: ' + l.approver_note : ''),
+      time: l.updated_at ? l.updated_at.split('T')[0] : '',
+      color: l.status === 'Approved' ? '#10b981' : '#ef4444',
+      action: 'leaves'
+    });
+  });
+
+  // 5. Cek slip gaji baru (yang belum dibaca — sederhana: tampilkan yang paid bulan ini)
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const newSlips = (AppState.payslips || []).filter(s =>
+    s.employee_id === u.id && s.period_month === currentMonth && s.period_year === currentYear
+  );
+  if (newSlips.length > 0) {
+    notifications.push({
+      icon: '💰',
+      title: 'Slip Gaji ' + newSlips[0].period_label + ' Tersedia',
+      desc: 'Slip gaji Anda untuk periode ' + newSlips[0].period_label + ' sudah dapat dilihat. Buka dengan PIN 6-digit.',
+      time: newSlips[0].paid_date || '',
+      color: '#0ea5e9',
+      action: 'payroll'
+    });
+  }
+
+  // 6. Cek sisa cuti yang menipis
+  if (AppState.leaveBalance && AppState.leaveBalance.remaining !== undefined) {
+    if (AppState.leaveBalance.remaining <= 3 && AppState.leaveBalance.remaining > 0) {
+      notifications.push({
+        icon: '🔔',
+        title: 'Sisa Cuti Tahunan Menipis',
+        desc: 'Sisa cuti Anda tinggal ' + AppState.leaveBalance.remaining + ' hari dari ' + AppState.leaveBalance.entitlement + ' hari/tahun.',
+        time: '',
+        color: '#f59e0b',
+        action: 'leaves'
+      });
+    }
+  }
+
+  // Render notification panel
+  renderNotificationPanel(notifications);
 };
+
+const renderNotificationPanel = (notifications) => {
+  // Hapus panel lama kalau ada
+  const oldPanel = document.getElementById('notification-panel');
+  if (oldPanel) oldPanel.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'notification-panel';
+  panel.style.cssText = 'position:fixed; top:70px; right:20px; width:380px; max-width:90vw; max-height:70vh; overflow-y:auto; background:#fff; border-radius:18px; box-shadow:0 16px 40px rgba(0,0,0,0.15); z-index:9999; animation:fadeInUp 0.3s ease; border:1px solid #e2e8f0;';
+
+  if (notifications.length === 0) {
+    panel.innerHTML = `
+      <div style="padding:20px; text-align:center;">
+        <div style="font-size:36px; margin-bottom:8px;">✅</div>
+        <p style="font-size:14px; font-weight:700; color:var(--text-dark); margin:0 0 4px 0;">Tidak Ada Notifikasi</p>
+        <p style="font-size:12px; color:#94a3b8; margin:0;">Semua caught up. Kerja bagus!</p>
+      </div>
+    `;
+  } else {
+    let html = '<div style="padding:14px 16px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">';
+    html += '<strong style="font-size:14px; color:var(--burgundy-dark);">🔔 Notifikasi (' + notifications.length + ')</strong>';
+    html += '<button onclick="document.getElementById(\'notification-panel\').remove()" style="background:none; border:none; font-size:18px; cursor:pointer; color:#94a3b8;">&times;</button>';
+    html += '</div>';
+    html += '<div style="padding:4px 0;">';
+    notifications.forEach(n => {
+      html += `
+        <div onclick="document.getElementById('notification-panel').remove(); switchView('${n.action}');" style="padding:12px 16px; border-bottom:1px solid #f1f5f9; cursor:pointer; transition:background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
+          <div style="display:flex; gap:10px; align-items:flex-start;">
+            <div style="font-size:20px; flex-shrink:0;">${n.icon}</div>
+            <div style="flex:1; min-width:0;">
+              <p style="font-size:12.5px; font-weight:700; color:var(--text-dark); margin:0 0 2px 0;">${n.title}</p>
+              <p style="font-size:11px; color:#64748b; margin:0; white-space:pre-line; line-height:1.4;">${n.desc}</p>
+              ${n.time ? '<p style="font-size:10px; color:#94a3b8; margin:4px 0 0 0;">' + n.time + '</p>' : ''}
+            </div>
+            <div style="width:8px; height:8px; border-radius:50%; background:${n.color}; flex-shrink:0; margin-top:4px;"></div>
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+    panel.innerHTML = html;
+  }
+
+  document.body.appendChild(panel);
+
+  // Close saat klik di luar panel
+  setTimeout(() => {
+    document.addEventListener('click', function closeNotif(e) {
+      const p = document.getElementById('notification-panel');
+      if (p && !p.contains(e.target) && e.target.id !== 'btn-notification-trigger' && !e.target.closest('#btn-notification-trigger')) {
+        p.remove();
+        document.removeEventListener('click', closeNotif);
+      }
+    });
+  }, 100);
+};
+const showNotificationCenter = window.showNotificationCenter;
 
 const openSplModal = () => {
   const hours = prompt('Jumlah Jam Lembur yang diajukan:', '2');
