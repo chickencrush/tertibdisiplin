@@ -514,7 +514,8 @@ const syncRegisterDivisions = (type) => {
   const divSelect = document.getElementById('reg-division');
   if (!divSelect) return;
 
-  const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM", "PCD"];
+  // Registrasi mandiri: OM & PCD disembunyikan (hanya admin yang bisa set via Data Center)
+  const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security"];
   const opsDivs = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
 
   const list = (type === 'Management') ? mgmtDivs : opsDivs;
@@ -1104,7 +1105,8 @@ const populateDivisionDropdowns = () => {
   const empDivFilter = document.getElementById('emp-filter-division');
   if (!empDivFilter) return;
 
-  const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM", "PCD"];
+  // Registrasi mandiri: OM & PCD disembunyikan (hanya admin yang bisa set via Data Center)
+  const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security"];
   const opsDivs = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
 
   let html = '<option value="all">Semua Divisi</option>';
@@ -2102,7 +2104,7 @@ window.submitAttendanceCheckOut = async () => {
       await new Promise(r => setTimeout(r, 500));
       waited += 500;
     }
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="log-out" style="width:14px; height:14px;"></i> PRESENSI PULANG (CHECK-OUT)'; if (window.feather) feather.replace(); }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="log-out" style="width:16px; height:16px;"></i> AMBIL SELFIE & PRESENSI PULANG'; if (window.feather) feather.replace(); }
     if (!AppState.gpsOk) {
       showToast('Lokasi GPS belum tersedia. Pastikan GPS aktif dan izin lokasi diberikan, lalu coba lagi.', 'warning');
       return;
@@ -2113,7 +2115,7 @@ window.submitAttendanceCheckOut = async () => {
   if (!AppState.cameraReady) {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Memulai kamera...'; }
     await window.startCamera();
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="log-out" style="width:14px; height:14px;"></i> PRESENSI PULANG (CHECK-OUT)'; if (window.feather) feather.replace(); }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="log-out" style="width:16px; height:16px;"></i> AMBIL SELFIE & PRESENSI PULANG'; if (window.feather) feather.replace(); }
   }
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengambil foto...'; }
   let selfieBase64 = captureSelfieSnapshot();
@@ -2122,7 +2124,7 @@ window.submitAttendanceCheckOut = async () => {
     selfieBase64 = await captureSelfieViaNativeCamera();
   }
   if (!selfieBase64) {
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="log-out" style="width:14px; height:14px;"></i> PRESENSI PULANG (CHECK-OUT)'; if (window.feather) feather.replace(); }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="log-out" style="width:16px; height:16px;"></i> AMBIL SELFIE & PRESENSI PULANG'; if (window.feather) feather.replace(); }
     showToast('Foto selfie wajib diambil untuk presensi pulang.', 'warning');
     return;
   }
@@ -2160,7 +2162,7 @@ window.submitAttendanceCheckOut = async () => {
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = '<i data-feather="log-out" style="width:14px; height:14px;"></i> PRESENSI PULANG (CHECK-OUT)';
+      submitBtn.innerHTML = '<i data-feather="log-out" style="width:16px; height:16px;"></i> AMBIL SELFIE & PRESENSI PULANG';
       if (window.feather) feather.replace();
     }
   }
