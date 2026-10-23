@@ -122,7 +122,7 @@
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
         <div class="form-group">
           <label class="form-label required">Tipe Akun</label>
-          <select class="form-control" id="reg-type" onchange="syncRegisterDivisions(this.value)" required>
+          <select class="form-control" id="reg-type" onchange="window.syncRegisterDivisions && window.syncRegisterDivisions(this.value)" required>
             <option value="Operasional" selected>Tim Operasional</option>
             <option value="Management">Management</option>
           </select>
@@ -307,10 +307,10 @@
 
         <!-- Mode Switcher: Dropdown & Pill for Management vs Operational -->
         <div class="mode-switcher-container">
-          <button class="mode-btn active" id="btn-mode-management" onclick="switchDashboardMode('Management')">
+          <button class="mode-btn active" id="btn-mode-management" type="button" onclick="window.switchDashboardMode && window.switchDashboardMode('Management')">
             <i data-feather="shield" style="width:14px; height:14px;"></i> Management
           </button>
-          <button class="mode-btn" id="btn-mode-operasional" onclick="switchDashboardMode('Operasional')">
+          <button class="mode-btn" id="btn-mode-operasional" type="button" onclick="window.switchDashboardMode && window.switchDashboardMode('Operasional')">
             <i data-feather="coffee" style="width:14px; height:14px;"></i> Tim Operasional
           </button>
         </div>

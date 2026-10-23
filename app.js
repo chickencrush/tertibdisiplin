@@ -521,6 +521,8 @@ const syncRegisterDivisions = (type) => {
   const list = (type === 'Management') ? mgmtDivs : opsDivs;
   divSelect.innerHTML = list.map(d => `<option value="${d}">${d}</option>`).join('');
 };
+// Expose ke window supaya inline onchange di HTML bisa panggil
+window.syncRegisterDivisions = syncRegisterDivisions;
 
 const populateRegisterOutlets = () => {
   const outSelect = document.getElementById('reg-outlet');
@@ -632,6 +634,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Populate UI dropdowns (di background)
   populateDivisionDropdowns();
+  // Isi dropdown divisi registrasi dengan default (Operasional) — pastikan tidak kosong
+  try {
+    const regType = document.getElementById('reg-type');
+    const regDiv = document.getElementById('reg-division');
+    if (regType && regDiv) {
+      window.syncRegisterDivisions(regType.value || 'Operasional');
+    }
+  } catch (e) { console.warn('Gagal init reg division dropdown:', e); }
 
   if (window.feather) feather.replace();
 });
@@ -755,21 +765,33 @@ const switchView = (viewName) => {
 };
 
 // Switch Dashboard Mode: Management vs Tim Operasional
-const switchDashboardMode = (mode) => {
+// Saat diklik, filter SEMUA data (dashboard, daily report, data center) berdasarkan tipe
+window.switchDashboardMode = (mode) => {
   AppState.currentMode = mode;
-  document.getElementById('btn-mode-management').classList.toggle('active', mode === 'Management');
-  document.getElementById('btn-mode-operasional').classList.toggle('active', mode === 'Operasional');
+  const bm = document.getElementById('btn-mode-management');
+  const bo = document.getElementById('btn-mode-operasional');
+  if (bm) bm.classList.toggle('active', mode === 'Management');
+  if (bo) bo.classList.toggle('active', mode === 'Operasional');
 
   if (mode === 'Management') {
-    showToast('Beralih ke Tampilan Dashboard Management (Akses Eksekutif & HR)', 'info');
+    showToast('Beralih ke Tampilan Management — hanya data karyawan Management', 'info');
   } else {
-    showToast('Beralih ke Tampilan Dashboard Tim Operasional (Akses Floor & Checklist)', 'info');
+    showToast('Beralih ke Tampilan Tim Operasional — hanya data karyawan Operasional', 'info');
   }
 
+  // Re-render semua panel yang ada di layar saat ini
   renderDashboardReportsStream();
   renderDailyReportBoard();
+  // Jika di Data Center, re-render employee list dengan filter mode
+  const dcTbody = document.getElementById('dc-employees-tbody');
+  if (dcTbody) {
+    renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || '');
+  }
+  // Update stat cards
+  updateDashboardStats && updateDashboardStats();
   if (window.feather) feather.replace();
 };
+const switchDashboardMode = window.switchDashboardMode;
 
 const setCurrentUser = (user) => {
   if (!user) return;
@@ -1118,6 +1140,8 @@ const populateDivisionDropdowns = () => {
 
   empDivFilter.innerHTML = html;
 };
+// Expose ke window
+window.populateDivisionDropdowns = populateDivisionDropdowns;
 
 // ================= CHARTS INITIALIZATION (MATCHING MOCKUP) =================
 let branchRatingChartInstance = null;
@@ -1293,6 +1317,14 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
   if (!container) return;
 
   let reports = AppState.dailyReports;
+  // Filter by current mode (Management / Operasional) untuk Super Admin
+  if (isDashboardAdmin() && AppState.currentMode) {
+    if (AppState.currentMode === 'Management') {
+      reports = reports.filter(r => r.type === 'Management');
+    } else if (AppState.currentMode === 'Operasional') {
+      reports = reports.filter(r => r.type === 'Operasional');
+    }
+  }
   // Non-Super-Admin: hanya tampilkan laporan sendiri di dashboard
   if (!isDashboardAdmin() && AppState.currentUser) {
     reports = reports.filter(r => r.reporter_id === AppState.currentUser.id);
@@ -1425,6 +1457,12 @@ const renderDailyReportBoard = () => {
   const search = document.getElementById('report-search-box')?.value?.toLowerCase() || '';
 
   let list = AppState.dailyReports;
+  // Filter by current mode (Management / Operasional)
+  if (AppState.currentMode === 'Management') {
+    list = list.filter(r => r.type === 'Management' || r.type === 'Management');
+  } else if (AppState.currentMode === 'Operasional') {
+    list = list.filter(r => r.type === 'Operasional' || r.type !== 'Management');
+  }
   if (divFilter !== 'all') list = list.filter(r => r.division === divFilter);
   if (statusFilter !== 'all') list = list.filter(r => r.status === statusFilter);
   if (search) list = list.filter(r => r.title.toLowerCase().includes(search) || r.report_number.toLowerCase().includes(search) || r.description.toLowerCase().includes(search));
@@ -3066,18 +3104,27 @@ const renderDataCenterEmployeeList = (filterText = '') => {
   const tbody = document.getElementById('dc-employees-tbody');
   if (!tbody) return;
   const allEmps = AppState.employees || [];
+
+  // Filter by current mode (Management / Operasional)
+  let modeFiltered = allEmps;
+  if (AppState.currentMode === 'Management') {
+    modeFiltered = allEmps.filter(e => e.type === 'Management');
+  } else if (AppState.currentMode === 'Operasional') {
+    modeFiltered = allEmps.filter(e => e.type === 'Operasional');
+  }
+
   // Update badge count
   const badge = document.getElementById('dc-emp-count-badge');
-  if (badge) badge.textContent = allEmps.length + ' karyawan';
+  if (badge) badge.textContent = modeFiltered.length + ' karyawan (' + (AppState.currentMode || 'Semua') + ')';
 
-  if (allEmps.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Memuat data karyawan...</td></tr>';
+  if (modeFiltered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan pada tipe ini.</td></tr>';
     return;
   }
-  let filtered = allEmps;
+  let filtered = modeFiltered;
   const q = (filterText || '').toLowerCase().trim();
   if (q) {
-    filtered = allEmps.filter(e =>
+    filtered = modeFiltered.filter(e =>
       (e.name || '').toLowerCase().includes(q) ||
       (e.nip || '').toLowerCase().includes(q) ||
       (e.role || '').toLowerCase().includes(q) ||
