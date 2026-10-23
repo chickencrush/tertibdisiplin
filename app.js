@@ -2443,20 +2443,28 @@ const showPayslipContent = (slipId) => {
             <td class="amount">${formatRupiah(slip.base_salary)}</td>
           </tr>
           <tr>
-            <td>Tunjangan Jabatan / Posisi</td>
+            <td>Uang Makan (${slip.attendance_days || 0} Hari)</td>
+            <td class="amount">${formatRupiah(slip.meal_allowance_total || 0)}</td>
+          </tr>
+          <tr>
+            <td>Uang Transport (${slip.attendance_days || 0} Hari)</td>
+            <td class="amount">${formatRupiah(slip.transport_allowance_total || 0)}</td>
+          </tr>
+          <tr>
+            <td>Tunjangan Jabatan</td>
             <td class="amount">${formatRupiah(slip.position_allowance)}</td>
           </tr>
           <tr>
-            <td>Uang Makan & Kehadiran (${slip.attendance_days} Hari Hadir)</td>
+            <td>Tunjangan Bonus (KPI ${(slip.bonus_kpi / 10000) || 0}%)</td>
+            <td class="amount">${formatRupiah(slip.bonus_kpi)}</td>
+          </tr>
+          <tr>
+            <td>Tunjangan Kehadiran (${slip.attendance_days || 0} Hari Hadir)</td>
             <td class="amount">${formatRupiah(slip.daily_allowance_total)}</td>
           </tr>
           <tr>
-            <td>Upah Lembur (${slip.overtime_hours} Jam SPL)</td>
+            <td>Lembur (${slip.overtime_hours || 0} Jam)</td>
             <td class="amount">${formatRupiah(slip.overtime_pay)}</td>
-          </tr>
-          <tr>
-            <td>Bonus Kinerja / Insentif KPI</td>
-            <td class="amount">${formatRupiah(slip.bonus_kpi)}</td>
           </tr>
           <tr style="background:#f8fafc; font-weight:700;">
             <td>TOTAL PENGHASILAN BRUTO</td>
@@ -2475,23 +2483,23 @@ const showPayslipContent = (slipId) => {
         </thead>
         <tbody>
           <tr>
-            <td>BPJS Ketenagakerjaan (JHT 2% + JP 1%)</td>
-            <td class="amount">-${formatRupiah(slip.bpjs_tk_deduction)}</td>
-          </tr>
-          <tr>
-            <td>BPJS Kesehatan (1% Karyawan)</td>
-            <td class="amount">-${formatRupiah(slip.bpjs_kes_deduction)}</td>
-          </tr>
-          <tr>
-            <td>PPh 21 Skema TER (Tarif Efektif Rata-Rata)</td>
-            <td class="amount">-${formatRupiah(slip.pph21_ter_deduction)}</td>
-          </tr>
-          <tr>
-            <td>Potongan Keterlambatan Presensi</td>
+            <td>Telat (Potongan Keterlambatan Presensi)</td>
             <td class="amount">-${formatRupiah(slip.late_deduction)}</td>
           </tr>
           <tr>
-            <td>Potongan Pinjaman / Kasbon Karyawan</td>
+            <td>BPJS Ketenagakerjaan (3%)</td>
+            <td class="amount">-${formatRupiah(slip.bpjs_tk_deduction)}</td>
+          </tr>
+          <tr>
+            <td>BPJS Kesehatan (1%)</td>
+            <td class="amount">-${formatRupiah(slip.bpjs_kes_deduction)}</td>
+          </tr>
+          <tr>
+            <td>PPh 21 Skema TER</td>
+            <td class="amount">-${formatRupiah(slip.pph21_ter_deduction)}</td>
+          </tr>
+          <tr>
+            <td>Potongan Pinjaman / Kasbon</td>
             <td class="amount">-${formatRupiah(slip.kasbon_deduction)}</td>
           </tr>
           <tr style="background:#fef2f2; font-weight:700; color:#ef4444;">
@@ -3136,6 +3144,8 @@ window.openEditEmployeeModal = (employeeId) => {
   setVal('dc-edit-status', emp.employment_status || 'Tetap');
   setVal('dc-edit-base-salary', emp.base_salary);
   setVal('dc-edit-daily-allowance', emp.daily_allowance);
+  setVal('dc-edit-meal-allowance', emp.meal_allowance || 0);
+  setVal('dc-edit-transport-allowance', emp.transport_allowance || 0);
   setVal('dc-edit-rating', emp.rating);
   setVal('dc-edit-kpi-score', emp.kpi_score);
   // Update header
@@ -3171,6 +3181,8 @@ window.submitEditEmployee = async (e) => {
     employment_status: getVal('dc-edit-status'),
     base_salary: Number(getVal('dc-edit-base-salary')) || 0,
     daily_allowance: Number(getVal('dc-edit-daily-allowance')) || 0,
+    meal_allowance: Number(getVal('dc-edit-meal-allowance')) || 0,
+    transport_allowance: Number(getVal('dc-edit-transport-allowance')) || 0,
     rating: Number(getVal('dc-edit-rating')) || 0,
     kpi_score: Number(getVal('dc-edit-kpi-score')) || 0
   };
@@ -3509,6 +3521,85 @@ window.toggleProfileFieldVisibility = (fieldId, btn) => {
   }
   if (window.feather) feather.replace();
 };
+
+// === PWA NOTIFICATIONS ===
+// Local notifications (tidak butuh push server, jalan saat app terbuka)
+window.requestNotificationPermission = async () => {
+  if (!('Notification' in window)) {
+    showToast('Browser tidak mendukung notifikasi.', 'warning');
+    return;
+  }
+  if (Notification.permission === 'granted') {
+    showToast('Notifikasi sudah aktif.', 'success');
+    return;
+  }
+  if (Notification.permission !== 'denied') {
+    const result = await Notification.requestPermission();
+    if (result === 'granted') {
+      showToast('Notifikasi PWA berhasil diaktifkan!', 'success');
+      // Test notification
+      new Notification('TERTIB DISIPLIN', {
+        body: 'Notifikasi aktif. Anda akan mendapat reminder presensi & pesan chat.',
+        icon: './icons/icon-192.png'
+      });
+    } else {
+      showToast('Notifikasi ditolak. Aktifkan di pengaturan browser jika diperlukan.', 'warning');
+    }
+  } else {
+    showToast('Notifikasi diblokir. Buka pengaturan browser untuk mengizinkan.', 'warning');
+  }
+};
+
+// Kirim local notification
+const sendNotification = (title, body) => {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    new Notification(title, { body: body, icon: './icons/icon-192.png', badge: './icons/favicon.png' });
+  } catch (e) { /* abaikan */ }
+};
+
+// Cek presensi harian — reminder kalau belum presensi
+const checkPresensiReminder = () => {
+  if (!AppState.currentUser) return;
+  const now = new Date();
+  const hour = now.getHours();
+  // Reminder jam 9 pagi kalau belum presensi
+  if (hour >= 9 && hour < 12) {
+    const today = now.toISOString().split('T')[0];
+    const alreadyCheckedIn = (AppState.attendanceLogs || []).some(a =>
+      a.employee_id === AppState.currentUser.id && a.date === today
+    );
+    if (!alreadyCheckedIn) {
+      sendNotification('⏰ Reminder Presensi', 'Anda belum presensi masuk hari ini. Klik untuk presensi.');
+    }
+  }
+};
+
+// Cek chat baru — bandingkan jumlah pesan
+let lastChatCount = 0;
+const checkNewChatMessages = () => {
+  if (!AppState.currentUser) return;
+  // Hanya cek kalau user tidak sedang di view chat
+  if (AppState.currentView === 'chat') return;
+  // Hitung total pesan di channel yang bisa diakses
+  // (sederhana: cek badge chat)
+  const badge = document.getElementById('badge-unread-chat');
+  if (badge) {
+    const count = parseInt(badge.textContent) || 0;
+    if (count > lastChatCount && lastChatCount > 0) {
+      sendNotification('💬 Pesan Baru', 'Ada pesan baru di Chat Room. Klik untuk membaca.');
+    }
+    lastChatCount = count;
+  }
+};
+
+// Jalankan pengecekan periodik
+setInterval(() => {
+  checkPresensiReminder();
+  checkNewChatMessages();
+}, 60000); // cek setiap 1 menit
+
+// === END PWA NOTIFICATIONS ===
 
 // ================= PENGATURAN TITIK OUTLET =================
 const renderOutletsTable = () => {

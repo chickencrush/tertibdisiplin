@@ -275,8 +275,11 @@
     <!-- Sidebar Upgrade / PWA Install Prompt -->
     <div class="sidebar-footer">
       <div class="promo-card">
-        <h4>Aplikasi Mobile & Desktop</h4>
-        <p>Install ke PC, Android, atau iPhone sebagai PWA Native.</p>
+        <h4>Notifikasi & Aplikasi</h4>
+        <p>Aktifkan notifikasi presensi & install PWA.</p>
+        <button class="btn-promo" id="btn-enable-notif" onclick="window.requestNotificationPermission && window.requestNotificationPermission()" style="margin-bottom:8px;">
+          <i data-feather="bell" style="width:12px; height:12px; vertical-align:middle;"></i> Aktifkan Notifikasi
+        </button>
         <button class="btn-promo" id="btn-install-pwa">
           <i data-feather="download" style="width:12px; height:12px; vertical-align:middle;"></i> Install Aplikasi
         </button>
@@ -1941,12 +1944,22 @@
             <div class="form-group">
               <label class="form-label required">Gaji Pokok Bulanan (Rp)</label>
               <input type="number" class="form-control" id="dc-edit-base-salary" min="0" max="100000000" step="100000" required>
-              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Akan dipakai saat payroll autopilot bulanan</p>
             </div>
             <div class="form-group">
-              <label class="form-label required">Uang Hadir Harian (Rp)</label>
+              <label class="form-label required">Tunjangan Kehadiran Harian (Rp)</label>
               <input type="number" class="form-control" id="dc-edit-daily-allowance" min="0" max="1000000" step="5000" required>
-              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dikali jumlah hari hadir dalam sebulan</p>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Uang Makan Harian (Rp)</label>
+              <input type="number" class="form-control" id="dc-edit-meal-allowance" min="0" max="500000" step="5000" required>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dikali jumlah hari hadir</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Uang Transport Harian (Rp)</label>
+              <input type="number" class="form-control" id="dc-edit-transport-allowance" min="0" max="500000" step="5000" required>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dikali jumlah hari hadir</p>
             </div>
           </div>
         </div>
