@@ -3185,7 +3185,24 @@ window.openEditEmployeeModal = (employeeId) => {
   setVal('dc-edit-nip-display', emp.nip); // read-only display
   setVal('dc-edit-phone', emp.phone);
   setVal('dc-edit-type', emp.type);
+  // ISI DIVISI DROPDOWN DULU, baru set nilainya
+  window.dcSyncDivisions && window.dcSyncDivisions();
   setVal('dc-edit-division', emp.division);
+  // Kalau divisi tidak ada di list (mis. OM/PCD), tambahkan manual
+  const divSelect = document.getElementById('dc-edit-division');
+  if (divSelect && emp.division) {
+    let exists = false;
+    for (let i = 0; i < divSelect.options.length; i++) {
+      if (divSelect.options[i].value === emp.division) { exists = true; break; }
+    }
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = emp.division;
+      opt.textContent = emp.division;
+      divSelect.appendChild(opt);
+    }
+    divSelect.value = emp.division;
+  }
   setVal('dc-edit-role', emp.role);
   setVal('dc-edit-outlet', emp.outlet_id);
   setVal('dc-edit-status', emp.employment_status || 'Tetap');
