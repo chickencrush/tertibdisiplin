@@ -924,8 +924,24 @@ window.diagnosePresensi = async () => {
       log('   ✅ Berhasil! Jumlah outlet: ' + list.length);
       if (list.length > 0) {
         list.forEach(function (o, i) {
-          log('   Outlet ' + (i + 1) + ': ' + o.name + ' (id=' + o.id + ', lat=' + (o.lat || 'N/A') + ', lon=' + (o.lon || 'N/A') + ', radius=' + (o.radius_meters || 'N/A') + 'm)');
+          log('   Outlet ' + (i + 1) + ': ' + o.name + ' (id=' + o.id + ', lat=' + (o.lat) + ' type=' + typeof o.lat + ', lon=' + (o.lon) + ' type=' + typeof o.lon + ', radius=' + (o.radius_meters || 'N/A') + 'm)');
         });
+        // Test hitung jarak manual
+        if (AppState.gpsOk && list.length > 0) {
+          const o = list[0];
+          const oLat = parseFloat(o.lat), oLon = parseFloat(o.lon);
+          const myLat = AppState.deviceCoordinates.lat, myLon = AppState.deviceCoordinates.lon;
+          log('   --- GPS DISTANCE TEST ---');
+          log('   My GPS: ' + myLat + ', ' + myLon);
+          log('   Outlet ' + o.name + ' raw lat: ' + o.lat + ' (typeof: ' + typeof o.lat + ')');
+          log('   Outlet ' + o.name + ' raw lon: ' + o.lon + ' (typeof: ' + typeof o.lon + ')');
+          log('   Outlet ' + o.name + ' parsed lat: ' + oLat + ' (isNaN: ' + isNaN(oLat) + ')');
+          log('   Outlet ' + o.name + ' parsed lon: ' + oLon + ' (isNaN: ' + isNaN(oLon) + ')');
+          if (!isNaN(oLat) && !isNaN(oLon)) {
+            const dist = calculateHaversine(myLat, myLon, oLat, oLon);
+            log('   Distance: ' + dist + ' meter');
+          }
+        }
       } else {
         log('   ⚠️ Array kosong — sheet outlets mungkin belum diisi. Jalankan setupBaru di Apps Script.');
       }
