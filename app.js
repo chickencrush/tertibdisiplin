@@ -151,6 +151,42 @@ const FULL_ACCESS_DIVISIONS = ['OM', 'PCD'];
 const PAYROLL_DIVISIONS = ['OM', 'PCD', 'HRD', 'Finance'];
 // Divisi yang bisa approve/reject pengajuan cuti
 const LEAVE_APPROVER_DIVISIONS = ['OM', 'PCD', 'HRD', 'BM', 'HRGA'];
+
+// ==========================================
+// Shift kerja per kelompok divisi (senada dengan MANAGEMENT/OPERASIONAL_DIVISIONS di Code.gs)
+// Dropdown "Pilihan Shift Kerja" hanya menampilkan shift sesuai divisi akun yang login.
+// ==========================================
+const MANAGEMENT_DIVISIONS = ['HRD', 'BM', 'Finance', 'QC', 'Creative', 'DOS', 'Logistik', 'Produksi', 'Driver', 'HRGA', 'Security', 'OM', 'PCD'];
+const OPERASIONAL_DIVISIONS = ['SPV', 'Head Kitchen', 'Head Bar', 'Kasir', 'Server', 'Kitchen', 'Bar', 'PA', 'CS'];
+const SHIFT_OPTIONS_MANAGEMENT = [
+  { value: 'Shift Management', label: 'Shift Management (08:30 - 16:30)' },
+  { value: 'Shift Security', label: 'Shift Security (07:00 - 19:00)' }
+];
+const SHIFT_OPTIONS_OPERASIONAL = [
+  { value: 'Shift Pagi', label: 'Shift Pagi (07:00 - 15:00)' },
+  { value: 'Shift Middle', label: 'Shift Middle (12:00 - 20:00)' },
+  { value: 'Shift Sore', label: 'Shift Sore (15:00 - 23:00)' },
+  { value: 'Shift Malam', label: 'Shift Malam (00:00 - 08:00)' }
+];
+
+// Isi dropdown shift sesuai divisi user yang login.
+// Management -> Shift Management + Shift Security; Operasional -> Shift Pagi/Middle/Sore/Malam.
+// Divisi tak dikenal: tampilkan semua shift (fallback aman).
+window.populateShiftOptions = () => {
+  const shiftSelect = document.getElementById('presensi-shift-select');
+  if (!shiftSelect) return;
+  const div = AppState.currentUser ? AppState.currentUser.division : '';
+  let opts;
+  if (MANAGEMENT_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_MANAGEMENT;
+  else if (OPERASIONAL_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_OPERASIONAL;
+  else opts = SHIFT_OPTIONS_MANAGEMENT.concat(SHIFT_OPTIONS_OPERASIONAL);
+  const prev = shiftSelect.value;
+  shiftSelect.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+  // Pertahankan pilihan sebelumnya kalau masih tersedia di daftar baru
+  if (prev && opts.some(o => o.value === prev)) shiftSelect.value = prev;
+};
+const populateShiftOptions = window.populateShiftOptions;
+
 const VIEW_ACCESS = {
   'dashboard': 'all',
   'presensi': 'all',
@@ -757,6 +793,8 @@ const switchView = (viewName) => {
     // User can click "Buka Kamera" or just press "AMBIL SELFIE & PRESENSI" —
     // the submit handler will start the camera on demand.
     // But DO trigger GPS detection so the geofence banner shows the right state.
+    // Pastikan dropdown shift sesuai divisi user (jaga-jaga kalau populate belum jalan)
+    window.populateShiftOptions && window.populateShiftOptions();
     if (!AppState.gpsOk && !AppState.gpsLoading) {
       window.detectDeviceGPS && window.detectDeviceGPS();
     }
@@ -854,6 +892,8 @@ const switchDashboardMode = window.switchDashboardMode;
 const setCurrentUser = (user) => {
   if (!user) return;
   AppState.currentUser = user;
+  // Isi ulang dropdown shift sesuai divisi akun yang login
+  window.populateShiftOptions && window.populateShiftOptions();
   const nameEl = document.getElementById('current-user-name');
   const roleEl = document.getElementById('current-user-role');
   const avatarEl = document.getElementById('current-user-avatar');
@@ -1802,8 +1842,8 @@ window.detectDeviceGPS = () => {
       if (pos.coords.latitude === 0 && pos.coords.longitude === 0) {
         AppState.isMockSuspect = 1;
         AppState.gpsOk = false;
-        AppState.gpsLastError = 'Koordinat GPS tidak valid (0,0). Kemungkinan GPS dimanipulasi.';
-        console.warn('⚠️ Koordinat GPS (0,0) — mock location terdeteksi');
+        AppState.gpsLastError = 'Lokasi tidak dapat dideteksi. Pastikan GPS aktif, berada di area terbuka, lalu coba lagi.';
+        console.warn('⚠️ Koordinat GPS (0,0) — tidak valid');
       }
 
       // Cek 4: Ambil reading kedua untuk cek drift (GPS asli selalu bergesek sedikit)
@@ -1820,9 +1860,21 @@ window.detectDeviceGPS = () => {
               AppState.isMockSuspect = 1;
               console.warn('⚠️ GPS drift = 0m antara 2 reading — kemungkinan mock location (koordinat tidak berubah)');
             }
+            // === Re-evaluasi flag dengan reading kedua (cegah false-positive) ===
+            // Beberapa HP/laporan jaringan return accuracy 0 di reading pertama lalu normal
+            // di reading kedua. Kalau reading kedua masuk rentang GPS asli (3-100m),
+            // hapus flag mencurigakan supaya karyawan tidak terbloir tanpa alasan.
+            // (Backend tetap mencatat is_mock_suspect untuk review admin.)
+            const acc2 = pos2.coords.accuracy || 0;
+            if (acc2 >= 3 && acc2 <= 100) {
+              if (AppState.isMockSuspect) console.warn('✅ Reading kedua sehat (akurasi ' + acc2 + 'm) — flag mencurigakan dihapus');
+              AppState.isMockSuspect = 0;
+            } else if (acc2 > 0 && acc2 < 3) {
+              AppState.isMockSuspect = 1;
+            }
             // Update koordinat dengan reading terbaru
             AppState.deviceCoordinates = { lat: pos2.coords.latitude, lon: pos2.coords.longitude };
-            AppState.gpsAccuracy = pos2.coords.accuracy || AppState.gpsAccuracy;
+            AppState.gpsAccuracy = acc2 || AppState.gpsAccuracy;
             window.checkGpsDistance();
           },
           () => { /* abaikan error reading kedua */ },
@@ -1861,7 +1913,7 @@ const updateAttendanceClock = () => {
     if (AppState.gpsOk) {
       let txt = AppState.deviceCoordinates.lat.toFixed(6) + ', ' + AppState.deviceCoordinates.lon.toFixed(6);
       if (AppState.gpsAccuracy > 0) txt += ' (±' + AppState.gpsAccuracy + 'm)';
-      if (AppState.isMockSuspect) txt += ' ⚠️ SUSPECT';
+      if (AppState.isMockSuspect) txt += ' ⚠️ Perlu Verifikasi';
       gpsDisplay.textContent = txt;
     } else {
       gpsDisplay.textContent = 'belum diketahui';
@@ -1934,6 +1986,54 @@ const calculateHaversine = (lat1, lon1, lat2, lon2) => {
   return Math.round(R * c);
 };
 
+// === GEOFENCING KETAT (match backend GEOFENCE_TOLERANCE_METERS = 5) ===
+// Toleransi GPS ±5 meter supaya karyawan di tepi radius tidak false-reject.
+const GEOFENCE_TOLERANCE_METERS = 5;
+
+// Helper: enable/disable both presensi submit buttons based on geofence validity.
+// Dipanggil dari checkGpsDistance setiap kali state GPS/outlet berubah.
+window.setPresensiButtonsEnabled = (enabled) => {
+  const checkInBtn = document.getElementById('btn-submit-checkin');
+  const checkOutBtn = document.getElementById('btn-submit-checkout');
+  [checkInBtn, checkOutBtn].forEach(btn => {
+    if (!btn) return;
+    btn.disabled = !enabled;
+    btn.style.opacity = enabled ? '1' : '0.55';
+    btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+  });
+};
+const setPresensiButtonsEnabled = window.setPresensiButtonsEnabled;
+
+// Helper: hitung state lokasi presensi SAAT INI berdasarkan outlet terpilih + GPS device.
+// Returns { ok: true, outlet, dist, radius, effectiveLimit } ketika dalam radius,
+// atau { ok: false, reason, outlet, dist, radius, nearestOutlet } ketika tidak.
+// reason: 'no_outlet' | 'gps_not_ready' | 'outlet_no_coords' | 'out_of_radius'
+window.getPresensiLocationState = () => {
+  const outletSelect = document.getElementById('presensi-outlet-select');
+  const outletId = outletSelect ? outletSelect.value : '';
+  const outlet = (AppState.outlets || []).find(o => String(o.id) === String(outletId));
+  if (!outlet) return { ok: false, reason: 'no_outlet' };
+  if (!AppState.gpsOk) return { ok: false, reason: 'gps_not_ready' };
+  const oLat = parseFloat(outlet.lat), oLon = parseFloat(outlet.lon);
+  if (isNaN(oLat) || isNaN(oLon)) return { ok: false, reason: 'outlet_no_coords', outlet };
+  const radius = Number(outlet.radius_meters) || 100;
+  const effectiveLimit = radius + GEOFENCE_TOLERANCE_METERS;
+  const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, oLat, oLon);
+  // Cari outlet terdekat yang dalam radius (untuk saran pindah outlet)
+  let nearestOutlet = null, nearestDist = Infinity;
+  (AppState.outlets || []).forEach(function (o) {
+    const nLat = parseFloat(o.lat), nLon = parseFloat(o.lon);
+    if (isNaN(nLat) || isNaN(nLon)) return;
+    const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, nLat, nLon);
+    if (d < nearestDist) { nearestDist = d; nearestOutlet = o; }
+  });
+  if (dist <= effectiveLimit) {
+    return { ok: true, outlet, dist, radius, effectiveLimit };
+  }
+  return { ok: false, reason: 'out_of_radius', outlet, dist, radius, effectiveLimit, nearestOutlet, nearestDist };
+};
+const getPresensiLocationState = window.getPresensiLocationState;
+
 // --- Update Geofence Banner (called whenever GPS or outlet changes) ---
 window.checkGpsDistance = () => {
   const outletSelect = document.getElementById('presensi-outlet-select');
@@ -1941,6 +2041,8 @@ window.checkGpsDistance = () => {
   const text = document.getElementById('geofence-text');
   const icon = document.getElementById('geofence-icon');
   if (!outletSelect || !banner || !text) return;
+  // DEFAULT: tombol presensi di-disable sampai dibuktikan user berada di dalam radius.
+  setPresensiButtonsEnabled(false);
 
   // === STATE: Outlet gagal dimuat — tampilkan error + tombol retry + diagnosa ===
   if (AppState.outletsLoadError) {
@@ -1988,15 +2090,14 @@ window.checkGpsDistance = () => {
     return;
   }
 
-  // === ANTI-FAKE GPS: Tampilkan warning jika mock terdeteksi ===
+  // === LOKASI TIDAK SESUAI: GPS tidak dapat diverifikasi ===
   if (AppState.isMockSuspect) {
     banner.className = 'geofence-alert geofence-invalid';
-    text.innerHTML = `<strong>⚠️ GPS Mencurigakan Terdeteksi!</strong>
-      <br>Sistem mendeteksi kemungkinan penggunaan aplikasi fake GPS / mock location.
-      <br>Akurasi GPS: ${AppState.gpsAccuracy}m (mencurigakan)
-      <br><span style="font-size:11px; color:#991b1b;">Presensi akan ditandai untuk review admin. Nonaktifkan mock location dan coba lagi.</span>
+    text.innerHTML = `<strong>📍 Lokasi Anda Tidak Sesuai</strong>
+      <br>Sistem tidak dapat memverifikasi bahwa Anda sedang berada di outlet.
+      <br><span style="font-size:11px; color:#991b1b;">Pastikan Anda berada di outlet, aktifkan GPS, dan matikan aplikasi lokasi palsu (jika ada), lalu tekan tombol di bawah.</span>
       <br><button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px;" onclick="window.detectDeviceGPS()">
-        <i data-feather="map-pin" style="width:11px; height:11px;"></i> Deteksi Ulang GPS
+        <i data-feather="map-pin" style="width:11px; height:11px;"></i> Deteksi Ulang Lokasi
       </button>`;
     if (window.feather) feather.replace();
     return;
@@ -2010,7 +2111,7 @@ window.checkGpsDistance = () => {
   const parseLon = parseFloat(outlet.lon);
   if (isNaN(parseLat) || isNaN(parseLon)) {
     banner.className = 'geofence-alert geofence-warning';
-    text.innerHTML = `<strong>${outlet.name}</strong> dipilih. Koordinat GPS outlet belum lengkap. Validasi radius akan dilakukan di server.`;
+    text.innerHTML = `<strong>${outlet.name}</strong> dipilih. Koordinat GPS outlet belum lengkap. Hubungi admin untuk mengisi latitude/longitude outlet. Presensi tidak dapat dilakukan sampai koordinat outlet diatur.`;
     return;
   }
   // Gunakan nilai yang sudah diparse
@@ -2030,7 +2131,7 @@ window.checkGpsDistance = () => {
     if (d < nearestDist) {
       nearestDist = d;
       nearestOutlet = o;
-      nearestValid = d <= (o.radius_meters || 100);
+      nearestValid = d <= ((o.radius_meters || 100) + GEOFENCE_TOLERANCE_METERS);
     }
   });
 
@@ -2042,13 +2143,16 @@ window.checkGpsDistance = () => {
     const autoOutlet = nearestOutlet;
     banner.className = 'geofence-alert geofence-valid';
     text.innerHTML = `<strong>📍 Auto-Terdeteksi di Lokasi:</strong> ${autoOutlet.name} (${nearestDist} meter)
-      <br><span style="font-size:11px; opacity:0.8;">Outlet terdekat terpilih otomatis berdasarkan GPS Anda.</span>`;
+      <br><span style="font-size:11px; opacity:0.8;">Outlet terdekat terpilih otomatis berdasarkan GPS Anda. Tombol presensi diaktifkan.</span>`;
+    setPresensiButtonsEnabled(true);
+    if (window.feather) feather.replace();
     return;
   }
 
   // Kalau outlet yang dipilih manual punya lat/lon, hitung jaraknya
   const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, outlet.lat, outlet.lon);
-  const isValid = dist <= outlet.radius_meters;
+  const radiusLimit = outlet.radius_meters || 100;
+  const isValid = dist <= (radiusLimit + GEOFENCE_TOLERANCE_METERS);
 
   if (isValid) {
     // Cek apakah ada outlet lain yang lebih dekat
@@ -2058,7 +2162,7 @@ window.checkGpsDistance = () => {
       if (typeof o.lat !== 'number' || typeof o.lon !== 'number') return;
       if (o.id === outlet.id) return;
       const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, o.lat, o.lon);
-      if (d < closerDist && d <= (o.radius_meters || 100)) {
+      if (d < closerDist && d <= ((o.radius_meters || 100) + GEOFENCE_TOLERANCE_METERS)) {
         closerDist = d;
         closerOutlet = o;
       }
@@ -2066,25 +2170,27 @@ window.checkGpsDistance = () => {
 
     if (closerOutlet) {
       banner.className = 'geofence-alert geofence-valid';
-      text.innerHTML = `<strong>Tervalidasi di ${outlet.name}:</strong> ${dist} meter (Radius: ${outlet.radius_meters}m).
+      text.innerHTML = `<strong>Tervalidasi di ${outlet.name}:</strong> ${dist} meter (Radius: ${radiusLimit}m).
         <br><span style="font-size:11px; opacity:0.8;">💡 Anda juga dekat dengan <strong>${closerOutlet.name}</strong> (${closerDist}m). <a href="javascript:void(0)" style="color:inherit; text-decoration:underline;" onclick="document.getElementById('presensi-outlet-select').value='${closerOutlet.id}'; window.checkGpsDistance();">Pilih ${closerOutlet.name}</a></span>`;
     } else {
       banner.className = 'geofence-alert geofence-valid';
-      text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m)${accuracyInfo} — <strong>Valid Untuk Presensi</strong>`;
+      text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${radiusLimit}m)${accuracyInfo} — <strong>Valid Untuk Presensi</strong>`;
     }
+    setPresensiButtonsEnabled(true);
   } else {
     // User di luar radius outlet yang dipilih — cek apakah ada outlet lain yang dalam radius
     if (nearestOutlet && nearestValid) {
       banner.className = 'geofence-alert geofence-warning';
       text.innerHTML = `<strong>Anda berada di ${nearestOutlet.name}:</strong> ${nearestDist} meter (Radius: ${nearestOutlet.radius_meters}m).
-        <br>Outlet yang dipilih (${outlet.name}) berjarak ${dist} meter — di luar radius.
+        <br>Outlet yang dipilih (${outlet.name}) berjarak ${dist} meter — <strong>di luar radius. Presensi DITOLAK untuk outlet ini.</strong>
         <br><a href="javascript:void(0)" style="color:inherit; text-decoration:underline; font-weight:700;" onclick="document.getElementById('presensi-outlet-select').value='${nearestOutlet.id}'; window.checkGpsDistance();">📍 Pilih ${nearestOutlet.name} secara otomatis</a>`;
     } else {
       banner.className = 'geofence-alert geofence-invalid';
-      text.innerHTML = `<strong>Di Luar Radius:</strong> Anda berada ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m).
+      text.innerHTML = `<strong>🚫 Di Luar Radius — Presensi DITOLAK:</strong> Anda berada ${dist} meter dari ${outlet.name} (Batas Radius: ${radiusLimit}m).
         <br><span style="font-size:11px; opacity:0.8;">Outlet terdekat: ${nearestOutlet ? nearestOutlet.name + ' (' + nearestDist + 'm)' : 'tidak ditemukan'}.</span>
-        <br><em>Presensi akan ditandai "Menunggu Approval" atasan.</em>`;
+        <br><em>Mendekatlah ke lokasi outlet untuk melakukan presensi.</em>`;
     }
+    setPresensiButtonsEnabled(false);
   }
 };
 const checkGpsDistance = window.checkGpsDistance;
@@ -2192,6 +2298,31 @@ window.submitAttendanceCheckIn = async () => {
     }
   }
 
+  // === GEOFENCING KETAT: Client-side guard — TOLAK sebelum upload kalau di luar radius ===
+  // Backend juga akan menolak, tapi guard ini menghemat upload selfie & lock.
+  const locState = getPresensiLocationState();
+  if (locState.reason === 'no_outlet') {
+    showToast('Pilih outlet presensi terlebih dahulu.', 'warning');
+    return;
+  }
+  if (locState.reason === 'gps_not_ready') {
+    showToast('GPS belum siap. Tekan tombol "Deteksi Lokasi GPS" lalu coba lagi.', 'warning');
+    return;
+  }
+  if (locState.reason === 'outlet_no_coords') {
+    showToast('Koordinat GPS outlet belum diatur. Hubungi admin.', 'error');
+    return;
+  }
+  if (locState.reason === 'out_of_radius' || !locState.ok) {
+    const msg = locState.outlet
+      ? `Presensi DITOLAK. Anda berada ${locState.dist}m dari ${locState.outlet.name} (batas radius: ${locState.radius}m). Mendekatlah ke outlet lalu coba lagi.`
+      : 'Presensi DITOLAK. Anda berada di luar radius outlet. Mendekatlah ke lokasi outlet lalu coba lagi.';
+    showToast(msg, 'error');
+    // Update banner biar pesan di luar radius konsisten dengan toast
+    window.checkGpsDistance && window.checkGpsDistance();
+    return;
+  }
+
   // --- Camera: ensure in-page camera is started; fallback to native camera input ---
   if (!AppState.cameraReady) {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Memulai kamera...'; }
@@ -2235,13 +2366,12 @@ window.submitAttendanceCheckIn = async () => {
     });
     const data = await res.json();
     if (res.ok && data.status !== 'error') {
-      if (data.in_radius) {
-        showToast(`Presensi berhasil! Status: ${data.attendance_status}${data.late_minutes ? ' (Terlambat ' + data.late_minutes + ' menit)' : ' (Tepat Waktu)'}`, 'success');
-      } else {
-        showToast(`Presensi tercatat di LUAR RADIUS (${data.distance_meters}m). Menunggu approval atasan.`, 'warning');
-      }
+      // Skema ketat: presensi hanya sukses jika dalam radius (backend sudah menolak jika luar).
+      // data.in_radius akan selalu true di sini.
+      showToast(`Presensi berhasil! Status: ${data.attendance_status}${data.late_minutes ? ' (Terlambat ' + data.late_minutes + ' menit)' : ' (Tepat Waktu)'}`, 'success');
       await loadAttendanceLogs();
     } else {
+      // Tampilkan pesan DITOLAK dari backend (mis. "Presensi DITOLAK. Anda berada X meter...")
       showToast(data.detail || data.message || 'Gagal check-in. Coba beberapa saat lagi.', 'error');
     }
   } catch (err) {
@@ -2299,6 +2429,22 @@ window.submitAttendanceCheckOut = async () => {
     if (!AppState.gpsOk) {
       showToast('Lokasi GPS belum tersedia. Pastikan GPS aktif dan izin lokasi diberikan, lalu coba lagi.', 'warning');
       return;
+    }
+  }
+
+  // === GEOFENCING KETAT: Client-side guard untuk check-out ===
+  // Validasi jarak ke outlet tempat user check-in (myCheckInToday.outlet_id).
+  // Backend juga akan menolak, tapi guard ini menghemat upload selfie.
+  const checkInOutlet = (AppState.outlets || []).find(o => String(o.id) === String(myCheckInToday.outlet_id));
+  if (checkInOutlet) {
+    const coLat = parseFloat(checkInOutlet.lat), coLon = parseFloat(checkInOutlet.lon);
+    const coRadius = Number(checkInOutlet.radius_meters) || 100;
+    if (!isNaN(coLat) && !isNaN(coLon)) {
+      const coDist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, coLat, coLon);
+      if (coDist > (coRadius + GEOFENCE_TOLERANCE_METERS)) {
+        showToast(`Presensi pulang DITOLAK. Anda berada ${coDist}m dari ${checkInOutlet.name} (batas radius: ${coRadius}m). Mendekatlah ke outlet tempat Anda presensi masuk lalu coba lagi.`, 'error');
+        return;
+      }
     }
   }
 
