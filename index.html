@@ -325,13 +325,16 @@
 
       <div class="topbar-right">
         <!-- Quick Filters matching mockup: Period and Outlet -->
-        <select class="select-filter" id="filter-period-select" onchange="applyGlobalFilters()">
-          <!-- Populated dynamically by app.js on load -->
+        <select class="select-filter" id="filter-period-select" title="Filter Periode Data" onchange="applyGlobalFilters()">
+          <option value="all">Semua Periode</option>
+          <option value="today">Hari Ini</option>
+          <option value="week">7 Hari Terakhir</option>
+          <option value="month">30 Hari Terakhir</option>
         </select>
 
-        <select class="select-filter" id="filter-outlet-select" onchange="applyGlobalFilters()">
+        <select class="select-filter" id="filter-outlet-select" title="Filter Outlet" onchange="applyGlobalFilters()">
           <option value="all">Semua Outlet</option>
-          <!-- Populated dynamically by app.js on load -->
+          <!-- Populated dynamically by app.js (populateGlobalOutletFilter) setelah data outlet termuat -->
         </select>
 
         <!-- Search Input -->
@@ -346,8 +349,8 @@
           <span class="dot-badge"></span>
         </button>
 
-        <!-- User Profile Pill & Dropdown -->
-        <div class="user-profile-pill" id="user-profile-btn" onclick="toggleUserSwitchModal()">
+        <!-- User Profile Pill — klik untuk membuka Profil Saya -->
+        <div class="user-profile-pill" id="user-profile-btn" title="Buka Profil Saya" onclick="switchView('profile')">
           <img src="./icons/logo.png" onerror="this.onerror=null;this.src=window.LOGO_FALLBACK" alt="Avatar" class="user-avatar-circle" id="current-user-avatar">
           <div class="user-meta">
             <div class="user-name-label" id="current-user-name">Admin Tertib Disiplin</div>

@@ -349,6 +349,8 @@ const loadAllAppData = async () => {
   await Promise.all(criticalJobs);
 
   populateRegisterOutlets();
+  populateGlobalOutletFilter && populateGlobalOutletFilter();
+  populateGlobalPeriodFilter && populateGlobalPeriodFilter();
   populateDivisionDropdowns();
   switchView('dashboard');
   updateDashboardStats && updateDashboardStats();
@@ -638,6 +640,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   initSidebarToggle();
+  initGlobalSearch();
   ['login-identifier', 'login-password'].forEach(id => {
     const f = document.getElementById(id);
     if (f) f.addEventListener('input', () => showLoginError(''));
@@ -896,13 +899,18 @@ window.switchDashboardMode = (mode) => {
     showToast('Beralih ke Tampilan Tim Operasional — hanya data karyawan Operasional', 'info');
   }
 
-  // Re-render semua panel yang ada di layar saat ini
+  // Re-render semua panel yang ada di layar saat ini (reports, kanban, presensi, stats)
   renderDashboardReportsStream();
   renderDailyReportBoard();
+  renderAttendanceTable(AppState.attendanceLogs || []);
   // Jika di Data Center, re-render employee list dengan filter mode
   const dcTbody = document.getElementById('dc-employees-tbody');
   if (dcTbody) {
     renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || '');
+  }
+  // Jika di Database Karyawan, re-render tabel karyawan dengan filter mode
+  if (document.getElementById('employees-tbody')) {
+    renderEmployeesTable(AppState.employees || []);
   }
   // Update stat cards
   updateDashboardStats && updateDashboardStats();
@@ -976,6 +984,9 @@ const loadOutlets = async () => {
     const outletList = Array.isArray(data) ? data : (data && data.body && Array.isArray(data.body) ? data.body : []);
     AppState.outlets = outletList;
     AppState.outletsLoadError = '';
+
+    // Isi dropdown filter "Semua Outlet" di topbar dengan daftar outlet
+    window.populateGlobalOutletFilter && window.populateGlobalOutletFilter();
 
     // Populate presensi outlet select
     const pSelect = document.getElementById('presensi-outlet-select');
@@ -1394,6 +1405,13 @@ const updateDashboardStats = () => {
   if (!AppState.currentUser) return;
   const u = AppState.currentUser;
   const adminMode = isDashboardAdmin();
+  const gf = getGlobalFilters();
+
+  // Karyawan sesuai filter global (mode + outlet) — dipakai untuk rating & kehadiran
+  let scopeEmps = AppState.employees || [];
+  if (gf.mode === 'Management') scopeEmps = scopeEmps.filter(e => MANAGEMENT_DIVISIONS.indexOf(e.division) >= 0);
+  else if (gf.mode === 'Operasional') scopeEmps = scopeEmps.filter(e => MANAGEMENT_DIVISIONS.indexOf(e.division) < 0);
+  if (gf.outlet !== 'all') scopeEmps = scopeEmps.filter(e => e.outlet_id === gf.outlet);
 
   // Stat 1: Reports count
   const reportsEl = document.getElementById('stat-reports-value');
@@ -1401,6 +1419,11 @@ const updateDashboardStats = () => {
     let myReports = AppState.dailyReports || [];
     if (!adminMode) {
       myReports = myReports.filter(r => r.reporter_id === u.id);
+    } else {
+      if (gf.mode === 'Management') myReports = myReports.filter(r => r.type === 'Management');
+      else if (gf.mode === 'Operasional') myReports = myReports.filter(r => r.type !== 'Management');
+      if (gf.outlet !== 'all') myReports = myReports.filter(r => r.outlet_id === gf.outlet);
+      myReports = myReports.filter(r => dateInPeriod_(r.created_at, gf.cutoff, gf.todayStr));
     }
     reportsEl.textContent = myReports.length;
   }
@@ -1410,39 +1433,42 @@ const updateDashboardStats = () => {
   const ratingsSubEl = document.getElementById('stat-ratings-subtitle');
   if (ratingsEl) {
     if (adminMode) {
-      // Admin: tampilkan rata-rata semua karyawan
-      const emps = AppState.employees || [];
-      const avgRating = emps.length > 0
-        ? (emps.reduce((sum, e) => sum + (e.rating || 0), 0) / emps.length).toFixed(1)
+      // Admin: rata-rata karyawan sesuai filter mode + outlet
+      const avgRating = scopeEmps.length > 0
+        ? (scopeEmps.reduce((sum, e) => sum + (e.rating || 0), 0) / scopeEmps.length).toFixed(1)
         : '-';
       ratingsEl.innerHTML = avgRating + ' <span>/ 5</span>';
-      if (ratingsSubEl) ratingsSubEl.textContent = '⭐ Rata-rata ' + emps.length + ' karyawan';
+      if (ratingsSubEl) ratingsSubEl.textContent = '⭐ Rata-rata ' + scopeEmps.length + ' karyawan' + (gf.outlet !== 'all' ? ' • outlet terpilih' : '') + (gf.mode !== 'Management' ? ' • Tim Operasional' : ' • Management');
     } else {
       ratingsEl.innerHTML = (u.rating || 0) + ' <span>/ 5</span>';
       if (ratingsSubEl) ratingsSubEl.textContent = '⭐ Rating pribadi Anda';
     }
   }
 
-  // Stat 3: Attendance rate (pribadi)
+  // Stat 3: Attendance rate
   const attEl = document.getElementById('stat-attendance-value');
   const attSubEl = document.getElementById('stat-attendance-subtitle');
   if (attEl) {
     let myLogs = AppState.attendanceLogs || [];
+    // Filter global: mode + outlet + periode
+    if (gf.mode === 'Management') myLogs = myLogs.filter(a => MANAGEMENT_DIVISIONS.indexOf(a.division) >= 0);
+    else if (gf.mode === 'Operasional') myLogs = myLogs.filter(a => MANAGEMENT_DIVISIONS.indexOf(a.division) < 0);
+    if (gf.outlet !== 'all') myLogs = myLogs.filter(a => a.outlet_id === gf.outlet);
+    myLogs = myLogs.filter(a => dateInPeriod_(a.date, gf.cutoff, gf.todayStr));
     if (!adminMode && u.id) {
       myLogs = myLogs.filter(a => a.employee_id === u.id);
     }
-    const today = new Date().toISOString().split('T')[0];
-    const todayLogs = myLogs.filter(a => a.date === today);
+    const todayLogs = myLogs.filter(a => a.date === gf.todayStr);
     if (adminMode) {
-      // Admin: tampilkan persentase kehadiran hari ini dari semua karyawan
-      const totalEmps = (AppState.employees || []).length;
+      // Admin: persentase kehadiran hari ini dari karyawan dalam scope filter
+      const totalEmps = scopeEmps.length;
       const pct = totalEmps > 0 ? Math.round((todayLogs.length / totalEmps) * 100) : 0;
       attEl.textContent = pct + '%';
       if (attSubEl) attSubEl.textContent = '❤️ ' + todayLogs.length + ' dari ' + totalEmps + ' karyawan hadir hari ini';
     } else {
-      // Personal: tampilkan jumlah hari hadir
+      // Personal: tampilkan jumlah hari hadir (dalam periode terpilih)
       attEl.textContent = myLogs.length;
-      if (attSubEl) attSubEl.textContent = '❤️ Total hari presensi Anda';
+      if (attSubEl) attSubEl.textContent = gf.period === 'all' ? '❤️ Total hari presensi Anda' : '❤️ Hari presensi Anda (' + gf.period + ')';
     }
   }
 };
@@ -1451,13 +1477,14 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
   const container = document.getElementById('dashboard-reports-stream');
   if (!container) return;
 
+  const gf = getGlobalFilters();
   let reports = AppState.dailyReports;
   // Filter by current mode (Management / Operasional) untuk Super Admin
   if (isDashboardAdmin() && AppState.currentMode) {
     if (AppState.currentMode === 'Management') {
       reports = reports.filter(r => r.type === 'Management');
     } else if (AppState.currentMode === 'Operasional') {
-      reports = reports.filter(r => r.type === 'Operasional');
+      reports = reports.filter(r => r.type !== 'Management');
     }
   }
   // Non-Super-Admin: hanya tampilkan laporan sendiri di dashboard
@@ -1467,6 +1494,10 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
   if (filterStatus !== 'All') {
     reports = reports.filter(r => r.status.toLowerCase() === filterStatus.toLowerCase());
   }
+  // Filter global topbar: outlet + periode + pencarian
+  if (gf.outlet !== 'all') reports = reports.filter(r => r.outlet_id === gf.outlet);
+  reports = reports.filter(r => dateInPeriod_(r.created_at, gf.cutoff, gf.todayStr));
+  reports = reports.filter(r => matchGlobalSearch_(gf.search, [r.title, r.description, r.reporter_name, r.outlet_name, r.division]));
 
   if (reports.length === 0) {
     const msg = isDashboardAdmin()
@@ -1590,13 +1621,20 @@ const renderDailyReportBoard = () => {
   const divFilter = document.getElementById('report-filter-division')?.value || 'all';
   const statusFilter = document.getElementById('report-filter-status')?.value || 'all';
   const search = document.getElementById('report-search-box')?.value?.toLowerCase() || '';
+  const gf = getGlobalFilters();
 
   let list = AppState.dailyReports;
   // Filter by current mode (Management / Operasional)
   if (AppState.currentMode === 'Management') {
-    list = list.filter(r => r.type === 'Management' || r.type === 'Management');
+    list = list.filter(r => r.type === 'Management');
   } else if (AppState.currentMode === 'Operasional') {
-    list = list.filter(r => r.type === 'Operasional' || r.type !== 'Management');
+    list = list.filter(r => r.type !== 'Management');
+  }
+  // Filter global topbar: outlet + periode + pencarian global
+  if (gf.outlet !== 'all') list = list.filter(r => r.outlet_id === gf.outlet);
+  list = list.filter(r => dateInPeriod_(r.created_at, gf.cutoff, gf.todayStr));
+  if (gf.search) {
+    list = list.filter(r => matchGlobalSearch_(gf.search, [r.title, r.report_number, r.description, r.reporter_name, r.outlet_name]));
   }
   if (divFilter !== 'all') list = list.filter(r => r.division === divFilter);
   if (statusFilter !== 'all') list = list.filter(r => r.status === statusFilter);
@@ -2531,12 +2569,29 @@ const renderAttendanceTable = (logs) => {
   const tbody = document.getElementById('attendance-tbody');
   if (!tbody) return;
 
-  if (!logs || logs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">Belum ada data presensi hari ini.</td></tr>';
+  logs = logs || AppState.attendanceLogs || [];
+
+  // Filter global topbar: mode + outlet + periode + pencarian
+  const gf = getGlobalFilters();
+  let filtered = logs;
+  if (gf.mode === 'Management') {
+    filtered = filtered.filter(l => MANAGEMENT_DIVISIONS.indexOf(l.division) >= 0);
+  } else if (gf.mode === 'Operasional') {
+    filtered = filtered.filter(l => MANAGEMENT_DIVISIONS.indexOf(l.division) < 0);
+  }
+  if (gf.outlet !== 'all') filtered = filtered.filter(l => l.outlet_id === gf.outlet);
+  filtered = filtered.filter(l => dateInPeriod_(l.date, gf.cutoff, gf.todayStr));
+  filtered = filtered.filter(l => matchGlobalSearch_(gf.search, [l.employee_name, l.division, l.outlet_name, l.shift_name]));
+
+  if (!filtered || filtered.length === 0) {
+    const emptyMsg = (gf.outlet !== 'all' || gf.period !== 'all' || gf.search)
+      ? 'Tidak ada data presensi yang cocok dengan filter (outlet/periode/pencarian).'
+      : 'Belum ada data presensi hari ini.';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8;">${emptyMsg}</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = logs.map(l => {
+  tbody.innerHTML = filtered.map(l => {
     const isLate = l.late_minutes > 0;
     const lateBadge = isLate ? `<span style="color:#ef4444; font-weight:700;">+${l.late_minutes} Menit (Denda: ${formatRupiah(l.late_deduction)})</span>` : '<span style="color:#10b981; font-weight:700;">Tepat Waktu</span>';
     const checkInTime = l.check_in_time ? l.check_in_time.split(' ')[1] : '-';
@@ -2587,12 +2642,16 @@ const renderEmployeesTable = (list) => {
   const divFilter = document.getElementById('emp-filter-division')?.value || 'all';
   const outletFilter = document.getElementById('emp-filter-outlet')?.value || 'all';
   const search = document.getElementById('emp-search-input')?.value?.toLowerCase() || '';
+  const gf = getGlobalFilters();
 
   let filtered = list;
   if (typeFilter !== 'all') filtered = filtered.filter(e => e.type === typeFilter);
   if (divFilter !== 'all') filtered = filtered.filter(e => e.division === divFilter);
   if (outletFilter !== 'all') filtered = filtered.filter(e => e.outlet_id === outletFilter);
   if (search) filtered = filtered.filter(e => e.name.toLowerCase().includes(search) || e.nip.toLowerCase().includes(search) || e.role.toLowerCase().includes(search));
+  // Filter global topbar: outlet + pencarian (kombinasi dengan filter lokal panel ini)
+  if (gf.outlet !== 'all') filtered = filtered.filter(e => e.outlet_id === gf.outlet);
+  if (gf.search) filtered = filtered.filter(e => matchGlobalSearch_(gf.search, [e.name, e.nip, e.role, e.division, e.outlet_name]));
 
   tbody.innerHTML = filtered.slice(0, 100).map(e => {
     return `
@@ -3678,6 +3737,7 @@ const renderDataCenterEmployeeList = (filterText = '') => {
   const tbody = document.getElementById('dc-employees-tbody');
   if (!tbody) return;
   const allEmps = AppState.employees || [];
+  const gf = getGlobalFilters();
 
   // Filter by current mode (Management / Operasional)
   let modeFiltered = allEmps;
@@ -3686,10 +3746,12 @@ const renderDataCenterEmployeeList = (filterText = '') => {
   } else if (AppState.currentMode === 'Operasional') {
     modeFiltered = allEmps.filter(e => e.type === 'Operasional');
   }
+  // Filter global topbar: outlet
+  if (gf.outlet !== 'all') modeFiltered = modeFiltered.filter(e => e.outlet_id === gf.outlet);
 
   // Update badge count
   const badge = document.getElementById('dc-emp-count-badge');
-  if (badge) badge.textContent = modeFiltered.length + ' karyawan (' + (AppState.currentMode || 'Semua') + ')';
+  if (badge) badge.textContent = modeFiltered.length + ' karyawan (' + (AppState.currentMode || 'Semua') + (gf.outlet !== 'all' ? ' • outlet terpilih' : '') + ')';
 
   if (modeFiltered.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan pada tipe ini.</td></tr>';
@@ -4608,10 +4670,105 @@ const openSplModal = () => {
   }
 };
 
+// ==========================================
+// GLOBAL FILTERS (Topbar): Periode + Outlet + Search + Mode
+// Nilai dibaca dari topbar & diterapkan ke SEMUA panel:
+// dashboard (stream laporan, tabel presensi, stat cards), daily report board,
+// data center employee list, dan database karyawan.
+// ==========================================
+const fmtLocalDate_ = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+// Kembalikan tanggal batas awal (yyyy-MM-dd) untuk periode terpilih, atau null jika "Semua Periode"
+const periodCutoffDate_ = (period) => {
+  const today = new Date();
+  if (period === 'today') return fmtLocalDate_(today);
+  if (period === 'week') { const d = new Date(); d.setDate(d.getDate() - 6); return fmtLocalDate_(d); }
+  if (period === 'month') { const d = new Date(); d.setDate(d.getDate() - 29); return fmtLocalDate_(d); }
+  return null;
+};
+
+// Baca nilai semua filter global dari topbar
+const getGlobalFilters = () => {
+  const period = document.getElementById('filter-period-select')?.value || 'all';
+  const cutoff = periodCutoffDate_(period);
+  const todayStr = fmtLocalDate_(new Date());
+  return {
+    outlet: document.getElementById('filter-outlet-select')?.value || 'all',
+    period: period,
+    cutoff: cutoff,
+    todayStr: todayStr,
+    search: (document.getElementById('global-search-input')?.value || '').toLowerCase().trim(),
+    mode: AppState.currentMode || 'Management'
+  };
+};
+
+// Apakah tanggal (yyyy-MM-dd atau yyyy-MM-dd HH:mm:ss) masuk rentang periode terpilih?
+const dateInPeriod_ = (dateStr, cutoff, todayStr) => {
+  if (!cutoff) return true;                 // Semua Periode
+  if (!dateStr) return false;
+  const d = String(dateStr).slice(0, 10);   // ambil bagian tanggal saja
+  return d >= cutoff && d <= todayStr;
+};
+
+// Filter pencarian global: cocokkan kata kunci ke beberapa field
+const matchGlobalSearch_ = (search, fields) => {
+  if (!search) return true;
+  return fields.join('|').toLowerCase().includes(search);
+};
+
+// Isi dropdown "Semua Outlet" di topbar dengan daftar outlet dari AppState
+const populateGlobalOutletFilter = () => {
+  const sel = document.getElementById('filter-outlet-select');
+  if (!sel) return;
+  const cur = sel.value || 'all';
+  const list = AppState.outlets || [];
+  if (list.length === 0) {
+    sel.innerHTML = '<option value="all">Semua Outlet</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="all">Semua Outlet</option>' +
+    list.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`).join('');
+  // Pertahankan pilihan sebelumnya jika masih valid
+  if (Array.from(sel.options).some(op => op.value === cur)) sel.value = cur;
+};
+
+// Isi dropdown "Semua Periode" di topbar (statis — jaga-jaga bila HTML berubah)
+const populateGlobalPeriodFilter = () => {
+  const sel = document.getElementById('filter-period-select');
+  if (!sel || sel.options.length > 0) return;
+  sel.innerHTML = '<option value="all">Semua Periode</option>' +
+    '<option value="today">Hari Ini</option>' +
+    '<option value="week">7 Hari Terakhir</option>' +
+    '<option value="month">30 Hari Terakhir</option>';
+};
+window.populateGlobalOutletFilter = populateGlobalOutletFilter;
+window.populateGlobalPeriodFilter = populateGlobalPeriodFilter;
+
+// Terapkan semua filter global: render ulang semua panel yang datanya sudah ada di AppState
 const applyGlobalFilters = () => {
-  showToast('Memperbarui filter periode & outlet...', 'info');
-  loadDailyReports();
-  loadAttendanceLogs();
+  renderDashboardReportsStream();
+  renderDailyReportBoard();
+  renderAttendanceTable(AppState.attendanceLogs || []);
+  updateDashboardStats && updateDashboardStats();
+  // Data Center & Database Karyawan (hanya jika panelnya sedang ada di DOM)
+  if (document.getElementById('dc-employees-tbody')) {
+    renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || '');
+  }
+  if (document.getElementById('employees-tbody')) {
+    renderEmployeesTable(AppState.employees || []);
+  }
+};
+window.applyGlobalFilters = applyGlobalFilters;
+
+// Wire kolom pencarian global di topbar (debounce 250ms)
+const initGlobalSearch = () => {
+  const input = document.getElementById('global-search-input');
+  if (!input) return;
+  let t = null;
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(applyGlobalFilters, 250);
+  });
 };
 
 // ==========================================
