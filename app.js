@@ -5046,6 +5046,7 @@ window.openSaEditUser = (userId) => {
   setVal('sa-user-transport-allowance', emp.transport_allowance || 0);
   setVal('sa-user-rating', emp.rating);
   setVal('sa-user-kpi-score', emp.kpi_score);
+  setVal('sa-user-leave-adjustment', Number(emp.leave_adjustment) || 0);
   // Password/PIN awal hanya untuk mode TAMBAH
   const pwGroup = document.getElementById('sa-user-password-group');
   const pinGroup = document.getElementById('sa-user-pin-group');
@@ -5072,7 +5073,7 @@ window.openSaAddUser = () => {
   if (titleEl) titleEl.textContent = 'Tambah Pengguna Baru';
   ['sa-user-name', 'sa-user-nip', 'sa-user-email', 'sa-user-phone', 'sa-user-password', 'sa-user-pin',
    'sa-user-base-salary', 'sa-user-daily-allowance', 'sa-user-meal-allowance', 'sa-user-transport-allowance',
-   'sa-user-rating', 'sa-user-kpi-score'].forEach(id => setVal(id, ''));
+   'sa-user-rating', 'sa-user-kpi-score', 'sa-user-leave-adjustment'].forEach(id => setVal(id, ''));
   setVal('sa-user-type', 'Operasional');
   window.saSyncDivisions && window.saSyncDivisions();
   setVal('sa-user-division', 'Server');
@@ -5118,7 +5119,8 @@ window.submitSaUser = async (e) => {
     meal_allowance: getVal('sa-user-meal-allowance') === '' ? 0 : Number(getVal('sa-user-meal-allowance')),
     transport_allowance: getVal('sa-user-transport-allowance') === '' ? 0 : Number(getVal('sa-user-transport-allowance')),
     rating: getVal('sa-user-rating') === '' ? undefined : Number(getVal('sa-user-rating')),
-    kpi_score: getVal('sa-user-kpi-score') === '' ? undefined : Number(getVal('sa-user-kpi-score'))
+    kpi_score: getVal('sa-user-kpi-score') === '' ? undefined : Number(getVal('sa-user-kpi-score')),
+    leave_adjustment: getVal('sa-user-leave-adjustment') === '' ? 0 : Number(getVal('sa-user-leave-adjustment'))
   };
   if (mode === 'create') {
     body.password = getVal('sa-user-password') || '';
