@@ -41,6 +41,7 @@ const AppState = {
   deferredPwaPrompt: null,
   outletsLoadError: ''  // pesan error kalau loadOutlets gagal (untuk feedback di geofence banner)
 };
+window.AppState = AppState;  // expose for debugging & cross-script access
 
 // Formatting Utilities
 const formatRupiah = (val) => {
@@ -708,6 +709,7 @@ const dismissPwaBanner = () => {
 
 // Navigation View Switcher
 const switchView = (viewName) => {
+  window.switchView = switchView;  // expose for debugging & external access
   if (!canAccessView(viewName)) {
     showToast('Anda tidak memiliki akses ke panel ini.', 'warning');
     viewName = 'dashboard';
@@ -772,23 +774,40 @@ const switchView = (viewName) => {
   } else if (viewName === 'chat') {
     // Auto-load chat messages saat masuk view chat
     stopCamera();
-    loadChatMessages && loadChatMessages(AppState.activeChatChannel || '#general');
+    // Reset signature agar tidak skip pertama kali
+    if (window.ChatState) ChatState.lastSig = '';
+    // Scroll content-body ke atas supaya chat wrapper terlihat penuh sebelum diukur
+    const cb = document.querySelector('.content-body');
+    if (cb) cb.scrollTop = 0;
+    loadChatMessages && loadChatMessages(AppState.activeChatChannel || '#general', { showLoading: true });
+    // Ukur tinggi wrapper presisi setelah layout settle (2x frame)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      window.sizeChatWrapper && window.sizeChatWrapper();
+    }));
+    // Mulai polling real-time
+    window.startChatPolling && window.startChatPolling();
   } else if (viewName === 'data-center') {
     // Input Data Center — load employees & outlets
     stopCamera();
+    // Stop chat polling kalau keluar dari view chat (hemat network)
+    window.stopChatPolling && window.stopChatPolling();
     loadEmployees && loadEmployees();
     loadDataCenterOutlets && loadDataCenterOutlets();
     renderDataCenterEmployeeList && renderDataCenterEmployeeList();
   } else if (viewName === 'profile') {
     // Profile view — render current user data
     stopCamera();
+    window.stopChatPolling && window.stopChatPolling();
     renderProfileView && renderProfileView();
   } else if (viewName === 'database') {
     stopCamera();
+    window.stopChatPolling && window.stopChatPolling();
     loadDatabaseOverview();
     loadDatabaseTableData();
   } else {
     stopCamera();
+    // Stop chat polling kalau keluar dari view chat (hemat network)
+    window.stopChatPolling && window.stopChatPolling();
   }
 
   if (window.feather) feather.replace();
@@ -1915,6 +1934,54 @@ const calculateHaversine = (lat1, lon1, lat2, lon2) => {
   return Math.round(R * c);
 };
 
+// === GEOFENCING KETAT (match backend GEOFENCE_TOLERANCE_METERS = 5) ===
+// Toleransi GPS ±5 meter supaya karyawan di tepi radius tidak false-reject.
+const GEOFENCE_TOLERANCE_METERS = 5;
+
+// Helper: enable/disable both presensi submit buttons based on geofence validity.
+// Dipanggil dari checkGpsDistance setiap kali state GPS/outlet berubah.
+window.setPresensiButtonsEnabled = (enabled) => {
+  const checkInBtn = document.getElementById('btn-submit-checkin');
+  const checkOutBtn = document.getElementById('btn-submit-checkout');
+  [checkInBtn, checkOutBtn].forEach(btn => {
+    if (!btn) return;
+    btn.disabled = !enabled;
+    btn.style.opacity = enabled ? '1' : '0.55';
+    btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+  });
+};
+const setPresensiButtonsEnabled = window.setPresensiButtonsEnabled;
+
+// Helper: hitung state lokasi presensi SAAT INI berdasarkan outlet terpilih + GPS device.
+// Returns { ok: true, outlet, dist, radius, effectiveLimit } ketika dalam radius,
+// atau { ok: false, reason, outlet, dist, radius, nearestOutlet } ketika tidak.
+// reason: 'no_outlet' | 'gps_not_ready' | 'outlet_no_coords' | 'out_of_radius'
+window.getPresensiLocationState = () => {
+  const outletSelect = document.getElementById('presensi-outlet-select');
+  const outletId = outletSelect ? outletSelect.value : '';
+  const outlet = (AppState.outlets || []).find(o => String(o.id) === String(outletId));
+  if (!outlet) return { ok: false, reason: 'no_outlet' };
+  if (!AppState.gpsOk) return { ok: false, reason: 'gps_not_ready' };
+  const oLat = parseFloat(outlet.lat), oLon = parseFloat(outlet.lon);
+  if (isNaN(oLat) || isNaN(oLon)) return { ok: false, reason: 'outlet_no_coords', outlet };
+  const radius = Number(outlet.radius_meters) || 100;
+  const effectiveLimit = radius + GEOFENCE_TOLERANCE_METERS;
+  const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, oLat, oLon);
+  // Cari outlet terdekat yang dalam radius (untuk saran pindah outlet)
+  let nearestOutlet = null, nearestDist = Infinity;
+  (AppState.outlets || []).forEach(function (o) {
+    const nLat = parseFloat(o.lat), nLon = parseFloat(o.lon);
+    if (isNaN(nLat) || isNaN(nLon)) return;
+    const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, nLat, nLon);
+    if (d < nearestDist) { nearestDist = d; nearestOutlet = o; }
+  });
+  if (dist <= effectiveLimit) {
+    return { ok: true, outlet, dist, radius, effectiveLimit };
+  }
+  return { ok: false, reason: 'out_of_radius', outlet, dist, radius, effectiveLimit, nearestOutlet, nearestDist };
+};
+const getPresensiLocationState = window.getPresensiLocationState;
+
 // --- Update Geofence Banner (called whenever GPS or outlet changes) ---
 window.checkGpsDistance = () => {
   const outletSelect = document.getElementById('presensi-outlet-select');
@@ -1922,6 +1989,8 @@ window.checkGpsDistance = () => {
   const text = document.getElementById('geofence-text');
   const icon = document.getElementById('geofence-icon');
   if (!outletSelect || !banner || !text) return;
+  // DEFAULT: tombol presensi di-disable sampai dibuktikan user berada di dalam radius.
+  setPresensiButtonsEnabled(false);
 
   // === STATE: Outlet gagal dimuat — tampilkan error + tombol retry + diagnosa ===
   if (AppState.outletsLoadError) {
@@ -1975,7 +2044,7 @@ window.checkGpsDistance = () => {
     text.innerHTML = `<strong>⚠️ GPS Mencurigakan Terdeteksi!</strong>
       <br>Sistem mendeteksi kemungkinan penggunaan aplikasi fake GPS / mock location.
       <br>Akurasi GPS: ${AppState.gpsAccuracy}m (mencurigakan)
-      <br><span style="font-size:11px; color:#991b1b;">Presensi akan ditandai untuk review admin. Nonaktifkan mock location dan coba lagi.</span>
+      <br><span style="font-size:11px; color:#991b1b;">Presensi DITOLAK. Nonaktifkan mock location / fake GPS, lalu tekan tombol Deteksi Ulang di bawah.</span>
       <br><button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px;" onclick="window.detectDeviceGPS()">
         <i data-feather="map-pin" style="width:11px; height:11px;"></i> Deteksi Ulang GPS
       </button>`;
@@ -1991,7 +2060,7 @@ window.checkGpsDistance = () => {
   const parseLon = parseFloat(outlet.lon);
   if (isNaN(parseLat) || isNaN(parseLon)) {
     banner.className = 'geofence-alert geofence-warning';
-    text.innerHTML = `<strong>${outlet.name}</strong> dipilih. Koordinat GPS outlet belum lengkap. Validasi radius akan dilakukan di server.`;
+    text.innerHTML = `<strong>${outlet.name}</strong> dipilih. Koordinat GPS outlet belum lengkap. Hubungi admin untuk mengisi latitude/longitude outlet. Presensi tidak dapat dilakukan sampai koordinat outlet diatur.`;
     return;
   }
   // Gunakan nilai yang sudah diparse
@@ -2011,7 +2080,7 @@ window.checkGpsDistance = () => {
     if (d < nearestDist) {
       nearestDist = d;
       nearestOutlet = o;
-      nearestValid = d <= (o.radius_meters || 100);
+      nearestValid = d <= ((o.radius_meters || 100) + GEOFENCE_TOLERANCE_METERS);
     }
   });
 
@@ -2023,13 +2092,16 @@ window.checkGpsDistance = () => {
     const autoOutlet = nearestOutlet;
     banner.className = 'geofence-alert geofence-valid';
     text.innerHTML = `<strong>📍 Auto-Terdeteksi di Lokasi:</strong> ${autoOutlet.name} (${nearestDist} meter)
-      <br><span style="font-size:11px; opacity:0.8;">Outlet terdekat terpilih otomatis berdasarkan GPS Anda.</span>`;
+      <br><span style="font-size:11px; opacity:0.8;">Outlet terdekat terpilih otomatis berdasarkan GPS Anda. Tombol presensi diaktifkan.</span>`;
+    setPresensiButtonsEnabled(true);
+    if (window.feather) feather.replace();
     return;
   }
 
   // Kalau outlet yang dipilih manual punya lat/lon, hitung jaraknya
   const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, outlet.lat, outlet.lon);
-  const isValid = dist <= outlet.radius_meters;
+  const radiusLimit = outlet.radius_meters || 100;
+  const isValid = dist <= (radiusLimit + GEOFENCE_TOLERANCE_METERS);
 
   if (isValid) {
     // Cek apakah ada outlet lain yang lebih dekat
@@ -2039,7 +2111,7 @@ window.checkGpsDistance = () => {
       if (typeof o.lat !== 'number' || typeof o.lon !== 'number') return;
       if (o.id === outlet.id) return;
       const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, o.lat, o.lon);
-      if (d < closerDist && d <= (o.radius_meters || 100)) {
+      if (d < closerDist && d <= ((o.radius_meters || 100) + GEOFENCE_TOLERANCE_METERS)) {
         closerDist = d;
         closerOutlet = o;
       }
@@ -2047,25 +2119,27 @@ window.checkGpsDistance = () => {
 
     if (closerOutlet) {
       banner.className = 'geofence-alert geofence-valid';
-      text.innerHTML = `<strong>Tervalidasi di ${outlet.name}:</strong> ${dist} meter (Radius: ${outlet.radius_meters}m).
+      text.innerHTML = `<strong>Tervalidasi di ${outlet.name}:</strong> ${dist} meter (Radius: ${radiusLimit}m).
         <br><span style="font-size:11px; opacity:0.8;">💡 Anda juga dekat dengan <strong>${closerOutlet.name}</strong> (${closerDist}m). <a href="javascript:void(0)" style="color:inherit; text-decoration:underline;" onclick="document.getElementById('presensi-outlet-select').value='${closerOutlet.id}'; window.checkGpsDistance();">Pilih ${closerOutlet.name}</a></span>`;
     } else {
       banner.className = 'geofence-alert geofence-valid';
-      text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m)${accuracyInfo} — <strong>Valid Untuk Presensi</strong>`;
+      text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${radiusLimit}m)${accuracyInfo} — <strong>Valid Untuk Presensi</strong>`;
     }
+    setPresensiButtonsEnabled(true);
   } else {
     // User di luar radius outlet yang dipilih — cek apakah ada outlet lain yang dalam radius
     if (nearestOutlet && nearestValid) {
       banner.className = 'geofence-alert geofence-warning';
       text.innerHTML = `<strong>Anda berada di ${nearestOutlet.name}:</strong> ${nearestDist} meter (Radius: ${nearestOutlet.radius_meters}m).
-        <br>Outlet yang dipilih (${outlet.name}) berjarak ${dist} meter — di luar radius.
+        <br>Outlet yang dipilih (${outlet.name}) berjarak ${dist} meter — <strong>di luar radius. Presensi DITOLAK untuk outlet ini.</strong>
         <br><a href="javascript:void(0)" style="color:inherit; text-decoration:underline; font-weight:700;" onclick="document.getElementById('presensi-outlet-select').value='${nearestOutlet.id}'; window.checkGpsDistance();">📍 Pilih ${nearestOutlet.name} secara otomatis</a>`;
     } else {
       banner.className = 'geofence-alert geofence-invalid';
-      text.innerHTML = `<strong>Di Luar Radius:</strong> Anda berada ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m).
+      text.innerHTML = `<strong>🚫 Di Luar Radius — Presensi DITOLAK:</strong> Anda berada ${dist} meter dari ${outlet.name} (Batas Radius: ${radiusLimit}m).
         <br><span style="font-size:11px; opacity:0.8;">Outlet terdekat: ${nearestOutlet ? nearestOutlet.name + ' (' + nearestDist + 'm)' : 'tidak ditemukan'}.</span>
-        <br><em>Presensi akan ditandai "Menunggu Approval" atasan.</em>`;
+        <br><em>Mendekatlah ke lokasi outlet untuk melakukan presensi.</em>`;
     }
+    setPresensiButtonsEnabled(false);
   }
 };
 const checkGpsDistance = window.checkGpsDistance;
@@ -2173,6 +2247,31 @@ window.submitAttendanceCheckIn = async () => {
     }
   }
 
+  // === GEOFENCING KETAT: Client-side guard — TOLAK sebelum upload kalau di luar radius ===
+  // Backend juga akan menolak, tapi guard ini menghemat upload selfie & lock.
+  const locState = getPresensiLocationState();
+  if (locState.reason === 'no_outlet') {
+    showToast('Pilih outlet presensi terlebih dahulu.', 'warning');
+    return;
+  }
+  if (locState.reason === 'gps_not_ready') {
+    showToast('GPS belum siap. Tekan tombol "Deteksi Lokasi GPS" lalu coba lagi.', 'warning');
+    return;
+  }
+  if (locState.reason === 'outlet_no_coords') {
+    showToast('Koordinat GPS outlet belum diatur. Hubungi admin.', 'error');
+    return;
+  }
+  if (locState.reason === 'out_of_radius' || !locState.ok) {
+    const msg = locState.outlet
+      ? `Presensi DITOLAK. Anda berada ${locState.dist}m dari ${locState.outlet.name} (batas radius: ${locState.radius}m). Mendekatlah ke outlet lalu coba lagi.`
+      : 'Presensi DITOLAK. Anda berada di luar radius outlet. Mendekatlah ke lokasi outlet lalu coba lagi.';
+    showToast(msg, 'error');
+    // Update banner biar pesan di luar radius konsisten dengan toast
+    window.checkGpsDistance && window.checkGpsDistance();
+    return;
+  }
+
   // --- Camera: ensure in-page camera is started; fallback to native camera input ---
   if (!AppState.cameraReady) {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Memulai kamera...'; }
@@ -2216,13 +2315,12 @@ window.submitAttendanceCheckIn = async () => {
     });
     const data = await res.json();
     if (res.ok && data.status !== 'error') {
-      if (data.in_radius) {
-        showToast(`Presensi berhasil! Status: ${data.attendance_status}${data.late_minutes ? ' (Terlambat ' + data.late_minutes + ' menit)' : ' (Tepat Waktu)'}`, 'success');
-      } else {
-        showToast(`Presensi tercatat di LUAR RADIUS (${data.distance_meters}m). Menunggu approval atasan.`, 'warning');
-      }
+      // Skema ketat: presensi hanya sukses jika dalam radius (backend sudah menolak jika luar).
+      // data.in_radius akan selalu true di sini.
+      showToast(`Presensi berhasil! Status: ${data.attendance_status}${data.late_minutes ? ' (Terlambat ' + data.late_minutes + ' menit)' : ' (Tepat Waktu)'}`, 'success');
       await loadAttendanceLogs();
     } else {
+      // Tampilkan pesan DITOLAK dari backend (mis. "Presensi DITOLAK. Anda berada X meter...")
       showToast(data.detail || data.message || 'Gagal check-in. Coba beberapa saat lagi.', 'error');
     }
   } catch (err) {
@@ -2280,6 +2378,22 @@ window.submitAttendanceCheckOut = async () => {
     if (!AppState.gpsOk) {
       showToast('Lokasi GPS belum tersedia. Pastikan GPS aktif dan izin lokasi diberikan, lalu coba lagi.', 'warning');
       return;
+    }
+  }
+
+  // === GEOFENCING KETAT: Client-side guard untuk check-out ===
+  // Validasi jarak ke outlet tempat user check-in (myCheckInToday.outlet_id).
+  // Backend juga akan menolak, tapi guard ini menghemat upload selfie.
+  const checkInOutlet = (AppState.outlets || []).find(o => String(o.id) === String(myCheckInToday.outlet_id));
+  if (checkInOutlet) {
+    const coLat = parseFloat(checkInOutlet.lat), coLon = parseFloat(checkInOutlet.lon);
+    const coRadius = Number(checkInOutlet.radius_meters) || 100;
+    if (!isNaN(coLat) && !isNaN(coLon)) {
+      const coDist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, coLat, coLon);
+      if (coDist > (coRadius + GEOFENCE_TOLERANCE_METERS)) {
+        showToast(`Presensi pulang DITOLAK. Anda berada ${coDist}m dari ${checkInOutlet.name} (batas radius: ${coRadius}m). Mendekatlah ke outlet tempat Anda presensi masuk lalu coba lagi.`, 'error');
+        return;
+      }
     }
   }
 
@@ -2763,7 +2877,7 @@ const renderKpiTable = (stats) => {
   }).join('');
 };
 
-// ================= CHAT ROOM INTERNAL =================
+// ================= CHAT ROOM INTERNAL (v2 - FAST & REAL-TIME) =================
 // Expose to window so inline onclick/onsubmit di HTML bisa panggil
 window.switchChatChannel = (channel, el) => {
   if (!canAccessChannel(channel)) {
@@ -2775,36 +2889,165 @@ window.switchChatChannel = (channel, el) => {
   if (el) el.classList.add('active');
   const nameEl = document.getElementById('active-chat-channel-name');
   if (nameEl) nameEl.textContent = channel;
-  loadChatMessages(channel);
+  // Sync mobile selector
+  const sel = document.getElementById('chat-channel-select');
+  if (sel) sel.value = channel;
+  // Reset last-message tracker saat ganti channel
+  ChatState.lastSig = '';
+  ChatState.lastCount = 0;
+  loadChatMessages(channel, { showLoading: true });
 };
 const switchChatChannel = window.switchChatChannel;
 
-const loadChatMessages = async (channel) => {
+// Chat state: tracking untuk polling & smart-diff
+const ChatState = {
+  pollingTimer: null,
+  pollInterval: 4000,          // 4 detik — balance antara real-time & hemat quota Apps Script
+  isActive: false,             // hanya poll saat chat view sedang dibuka
+  isLoading: false,            // mencegah request paralel
+  lastSig: '',                 // signature = lastMessageId + count, untuk skip re-render
+  lastCount: 0,
+  pendingMessages: [],         // pesan yang baru dikirim, menunggu konfirmasi server
+  networkErrorStreak: 0,
+};
+window.ChatState = ChatState;
+
+// Helper: format timestamp ke "HH:mm" (hari ini) atau "kemarin HH:mm" atau "dd/MM HH:mm"
+const formatChatTime = (raw) => {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  // Kasus 1: sudah string ISO-like "yyyy-MM-dd HH:mm:ss"
+  const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (m1) {
+    const dt = new Date(+m1[1], +m1[2] - 1, +m1[3], +m1[4], +m1[5], m1[6] ? +m1[6] : 0);
+    const now = new Date();
+    const isToday = dt.toDateString() === now.toDateString();
+    const yest = new Date(now); yest.setDate(now.getDate() - 1);
+    const isYesterday = dt.toDateString() === yest.toDateString();
+    const hh = ('0' + dt.getHours()).slice(-2);
+    const mm = ('0' + dt.getMinutes()).slice(-2);
+    if (isToday) return hh + ':' + mm;
+    if (isYesterday) return 'Kemarin ' + hh + ':' + mm;
+    return ('0' + dt.getDate()).slice(-2) + '/' + ('0' + (dt.getMonth() + 1)).slice(-2) + ' ' + hh + ':' + mm;
+  }
+  // Kasus 2: "yyyy-MM-dd" saja (lama, tanggal saja)
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m2) return m2[3] + '/' + m2[2] + '/' + m2[1];
+  // Kasus 3: "HH:mm" saja
+  if (/^\d{1,2}:\d{2}$/.test(s)) return s;
+  // Kasus 4: Date object 1899-12-30 HH:mm:ss (kasus lama sebelum fix backend)
+  if (s.indexOf('1899-12-30') === 0) {
+    const t = s.split(' ')[1];
+    return t ? t.slice(0, 5) : '';
+  }
+  // Fallback: kalau ada jam di akhir, ambil jam saja
+  const m3 = s.match(/(\d{1,2}:\d{2})(?::\d{2})?$/);
+  return m3 ? m3[1] : s;
+};
+
+// Cek apakah user sedang scroll di dekat bottom (untuk auto-scroll only saat relevan)
+const isChatNearBottom = () => {
+  const c = document.getElementById('chat-messages-stream');
+  if (!c) return true;
+  return (c.scrollHeight - c.scrollTop - c.clientHeight) < 80;
+};
+
+// ====== UKUR TINGGI CHAT WRAPPER SECARA PRESISI ======
+// Fix: input bar terdorong keluar layar di iPhone (height tebakan calc() meleset
+// karena address bar & safe-area). Kita ukur posisi wrapper dari viewport,
+// lalu set tinggi = sisa ruang sampai bawah content-body.
+window.sizeChatWrapper = () => {
+  const panel = document.getElementById('view-chat');
+  const wrap = document.querySelector('#view-chat .chat-window-wrapper');
+  if (!panel || !wrap || !panel.classList.contains('active')) return;
+  const contentBody = wrap.closest('.content-body');
+  if (!contentBody) return;
+  const cs = window.getComputedStyle(contentBody);
+  const padBottom = parseFloat(cs.paddingBottom) || 0;
+  const top = wrap.getBoundingClientRect().top;
+  // Sisa ruang = tinggi viewport - posisi atas wrapper - padding bawah - margin kecil
+  const avail = window.innerHeight - top - padBottom - 4;
+  if (avail > 220) {
+    wrap.style.height = avail + 'px';
+    wrap.style.maxHeight = avail + 'px';
+  }
+};
+
+// Panggil ulang saat resize / rotasi / keyboard iOS muncul-hilang
+window.addEventListener('resize', () => { window.sizeChatWrapper && window.sizeChatWrapper(); });
+window.addEventListener('orientationchange', () => {
+  // Tunggu layout stabil setelah rotasi
+  setTimeout(() => { window.sizeChatWrapper && window.sizeChatWrapper(); }, 250);
+});
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => { window.sizeChatWrapper && window.sizeChatWrapper(); });
+}
+
+const loadChatMessages = async (channel, opts) => {
   const ch = channel || AppState.activeChatChannel || '#general';
+  const options = opts || {};
   const container = document.getElementById('chat-messages-stream');
-  if (container) {
-    container.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:20px; font-size:12px;">Memuat pesan...</div>';
+  if (ChatState.isLoading) return; // hindari request paralel
+  ChatState.isLoading = true;
+
+  // Update status indikator (jika ada)
+  const statusEl = document.getElementById('chat-conn-status');
+  if (statusEl && !options.silent) statusEl.textContent = 'Memuat…';
+
+  if (container && options.showLoading) {
+    container.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:20px; font-size:12px;">Memuat pesan…</div>';
   }
   try {
-    const res = await fetch(`/api/chat/messages?channel=${encodeURIComponent(ch)}`);
+    const res = await fetch('/api/chat/messages?channel=' + encodeURIComponent(ch));
     if (!res.ok) {
       let errMsg = 'Gagal memuat pesan (HTTP ' + res.status + ')';
       try {
         const errData = await res.json();
         if (errData.detail) errMsg = errData.detail;
       } catch (e) { /* ignore */ }
-      if (container) {
-        container.innerHTML = `<div style="text-align:center; color:#ef4444; padding:20px; font-size:12px;">⚠️ ${errMsg}<br><button type="button" class="btn-secondary" style="margin-top:8px; padding:5px 10px; font-size:11px;" onclick="window.loadChatMessages && window.loadChatMessages('${ch}')">Coba Lagi</button></div>`;
+      ChatState.networkErrorStreak++;
+      if (container && !options.silent) {
+        container.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px; font-size:12px;">⚠️ ' + errMsg + '<br><button type="button" class="btn-secondary" style="margin-top:8px; padding:5px 10px; font-size:11px;" onclick="window.loadChatMessages && window.loadChatMessages(\'' + ch + '\', {showLoading:true})">Coba Lagi</button></div>';
       }
+      if (statusEl) statusEl.textContent = 'Error';
       return;
     }
     const data = await res.json();
-    renderChatMessages(data);
+    ChatState.networkErrorStreak = 0;
+    // Gabungkan pesan pending (yang baru dikirim, belum ter-fetch dari server)
+    const merged = (ChatState.pendingMessages.filter(p => p.channel === ch)).concat(data || []);
+    // Smart diff: cek signature — kalau sama, skip re-render
+    const lastMsg = (data && data.length) ? data[data.length - 1] : null;
+    const sig = (lastMsg ? (lastMsg.id || lastMsg.timestamp || '') : '') + '|' + data.length + '|' + (ChatState.pendingMessages.length);
+    if (sig === ChatState.lastSig && !options.force) {
+      // Tidak ada perubahan — skip render, hemat DOM
+      if (statusEl) statusEl.textContent = 'Online';
+      return;
+    }
+    ChatState.lastSig = sig;
+    ChatState.lastCount = data.length;
+    // Bersihkan pending messages yang sudah masuk server (match by content+timestamp window)
+    ChatState.pendingMessages = ChatState.pendingMessages.filter(p => {
+      // Hapus yang sudah ada di server (match by sender+message content dalam window waktu dekat)
+      return !data.some(s => s.sender_id === p.sender_id && s.message === p.message);
+    });
+    renderChatMessages(merged);
+    if (statusEl) {
+      statusEl.textContent = 'Online';
+      statusEl.style.color = '#10b981';
+    }
   } catch (err) {
     console.error('Failed loading chat:', err);
-    if (container) {
-      container.innerHTML = `<div style="text-align:center; color:#ef4444; padding:20px; font-size:12px;">⚠️ Kesalahan koneksi. <button type="button" class="btn-secondary" style="margin-top:8px; padding:5px 10px; font-size:11px;" onclick="window.loadChatMessages && window.loadChatMessages('${ch}')">Coba Lagi</button></div>`;
+    ChatState.networkErrorStreak++;
+    if (container && !options.silent) {
+      container.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px; font-size:12px;">⚠️ Kesalahan koneksi. <button type="button" class="btn-secondary" style="margin-top:8px; padding:5px 10px; font-size:11px;" onclick="window.loadChatMessages && window.loadChatMessages(\'' + ch + '\', {showLoading:true})">Coba Lagi</button></div>';
     }
+    if (statusEl) {
+      statusEl.textContent = 'Offline';
+      statusEl.style.color = '#ef4444';
+    }
+  } finally {
+    ChatState.isLoading = false;
   }
 };
 window.loadChatMessages = loadChatMessages;
@@ -2819,22 +3062,62 @@ const renderChatMessages = (messages) => {
   }
 
   const myId = AppState.currentUser ? AppState.currentUser.id : '';
+  const wasNearBottom = isChatNearBottom();
   container.innerHTML = messages.map(m => {
     const isMe = m.sender_id === myId;
-    const time = m.timestamp ? String(m.timestamp).split(' ')[1] || m.timestamp : '';
-    return `
-      <div class="chat-message-bubble ${isMe ? 'me' : ''}">
-        <div class="chat-bubble-content">
-          <div class="chat-sender-info">${m.sender_name || 'Anon'} (${m.sender_division || '-'})</div>
-          <div>${escapeHtml(m.message || '')}</div>
-          <div class="chat-timestamp">${time}</div>
-        </div>
-      </div>
-    `;
+    const isPending = !!m.__pending;
+    const time = formatChatTime(m.timestamp);
+    const senderName = escapeHtml(m.sender_name || 'Anon');
+    const senderDiv = escapeHtml(m.sender_division || '-');
+    const msgHtml = escapeHtml(m.message || '').replace(/\n/g, '<br>');
+    return '<div class="chat-message-bubble' + (isMe ? ' me' : '') + (isPending ? ' pending' : '') + '" data-msg-id="' + escapeHtml(m.id || '') + '">' +
+      '<div class="chat-bubble-content">' +
+        '<div class="chat-sender-info">' + senderName + ' (' + senderDiv + ')</div>' +
+        '<div class="chat-msg-text">' + msgHtml + '</div>' +
+        '<div class="chat-timestamp">' + escapeHtml(time) + (isPending ? ' • Mengirim…' : '') + '</div>' +
+      '</div>' +
+    '</div>';
   }).join('');
 
-  container.scrollTop = container.scrollHeight;
+  // Auto-scroll only jika user sudah di dekat bottom (jangan ganggu user yang sedang scroll ke atas baca pesan lama)
+  if (wasNearBottom) {
+    requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+  }
 };
+window.renderChatMessages = renderChatMessages;
+window.formatChatTime = formatChatTime;
+
+// Mulai polling otomatis saat chat view aktif
+window.startChatPolling = () => {
+  if (ChatState.pollingTimer) return;
+  ChatState.isActive = true;
+  // Polling tiap 4 detik, silent (tidak menampilkan loading)
+  ChatState.pollingTimer = setInterval(() => {
+    if (!ChatState.isActive) return;
+    if (document.visibilityState === 'hidden') return; // jangan poll saat tab tidak aktif
+    const chatView = document.getElementById('view-chat');
+    if (!chatView || !chatView.classList.contains('active')) return;
+    loadChatMessages(AppState.activeChatChannel, { silent: true });
+  }, ChatState.pollInterval);
+};
+window.stopChatPolling = () => {
+  ChatState.isActive = false;
+  if (ChatState.pollingTimer) {
+    clearInterval(ChatState.pollingTimer);
+    ChatState.pollingTimer = null;
+  }
+};
+
+// Polling juga pause saat tab di-hide, resume saat kembali visible
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const chatView = document.getElementById('view-chat');
+    if (chatView && chatView.classList.contains('active')) {
+      // Refresh sekali langsung saat kembali
+      loadChatMessages(AppState.activeChatChannel, { silent: true });
+    }
+  }
+});
 
 window.sendChatMessage = async (e) => {
   if (e && e.preventDefault) e.preventDefault();
@@ -2848,8 +3131,55 @@ window.sendChatMessage = async (e) => {
   }
 
   const sendBtn = document.getElementById('chat-send-btn');
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = 'Mengirim...'; }
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.setAttribute('data-busy', '1'); }
 
+  // === OPTIMISTIC UI: tampilkan pesan langsung di layar (tidak tunggu server) ===
+  const tempId = 'pending-' + Date.now();
+  const optimisticMsg = {
+    id: tempId,
+    channel: AppState.activeChatChannel,
+    sender_id: AppState.currentUser.id,
+    sender_name: AppState.currentUser.name,
+    sender_division: AppState.currentUser.division,
+    message: text,
+    timestamp: '', // akan diisi "sekarang" oleh formatChatTime
+    __pending: true,
+  };
+  // Inject timestamp sebagai string ISO-like now
+  const now = new Date();
+  optimisticMsg.timestamp = now.getFullYear() + '-' +
+    ('0' + (now.getMonth() + 1)).slice(-2) + '-' +
+    ('0' + now.getDate()).slice(-2) + ' ' +
+    ('0' + now.getHours()).slice(-2) + ':' +
+    ('0' + now.getMinutes()).slice(-2) + ':' +
+    ('0' + now.getSeconds()).slice(-2);
+  ChatState.pendingMessages.push(optimisticMsg);
+  // Render langsung (skip diff — kita paksa)
+  const allExisting = (Array.from(document.querySelectorAll('#chat-messages-stream .chat-message-bubble'))
+    .map(el => el.dataset.msgId).filter(Boolean));
+  // Cukup re-render dengan pesan baru di akhir
+  const container = document.getElementById('chat-messages-stream');
+  if (container) {
+    // Hapus pesan "Belum ada pesan" kalau ada
+    if (container.innerHTML.indexOf('Belum ada pesan') >= 0) container.innerHTML = '';
+    const wasNearBottom = isChatNearBottom();
+    const myId = AppState.currentUser.id;
+    const time = formatChatTime(optimisticMsg.timestamp);
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-message-bubble me pending';
+    bubble.dataset.msgId = tempId;
+    bubble.innerHTML = '<div class="chat-bubble-content">' +
+      '<div class="chat-sender-info">' + escapeHtml(optimisticMsg.sender_name) + ' (' + escapeHtml(optimisticMsg.sender_division) + ')</div>' +
+      '<div class="chat-msg-text">' + escapeHtml(text).replace(/\n/g, '<br>') + '</div>' +
+      '<div class="chat-timestamp">' + escapeHtml(time) + ' • Mengirim…</div>' +
+    '</div>';
+    container.appendChild(bubble);
+    if (wasNearBottom) container.scrollTop = container.scrollHeight;
+  }
+  // Kosongkan input segera supaya user bisa ketik pesan berikutnya
+  input.value = '';
+
+  // Kirim ke server di background
   try {
     const res = await fetch('/api/chat/messages', {
       method: 'POST',
@@ -2865,23 +3195,61 @@ window.sendChatMessage = async (e) => {
     });
     const data = await res.json();
     if (res.ok) {
-      input.value = '';
-      await loadChatMessages(AppState.activeChatChannel);
+      // Hapus dari pending — pesan akan muncul dari server saat polling berikutnya
+      ChatState.pendingMessages = ChatState.pendingMessages.filter(p => p.id !== tempId);
+      const pendingEl = container && container.querySelector('[data-msg-id="' + tempId + '"]');
+      if (pendingEl) pendingEl.remove();
+      // Force refresh untuk ambil pesan baru dari server
+      ChatState.lastSig = '';
+      await loadChatMessages(AppState.activeChatChannel, { silent: true, force: true });
     } else {
+      // Tandai pesan pending sebagai gagal
+      const pendingEl = container && container.querySelector('[data-msg-id="' + tempId + '"]');
+      if (pendingEl) {
+        pendingEl.classList.remove('pending');
+        pendingEl.classList.add('failed');
+        const tsEl = pendingEl.querySelector('.chat-timestamp');
+        if (tsEl) tsEl.innerHTML = '⚠️ Gagal kirim — ' + escapeHtml(data.detail || data.message || 'coba lagi');
+      }
       showToast(data.detail || data.message || 'Gagal mengirim pesan.', 'error');
     }
   } catch (err) {
+    const pendingEl = container && container.querySelector('[data-msg-id="' + tempId + '"]');
+    if (pendingEl) {
+      pendingEl.classList.remove('pending');
+      pendingEl.classList.add('failed');
+      const tsEl = pendingEl.querySelector('.chat-timestamp');
+      if (tsEl) tsEl.innerHTML = '⚠️ Gagal kirim — periksa koneksi';
+    }
     showToast('Gagal mengirim pesan. Periksa koneksi internet.', 'error');
     console.error('Chat send error:', err);
   } finally {
     if (sendBtn) {
       sendBtn.disabled = false;
+      sendBtn.removeAttribute('data-busy');
       sendBtn.innerHTML = '<i data-feather="send" style="width:14px; height:14px;"></i>';
       if (window.feather) feather.replace();
     }
+    input.focus();
   }
 };
 const sendChatMessage = window.sendChatMessage;
+
+// Mobile channel selector handler
+window.switchChatChannelMobile = (selectEl) => {
+  if (!selectEl) return;
+  const channel = selectEl.value;
+  // Tandai active di sidebar (kalau ada)
+  document.querySelectorAll('.chat-channel-item').forEach(c => {
+    if (c.getAttribute('onclick') && c.getAttribute('onclick').indexOf("'" + channel + "'") >= 0) {
+      c.classList.add('active');
+    } else {
+      c.classList.remove('active');
+    }
+  });
+  switchChatChannel(channel, null);
+};
+window.switchChatChannelMobile = window.switchChatChannelMobile;
 
 // ================= KALENDER & AGENDA =================
 const loadCalendarEvents = async () => {
