@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
   <title>TERTIB DISIPLIN - Sistem Kontrol Operasional & Disiplin Karyawan</title>
   
   <!-- PWA Meta Tags -->
@@ -365,9 +365,14 @@
         <div>
           <strong>📲 Install TERTIB DISIPLIN di Perangkat Anda</strong>
           <p style="font-size:12px; opacity:0.9;">Akses presensi GPS, daily report, dan slip gaji langsung dari homescreen tanpa perlu buka browser.</p>
+          <div class="ios-install-hint">
+            <strong>iOS/iPhone:</strong> Tap tombol <strong>Share</strong> (kotak dengan panah) di Safari → pilih <strong>"Add to Home Screen"</strong> → tap <strong>Add</strong>.
+          </div>
         </div>
-        <div style="display:flex; gap:8px;">
-          <button class="btn-primary" style="background:#fff; color:var(--burgundy-primary); padding:6px 14px; font-size:12px;" onclick="triggerPwaPrompt()">Install Sekarang</button>
+        <div style="display:flex; gap:8px; flex-direction:column;">
+          <button class="btn-primary" style="background:#fff; color:var(--burgundy-primary); padding:8px 14px; font-size:12px;" onclick="triggerPwaPrompt()">
+            <i data-feather="download" style="width:13px; height:13px;"></i> Install Sekarang
+          </button>
           <button class="btn-secondary" style="background:transparent; border-color:rgba(255,255,255,0.4); color:#fff; padding:6px 10px; font-size:12px;" onclick="dismissPwaBanner()">Nanti</button>
         </div>
       </div>

@@ -649,9 +649,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.feather) feather.replace();
 });
 
-// PWA Trigger
-const triggerPwaPrompt = () => {
+// PWA Trigger — handle Android (beforeinstallprompt) + iOS (manual instructions)
+window.triggerPwaPrompt = () => {
+  // Deteksi iOS
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+  if (isStandalone) {
+    showToast('Aplikasi sudah terinstall di perangkat Anda!', 'success');
+    dismissPwaBanner();
+    return;
+  }
+
   if (AppState.deferredPwaPrompt) {
+    // Android/Chrome — pakai native prompt
     AppState.deferredPwaPrompt.prompt();
     AppState.deferredPwaPrompt.userChoice.then((choice) => {
       if (choice.outcome === 'accepted') {
@@ -660,14 +671,39 @@ const triggerPwaPrompt = () => {
       AppState.deferredPwaPrompt = null;
       dismissPwaBanner();
     });
+  } else if (isIOS) {
+    // iOS tidak support beforeinstallprompt — tampilkan instruksi manual
+    showToast('iOS: Tap tombol Share (⬆️) di Safari → "Add to Home Screen" → Add', 'info');
+    // Tampilkan banner dengan instruksi iOS
+    const banner = document.getElementById('pwa-banner');
+    if (banner) {
+      banner.style.display = 'flex';
+      const hint = banner.querySelector('.ios-install-hint');
+      if (hint) hint.style.display = 'block';
+    }
   } else {
-    showToast('Di browser PC/HP Anda: Klik menu titik tiga ➔ "Install App" / "Tambahkan ke Layar Utama"', 'info');
+    showToast('Klik menu titik tiga (⋮) di browser → "Install App" / "Tambahkan ke Layar Utama"', 'info');
   }
+};
+const triggerPwaPrompt = window.triggerPwaPrompt;
+
+// Auto-show PWA banner setelah login (sekali per sesi)
+const showPwaBannerIfNeeded = () => {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isStandalone) return; // sudah terinstall
+  const dismissed = sessionStorage.getItem('td_pwa_dismissed');
+  if (dismissed) return;
+  // Tampilkan banner setelah 3 detik
+  setTimeout(() => {
+    const banner = document.getElementById('pwa-banner');
+    if (banner) banner.style.display = 'flex';
+  }, 3000);
 };
 
 const dismissPwaBanner = () => {
   const banner = document.getElementById('pwa-banner');
   if (banner) banner.style.display = 'none';
+  sessionStorage.setItem('td_pwa_dismissed', '1');
 };
 
 // Navigation View Switcher
