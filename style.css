@@ -1369,6 +1369,8 @@ textarea.form-control {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;   /* KRITIS: izinkan menyusut di dalam grid — tanpa ini input bar terdorong keluar layar */
+  overflow: hidden;
 }
 
 .chat-header-bar {
@@ -1377,15 +1379,19 @@ textarea.form-control {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;   /* header tidak boleh menyusut */
 }
 
 .chat-stream-body {
   flex: 1;
+  min-height: 0;   /* KRITIS: izinkan scroll di dalam flex column */
   padding: 20px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .chat-message-bubble {
@@ -1433,10 +1439,78 @@ textarea.form-control {
 
 .chat-input-bar {
   padding: 14px 20px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)); /* aman dari home-bar iPhone */
   border-top: 1px solid #e2e8f0;
   display: flex;
   gap: 10px;
   background: #fff;
+  flex-shrink: 0;   /* input bar tidak boleh menyusut / hilang */
+}
+
+/* Chat v2 enhancements: pending/failed states, mobile selector, conn badge */
+.chat-message-bubble.pending {
+  opacity: 0.65;
+}
+.chat-message-bubble.pending .chat-bubble-content {
+  background: #c7d2fe !important;
+  color: #312e81 !important;
+  border: 1px dashed #6366f1;
+}
+.chat-message-bubble.pending .chat-sender-info {
+  color: #4338ca !important;
+}
+.chat-message-bubble.failed .chat-bubble-content {
+  background: #fee2e2 !important;
+  color: #7f1d1d !important;
+  border: 1px solid #ef4444;
+}
+.chat-message-bubble.failed .chat-timestamp {
+  color: #b91c1c;
+  font-weight: 600;
+}
+.chat-msg-text {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.45;
+}
+.chat-conn-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chat-conn-badge::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.chat-channel-select-mobile {
+  display: none;
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e293b;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
 }
 
 /* PWA Install Banner */
@@ -1518,9 +1592,56 @@ textarea.form-control {
   }
   .chat-window-wrapper {
     grid-template-columns: 1fr;
+    /* Tinggi presisi di-set oleh JS (sizeChatWrapper) — ini hanya fallback awal */
+    height: calc(100dvh - 150px);
+    max-height: calc(100dvh - 150px);
   }
   .chat-channels-sidebar {
     display: none;
+  }
+  /* Tampilkan dropdown selector saluran di mobile */
+  .chat-channel-select-mobile {
+    display: block;
+  }
+  .chat-header-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 14px;
+  }
+  .chat-header-bar strong {
+    font-size: 14px;
+  }
+  .chat-header-bar p {
+    font-size: 10px;
+  }
+  .chat-stream-body {
+    padding: 12px;
+    gap: 10px;
+  }
+  .chat-message-bubble {
+    max-width: 90%;
+  }
+  .chat-bubble-content {
+    padding: 9px 12px;
+    font-size: 13px;
+    border-radius: 14px;
+  }
+  .chat-input-bar {
+    padding: 10px 12px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    gap: 8px;
+  }
+  .chat-input-bar .form-control {
+    font-size: 16px; /* cegah auto-zoom iOS */
+    padding: 10px 12px;
+  }
+  .chat-input-bar .btn-primary {
+    padding: 10px 14px;
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 
