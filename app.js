@@ -32,6 +32,9 @@ const AppState = {
   gpsOk: false,          // false = unknown/denied, true = granted
   gpsLoading: false,     // true while waiting for getCurrentPosition
   gpsLastError: '',      // human-readable last error
+  gpsAccuracy: 0,        // GPS accuracy in meters
+  isMockSuspect: 0,      // 1 if mock GPS suspected
+  gpsReadings: [],       // multiple GPS readings for drift detection
   cameraStream: null,
   cameraReady: false,    // true after stream attached & video dimensions known
   cameraLoading: false,
@@ -1704,7 +1707,7 @@ const updateReportStatusDirect = async (reportId, status, proofUrl, proofNotes, 
 // All presensi functions are exposed to window.* so inline onclick handlers
 // work even when the script is loaded as a module / in strict mode.
 
-// --- GPS Detection (async, with proper state tracking) ---
+// --- GPS Detection (async, with anti-fake GPS detection) ---
 window.detectDeviceGPS = () => {
   if (!navigator.geolocation) {
     AppState.gpsOk = false;
@@ -1714,14 +1717,64 @@ window.detectDeviceGPS = () => {
   }
   if (AppState.gpsLoading) return; // prevent duplicate concurrent requests
   AppState.gpsLoading = true;
+  AppState.gpsReadings = []; // reset readings for drift detection
   window.checkGpsDistance(); // show "mendeteksi..." immediately
 
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       AppState.deviceCoordinates = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      AppState.gpsAccuracy = pos.coords.accuracy || 0;
       AppState.gpsOk = true;
       AppState.gpsLoading = false;
       AppState.gpsLastError = '';
+
+      // === ANTI-FAKE GPS: Detect mock location ===
+      AppState.isMockSuspect = 0;
+
+      // Cek 1: Akurasi terlalu sempurna (< 3m) — GPS asli biasanya 5-50m
+      if (AppState.gpsAccuracy > 0 && AppState.gpsAccuracy < 3) {
+        AppState.isMockSuspect = 1;
+        console.warn('⚠️ GPS accuracy mencurigakan (< 3m):', AppState.gpsAccuracy, 'm');
+      }
+
+      // Cek 2: Akurasi = 0 (beberapa mock app return 0)
+      if (AppState.gpsAccuracy === 0) {
+        AppState.isMockSuspect = 1;
+        console.warn('⚠️ GPS accuracy = 0, kemungkinan mock location');
+      }
+
+      // Cek 3: Koordinat persis di (0,0) — Atlantic Ocean
+      if (pos.coords.latitude === 0 && pos.coords.longitude === 0) {
+        AppState.isMockSuspect = 1;
+        AppState.gpsOk = false;
+        AppState.gpsLastError = 'Koordinat GPS tidak valid (0,0). Kemungkinan GPS dimanipulasi.';
+        console.warn('⚠️ Koordinat GPS (0,0) — mock location terdeteksi');
+      }
+
+      // Cek 4: Ambil reading kedua untuk cek drift (GPS asli selalu bergesek sedikit)
+      setTimeout(() => {
+        navigator.geolocation.getCurrentPosition(
+          (pos2) => {
+            const drift = calculateHaversine(
+              pos.coords.latitude, pos.coords.longitude,
+              pos2.coords.latitude, pos2.coords.longitude
+            );
+            // GPS asli: drift 0-10m antara 2 reading dalam 2 detik
+            // Mock GPS: drift = 0m persis (koordinat tidak berubah)
+            if (drift === 0 && pos.coords.latitude === pos2.coords.latitude && pos.coords.longitude === pos2.coords.longitude) {
+              AppState.isMockSuspect = 1;
+              console.warn('⚠️ GPS drift = 0m antara 2 reading — kemungkinan mock location (koordinat tidak berubah)');
+            }
+            // Update koordinat dengan reading terbaru
+            AppState.deviceCoordinates = { lat: pos2.coords.latitude, lon: pos2.coords.longitude };
+            AppState.gpsAccuracy = pos2.coords.accuracy || AppState.gpsAccuracy;
+            window.checkGpsDistance();
+          },
+          () => { /* abaikan error reading kedua */ },
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+      }, 2000);
+
       window.checkGpsDistance();
     },
     (err) => {
@@ -1751,7 +1804,10 @@ const updateAttendanceClock = () => {
   const gpsDisplay = document.getElementById('camera-gps-display');
   if (gpsDisplay) {
     if (AppState.gpsOk) {
-      gpsDisplay.textContent = AppState.deviceCoordinates.lat.toFixed(4) + ', ' + AppState.deviceCoordinates.lon.toFixed(4);
+      let txt = AppState.deviceCoordinates.lat.toFixed(6) + ', ' + AppState.deviceCoordinates.lon.toFixed(6);
+      if (AppState.gpsAccuracy > 0) txt += ' (±' + AppState.gpsAccuracy + 'm)';
+      if (AppState.isMockSuspect) txt += ' ⚠️ SUSPECT';
+      gpsDisplay.textContent = txt;
     } else {
       gpsDisplay.textContent = 'belum diketahui';
     }
@@ -1877,6 +1933,23 @@ window.checkGpsDistance = () => {
     return;
   }
 
+  // === ANTI-FAKE GPS: Tampilkan warning jika mock terdeteksi ===
+  if (AppState.isMockSuspect) {
+    banner.className = 'geofence-alert geofence-invalid';
+    text.innerHTML = `<strong>⚠️ GPS Mencurigakan Terdeteksi!</strong>
+      <br>Sistem mendeteksi kemungkinan penggunaan aplikasi fake GPS / mock location.
+      <br>Akurasi GPS: ${AppState.gpsAccuracy}m (mencurigakan)
+      <br><span style="font-size:11px; color:#991b1b;">Presensi akan ditandai untuk review admin. Nonaktifkan mock location dan coba lagi.</span>
+      <br><button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px;" onclick="window.detectDeviceGPS()">
+        <i data-feather="map-pin" style="width:11px; height:11px;"></i> Deteksi Ulang GPS
+      </button>`;
+    if (window.feather) feather.replace();
+    return;
+  }
+
+  // === Tampilkan akurasi GPS di banner ===
+  const accuracyInfo = AppState.gpsAccuracy > 0 ? ` <span style="font-size:10px; color:#94a3b8;">(Akurasi: ±${AppState.gpsAccuracy}m)</span>` : '';
+
   // Pastikan lat/lon adalah number (parse kalau string)
   const parseLat = parseFloat(outlet.lat);
   const parseLon = parseFloat(outlet.lon);
@@ -1942,7 +2015,7 @@ window.checkGpsDistance = () => {
         <br><span style="font-size:11px; opacity:0.8;">💡 Anda juga dekat dengan <strong>${closerOutlet.name}</strong> (${closerDist}m). <a href="javascript:void(0)" style="color:inherit; text-decoration:underline;" onclick="document.getElementById('presensi-outlet-select').value='${closerOutlet.id}'; window.checkGpsDistance();">Pilih ${closerOutlet.name}</a></span>`;
     } else {
       banner.className = 'geofence-alert geofence-valid';
-      text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m) — <strong>Valid Untuk Presensi</strong>`;
+      text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${outlet.radius_meters}m)${accuracyInfo} — <strong>Valid Untuk Presensi</strong>`;
     }
   } else {
     // User di luar radius outlet yang dipilih — cek apakah ada outlet lain yang dalam radius
@@ -2098,6 +2171,8 @@ window.submitAttendanceCheckIn = async () => {
         outlet_id: outletId,
         lat: AppState.deviceCoordinates.lat,
         lon: AppState.deviceCoordinates.lon,
+        gps_accuracy: AppState.gpsAccuracy || 0,
+        is_mock_suspect: AppState.isMockSuspect || 0,
         selfie_base64: selfieBase64,
         shift_name: shiftName,
         notes: 'Presensi Selfie Mandiri'
