@@ -3008,3 +3008,55 @@ select.form-control {
     display: block;
   }
 }
+
+/* ==========================================
+   PANEL SUPER ADMIN (v49)
+   ========================================== */
+.nav-item[data-view="superadmin"] {
+  position: relative;
+}
+.nav-item[data-view="superadmin"] i {
+  color: #d97706;
+}
+.nav-item[data-view="superadmin"] span {
+  font-weight: 700;
+}
+.nav-item[data-view="superadmin"].active {
+  background: linear-gradient(135deg, #78350f, #b45309);
+}
+.nav-item[data-view="superadmin"]:hover span {
+  color: #d97706;
+}
+.nav-item[data-view="superadmin"].active span,
+.nav-item[data-view="superadmin"].active i,
+.nav-item[data-view="superadmin"].active svg {
+  color: #ffffff;
+}
+
+/* Stat cards ringkasan sistem */
+#sa-overview-stats .modern-card {
+  border: 1px solid #f1f5f9;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+#sa-overview-stats .modern-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+/* Tombol aksi kecil di tabel pengguna */
+#sa-users-table .btn-secondary {
+  min-width: 30px;
+  text-align: center;
+}
+
+/* Tab bar SA di layar kecil */
+@media (max-width: 768px) {
+  #view-superadmin .tab-pill-btn {
+    flex: 1 1 100%;
+    border-radius: 10px;
+  }
+  #sa-users-table th:nth-child(4),
+  #sa-users-table td:nth-child(4) {
+    display: none;   /* sembunyikan kolom outlet di HP supaya tabel lega */
+  }
+}

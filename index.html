@@ -270,6 +270,13 @@
           <span>Database & Backup</span>
         </a>
       </li>
+      <li>
+        <a class="nav-item" data-view="superadmin" id="nav-superadmin">
+          <i data-feather="shield"></i>
+          <span>Panel Super Admin</span>
+          <span class="badge" style="background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff;">SA</span>
+        </a>
+      </li>
     </ul>
 
     <!-- Sidebar Upgrade / PWA Install Prompt -->
@@ -1558,6 +1565,198 @@
 
       </section>
 
+      <!-- VIEW 11: PANEL SUPER ADMIN (Kelola Seluruh Sistem Aplikasi) -->
+      <section class="view-panel" id="view-superadmin">
+
+        <!-- Header -->
+        <div class="modern-card" style="margin-bottom:20px; border-left:4px solid #f59e0b;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                <span class="card-badge-tag" style="background:linear-gradient(135deg,#fef3c7,#fde68a); color:#92400e; font-size:12px; font-weight:800;">🛡️ SUPER ADMIN — Kontrol Penuh Sistem</span>
+                <span style="font-size:12px; color:#64748b;">Kelola pengguna, hak akses, dan pengaturan seluruh aplikasi dari satu tempat</span>
+              </div>
+              <h3 style="font-size:18px; color:var(--text-dark); margin:0 0 4px 0;">Panel Super Admin</h3>
+              <p style="font-size:13px; color:#64748b; margin:0;">Tambah/edit pengguna, ubah akses &amp; role, reset password/PIN, aktif/nonaktifkan akun, dan atur parameter sistem tanpa perlu edit kode.</p>
+            </div>
+            <button class="btn-primary" onclick="window.openSaAddUser && window.openSaAddUser()">
+              <i data-feather="user-plus"></i> Tambah Pengguna Baru
+            </button>
+          </div>
+
+          <!-- Tab bar -->
+          <div style="display:flex; gap:8px; margin-top:18px; flex-wrap:wrap; background:#f1f5f9; padding:6px; border-radius:14px;">
+            <button class="tab-pill-btn active" id="sa-tab-btn-overview" onclick="window.saSwitchTab && window.saSwitchTab('overview')">📊 Ringkasan Sistem</button>
+            <button class="tab-pill-btn" id="sa-tab-btn-users" onclick="window.saSwitchTab && window.saSwitchTab('users')">👥 Manajemen Pengguna</button>
+            <button class="tab-pill-btn" id="sa-tab-btn-settings" onclick="window.saSwitchTab && window.saSwitchTab('settings')">⚙️ Pengaturan Sistem</button>
+          </div>
+        </div>
+
+        <!-- ======== TAB 1: RINGKASAN SISTEM ======== -->
+        <div id="sa-tab-overview">
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:14px; margin-bottom:20px;" id="sa-overview-stats">
+            <!-- Populated by loadSaOverview() -->
+            <div class="modern-card" style="padding:18px; text-align:center; color:#94a3b8; grid-column:1/-1;">Memuat ringkasan sistem...</div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
+            <div class="modern-card">
+              <div class="card-title-row">
+                <div>
+                  <h3>Ringkasan Presensi Hari Ini</h3>
+                  <p style="font-size:12px; color:#64748b;">Aktivitas presensi seluruh outlet hari ini</p>
+                </div>
+              </div>
+              <div id="sa-overview-attendance" style="font-size:13px; color:#475569;">Memuat...</div>
+            </div>
+            <div class="modern-card">
+              <div class="card-title-row">
+                <div>
+                  <h3>Jumlah Karyawan per Divisi</h3>
+                  <p style="font-size:12px; color:#64748b;">Distribusi personel aktif &amp; nonaktif</p>
+                </div>
+              </div>
+              <div id="sa-overview-divisions" style="font-size:13px; color:#475569;">Memuat...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======== TAB 2: MANAJEMEN PENGGUNA ======== -->
+        <div id="sa-tab-users" style="display:none;">
+          <div class="modern-card">
+            <div class="card-title-row">
+              <div>
+                <h3>Daftar Semua Pengguna</h3>
+                <p style="font-size:12px; color:#64748b;">Edit data, ubah akses/divisi/role, reset password &amp; PIN, nonaktifkan akun</p>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <div class="search-pill" style="width:230px;">
+                  <i data-feather="search" style="width:14px; height:14px; color:#94a3b8;"></i>
+                  <input type="text" id="sa-search-input" placeholder="Cari nama, NIP, email, divisi..." oninput="window.saSearchUsers && window.saSearchUsers(this)">
+                </div>
+                <button class="btn-primary" style="padding:8px 14px; font-size:12px;" onclick="window.openSaAddUser && window.openSaAddUser()">
+                  <i data-feather="user-plus" style="width:13px; height:13px;"></i> Tambah
+                </button>
+              </div>
+            </div>
+
+            <div style="overflow-x:auto; margin-top:14px;">
+              <table class="payslip-table" id="sa-users-table">
+                <thead>
+                  <tr>
+                    <th>Pengguna</th>
+                    <th>Tipe &amp; Divisi (Akses)</th>
+                    <th>Jabatan / Role</th>
+                    <th>Outlet</th>
+                    <th>Status Akun</th>
+                    <th style="min-width:210px;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="sa-users-tbody">
+                  <tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">Memuat pengguna...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="font-size:11px; color:#94a3b8; margin:10px 0 0 0;">💡 Role <strong>SUPER ADMIN</strong> memberikan akses penuh ke seluruh panel &amp; pengaturan sistem. Hati-hati menonaktifkan akun SUPER ADMIN terakhir.</p>
+          </div>
+        </div>
+
+        <!-- ======== TAB 3: PENGATURAN SISTEM ======== -->
+        <div id="sa-tab-settings" style="display:none;">
+          <div class="modern-card" style="margin-bottom:20px;">
+            <div class="card-title-row">
+              <div>
+                <h3>Pengaturan Sistem Aplikasi</h3>
+                <p style="font-size:12px; color:#64748b;">Semua nilai di bawah langsung dipakai oleh sistem saat disimpan — tanpa perlu edit kode Apps Script</p>
+              </div>
+              <span class="card-badge-tag" id="sa-settings-updated-badge" style="background:#f1f5f9; color:#475569;">Terakhir diubah: -</span>
+            </div>
+
+            <form onsubmit="window.submitSaSettings && window.submitSaSettings(event)">
+              <!-- Section 1: Geofence & GPS -->
+              <div style="background:#eff6ff; padding:14px 16px; border-radius:12px; margin-bottom:14px;">
+                <p style="font-size:11px; color:#1e40af; font-weight:700; text-transform:uppercase; margin:0 0 12px 0;">📍 1. Geofence &amp; GPS Presensi</p>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label required">Toleransi GPS di Luar Radius (meter)</label>
+                    <input type="number" class="form-control" id="sa-set-geofence_tolerance_m" min="0" max="60" step="1" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Cadangan agar karyawan di tepi radius tidak ditolak karena ketidakakuratan GPS. Disarankan 5-15.</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Radius Default Outlet (meter)</label>
+                    <input type="number" class="form-control" id="sa-set-default_radius_m" min="10" max="1000" step="5" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dipakai jika radius outlet belum diisi. Ubah radius per outlet di menu Titik Lokasi Outlet.</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Akurasi GPS Maksimum (meter)</label>
+                    <input type="number" class="form-control" id="sa-set-gps_max_accuracy_m" min="10" max="500" step="5" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Presensi ditolak jika akurasi GPS device lebih buruk dari nilai ini.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 2: Keterlambatan -->
+              <div style="background:#fef2f2; padding:14px 16px; border-radius:12px; margin-bottom:14px;">
+                <p style="font-size:11px; color:#991b1b; font-weight:700; text-transform:uppercase; margin:0 0 12px 0;">⏰ 2. Aturan Keterlambatan</p>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label required">Toleransi Terlambat (menit)</label>
+                    <input type="number" class="form-control" id="sa-set-late_grace_min" min="0" max="120" step="1" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Telat di bawah nilai ini masih dianggap "Hadir Tepat Waktu".</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Potongan per Menit (Rp)</label>
+                    <input type="number" class="form-control" id="sa-set-late_deduction_per_min" min="0" max="100000" step="500" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dihitung dari menit setelah batas toleransi.</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Potongan Maksimum per Presensi (Rp)</label>
+                    <input type="number" class="form-control" id="sa-set-late_deduction_cap" min="0" max="1000000" step="5000" required>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 3: Cuti & Aplikasi -->
+              <div style="background:#f0fdf4; padding:14px 16px; border-radius:12px; margin-bottom:14px;">
+                <p style="font-size:11px; color:#065f46; font-weight:700; text-transform:uppercase; margin:0 0 12px 0;">🌴 3. Cuti &amp; Aplikasi</p>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label required">Jatah Cuti Tahunan (hari)</label>
+                    <input type="number" class="form-control" id="sa-set-annual_leave_days" min="0" max="365" step="1" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Karyawan baru otomatis dihitung prorata.</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Registrasi Mandiri</label>
+                    <select class="form-control" id="sa-set-allow_self_registration">
+                      <option value="1">Aktif — karyawan bisa daftar sendiri</option>
+                      <option value="0">Nonaktif — akun dibuat SUPER ADMIN</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-top:12px;">
+                  <div class="form-group">
+                    <label class="form-label">Nama Aplikasi</label>
+                    <input type="text" class="form-control" id="sa-set-app_name" maxlength="40">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Tagline Aplikasi</label>
+                    <input type="text" class="form-control" id="sa-set-app_tagline" maxlength="100">
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" class="btn-secondary" onclick="window.loadSaSettings && window.loadSaSettings()">↺ Kembalikan Nilai Tersimpan</button>
+                <button type="submit" class="btn-primary" id="btn-sa-save-settings">
+                  <i data-feather="save" style="width:13px; height:13px;"></i> Simpan Pengaturan Sistem
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+      </section>
+
     </main>
   </div>
 </div>
@@ -2005,6 +2204,173 @@
         </button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- 10. Modal: Tambah / Edit Pengguna (Panel Super Admin) -->
+<div class="modal-overlay" id="modal-sa-user">
+  <div class="modal-card" style="max-width:700px;">
+    <div class="modal-header">
+      <h3 id="sa-user-modal-title">Tambah Pengguna Baru</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-sa-user')">&times;</button>
+    </div>
+    <form onsubmit="window.submitSaUser && window.submitSaUser(event)">
+      <input type="hidden" id="sa-user-mode" value="create">
+      <input type="hidden" id="sa-user-id" value="">
+      <div class="modal-body">
+
+        <!-- Section 1: Identitas -->
+        <div style="background:#f8fafc; padding:12px 14px; border-radius:10px; margin-bottom:14px;">
+          <p style="font-size:11px; color:var(--burgundy-primary); font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">🪪 1. Identitas Pengguna</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Nama Lengkap</label>
+              <input type="text" class="form-control" id="sa-user-name" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">NIP (untuk login)</label>
+              <input type="text" class="form-control" id="sa-user-nip" required maxlength="30">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Email</label>
+              <input type="email" class="form-control" id="sa-user-email" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">No. HP / WhatsApp</label>
+              <input type="tel" class="form-control" id="sa-user-phone" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Hak Akses -->
+        <div style="background:#fff7ed; padding:12px 14px; border-radius:10px; margin-bottom:14px; border:1px solid #fed7aa;">
+          <p style="font-size:11px; color:#9a3412; font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">🛡️ 2. Hak Akses &amp; Role (mengatur panel yang bisa dibuka)</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Tipe Akun</label>
+              <select class="form-control" id="sa-user-type" onchange="window.saSyncDivisions && window.saSyncDivisions()" required>
+                <option value="Operasional">Tim Operasional</option>
+                <option value="Management">Management</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Divisi (penentu akses panel)</label>
+              <select class="form-control" id="sa-user-division" required>
+                <!-- Populated dynamically by saSyncDivisions() -->
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Role Khusus</label>
+              <select class="form-control" id="sa-user-superrole" onchange="window.saSyncRoleField && window.saSyncRoleField()">
+                <option value="">Role standar (karyawan / jabatan biasa)</option>
+                <option value="SUPER ADMIN">SUPER ADMIN — akses penuh seluruh sistem</option>
+              </select>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">SUPER ADMIN bisa membuka semua panel + Panel Super Admin.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Jabatan / Role Tampilan</label>
+              <input type="text" class="form-control" id="sa-user-role" required maxlength="100">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Titik Outlet</label>
+              <select class="form-control" id="sa-user-outlet" required>
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Status Akun</label>
+              <select class="form-control" id="sa-user-account-status" required>
+                <option value="Aktif">Aktif — bisa login &amp; presensi</option>
+                <option value="Nonaktif">Nonaktif — diblokir dari sistem</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Status Kerja</label>
+              <select class="form-control" id="sa-user-employment-status" required>
+                <option value="Tetap">Tetap</option>
+                <option value="Kontrak">Kontrak</option>
+                <option value="Probation">Probation</option>
+                <option value="Resign">Resign</option>
+              </select>
+            </div>
+            <div class="form-group" id="sa-user-password-group">
+              <label class="form-label">Password Awal (opsional)</label>
+              <input type="text" class="form-control" id="sa-user-password" placeholder="Kosongkan = dibuat otomatis" autocomplete="off">
+            </div>
+          </div>
+          <div class="form-group" id="sa-user-pin-group">
+            <label class="form-label">PIN Slip Gaji Awal (opsional)</label>
+            <input type="text" class="form-control" id="sa-user-pin" placeholder="Kosongkan = 6 digit otomatis" maxlength="6" inputmode="numeric">
+          </div>
+        </div>
+
+        <!-- Section 3: Gaji & KPI -->
+        <div style="background:#ecfdf5; padding:12px 14px; border-radius:10px;">
+          <p style="font-size:11px; color:#065f46; font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">💰 3. Gaji, Tunjangan &amp; KPI</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Gaji Pokok Bulanan (Rp)</label>
+              <input type="number" class="form-control" id="sa-user-base-salary" min="0" max="100000000" step="100000" placeholder="Kosong = ikut skala grade">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tunjangan Kehadiran Harian (Rp)</label>
+              <input type="number" class="form-control" id="sa-user-daily-allowance" min="0" max="1000000" step="5000" placeholder="Kosong = ikut skala grade">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Uang Makan Harian (Rp)</label>
+              <input type="number" class="form-control" id="sa-user-meal-allowance" min="0" max="500000" step="5000" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Uang Transport Harian (Rp)</label>
+              <input type="number" class="form-control" id="sa-user-transport-allowance" min="0" max="500000" step="5000" placeholder="0">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Rating Karyawan (0-5)</label>
+              <input type="number" class="form-control" id="sa-user-rating" min="0" max="5" step="0.1" placeholder="5">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Skor KPI (0-100%)</label>
+              <input type="number" class="form-control" id="sa-user-kpi-score" min="0" max="100" step="1" placeholder="90">
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('modal-sa-user')">Batal</button>
+        <button type="submit" class="btn-primary" id="btn-sa-user-save">
+          <i data-feather="save" style="width:13px; height:13px;"></i> Simpan Pengguna
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 11. Modal: Kredensial Akun (hasil tambah user / reset password / reset PIN) -->
+<div class="modal-overlay" id="modal-sa-credential">
+  <div class="modal-card" style="max-width:460px;">
+    <div class="modal-header">
+      <h3 id="sa-credential-title">Kredensial Akun</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-sa-credential')">&times;</button>
+    </div>
+    <div class="modal-body" id="sa-credential-body">
+      <!-- Populated dynamically -->
+    </div>
+    <div class="modal-footer" style="justify-content:center;">
+      <button type="button" class="btn-primary" onclick="closeModal('modal-sa-credential')">Saya Sudah Mencatat</button>
+    </div>
   </div>
 </div>
 

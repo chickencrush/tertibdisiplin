@@ -153,6 +153,16 @@ const PAYROLL_DIVISIONS = ['OM', 'PCD', 'HRD', 'Finance'];
 const LEAVE_APPROVER_DIVISIONS = ['OM', 'PCD', 'HRD', 'BM', 'HRGA'];
 
 // ==========================================
+// ROLE SUPER ADMIN
+// Role khusus "SUPER ADMIN" disimpan di kolom role akun (diatur lewat
+// Panel Super Admin atau sheet employees). Akun dengan role ini mendapat
+// akses ke SEMUA panel + Panel Super Admin (kelola user & pengaturan sistem).
+// ==========================================
+const SUPER_ADMIN_ROLE = 'SUPER ADMIN';
+const isSuperAdminUser = (user = AppState.currentUser) =>
+  !!user && (String(user.role || '').trim().toUpperCase() === SUPER_ADMIN_ROLE || FULL_ACCESS_DIVISIONS.includes(user.division));
+
+// ==========================================
 // Shift kerja per kelompok divisi (senada dengan MANAGEMENT/OPERASIONAL_DIVISIONS di Code.gs)
 // Dropdown "Pilihan Shift Kerja" hanya menampilkan shift sesuai divisi akun yang login.
 // ==========================================
@@ -205,7 +215,9 @@ const VIEW_ACCESS = {
   // Titik Lokasi Outlet: hanya Super Admin
   'outlets': ['OM', 'PCD'],
   // Database & Backup: hanya Super Admin
-  'database': ['OM', 'PCD']
+  'database': ['OM', 'PCD'],
+  // Panel Super Admin: hanya role SUPER ADMIN / divisi OM+PCD (dicek khusus di canAccessView)
+  'superadmin': ['OM', 'PCD']
 };
 const CHAT_CHANNEL_RULES = {
   '#general': null,
@@ -219,6 +231,7 @@ const isFullAccess = (user = AppState.currentUser) => !!user && FULL_ACCESS_DIVI
 const isPayrollAdmin = (user = AppState.currentUser) => !!user && PAYROLL_DIVISIONS.includes(user.division);
 const canAccessView = (view, user = AppState.currentUser) => {
   if (!user) return false;
+  if (isSuperAdminUser(user)) return true;   // SUPER ADMIN: semua panel
   if (isFullAccess(user)) return true;
   const rule = VIEW_ACCESS[view];
   if (!rule) return false;
@@ -263,7 +276,7 @@ const applyAccessControl = () => {
     el.style.display = (m ? canAccessChannel(m[1]) : true) ? '' : 'none';
   });
 
-  document.body.dataset.access = isFullAccess(user) ? 'full' : (canAccessView('employees', user) ? 'manager' : 'staff');
+  document.body.dataset.access = isSuperAdminUser(user) ? 'super' : (isFullAccess(user) ? 'full' : (canAccessView('employees', user) ? 'manager' : 'staff'));
 };
 
 // ==========================================
@@ -774,7 +787,8 @@ const switchView = (viewName) => {
     'profile': ['Profil Saya', 'Edit data diri, foto profil, password, dan PIN slip gaji'],
     'data-center': ['Input Data Center', 'Edit data karyawan, gaji, dan KPI — Khusus Super Admin'],
     'outlets': ['Pengaturan Titik Outlet', 'Konfigurasi Titik Koordinat GPS dan Toleransi Radius Geofencing'],
-    'database': ['Pusat Kontrol Database & Backup', 'Kelola Penyimpanan SQLite, Unduh Cadangan .db, Ekspor CSV & Live Inspector']
+    'database': ['Pusat Kontrol Database & Backup', 'Kelola Penyimpanan SQLite, Unduh Cadangan .db, Ekspor CSV & Live Inspector'],
+    'superadmin': ['Panel Super Admin', 'Kelola Pengguna, Hak Akses, dan Pengaturan Seluruh Sistem Aplikasi']
   };
 
   const titleEl = document.getElementById('page-title');
@@ -842,6 +856,13 @@ const switchView = (viewName) => {
     window.stopChatPolling && window.stopChatPolling();
     loadDatabaseOverview();
     loadDatabaseTableData();
+  } else if (viewName === 'superadmin') {
+    // Panel Super Admin — muat ringkasan + daftar pengguna + pengaturan
+    stopCamera();
+    window.stopChatPolling && window.stopChatPolling();
+    window.loadSaOverview && window.loadSaOverview();
+    window.loadSaUsers && window.loadSaUsers();
+    window.loadSaSettings && window.loadSaSettings();
   } else {
     stopCamera();
     // Stop chat polling kalau keluar dari view chat (hemat network)
@@ -4792,4 +4813,489 @@ const escapeHtml = (str) => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+};
+
+// ============================================================
+// PANEL SUPER ADMIN — kelola seluruh sistem aplikasi
+// Hanya tampil untuk akun role "SUPER ADMIN" (atau divisi OM/PCD).
+// Fitur: ringkasan sistem, manajemen pengguna (edit data, ubah akses,
+// reset password/PIN, aktif/nonaktif), dan pengaturan sistem.
+// ============================================================
+
+AppState.saUsers = [];
+AppState.saSettingsLoaded = false;
+
+// ---- Tab switching ----
+window.saSwitchTab = (tab) => {
+  ['overview', 'users', 'settings'].forEach(t => {
+    const panel = document.getElementById('sa-tab-' + t);
+    const btn = document.getElementById('sa-tab-btn-' + t);
+    if (panel) panel.style.display = (t === tab) ? '' : 'none';
+    if (btn) btn.classList.toggle('active', t === tab);
+  });
+  if (tab === 'overview') window.loadSaOverview && window.loadSaOverview();
+  if (tab === 'users') window.loadSaUsers && window.loadSaUsers();
+  if (tab === 'settings') window.loadSaSettings && window.loadSaSettings();
+};
+
+// ---- TAB 1: RINGKASAN SISTEM ----
+window.loadSaOverview = async () => {
+  const wrap = document.getElementById('sa-overview-stats');
+  if (!wrap) return;
+  try {
+    const res = await fetch('/api/admin/overview');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      wrap.innerHTML = `<div class="modern-card" style="padding:18px; text-align:center; color:#ef4444; grid-column:1/-1;">${escapeHtml(data.detail || 'Gagal memuat ringkasan sistem.')}</div>`;
+      return;
+    }
+    const stats = [
+      { label: 'Total Pengguna', val: data.total_users, color: '#701c34', icon: '👥' },
+      { label: 'Akun Aktif', val: data.active_users, color: '#059669', icon: '✅' },
+      { label: 'Akun Nonaktif', val: data.inactive_users, color: '#dc2626', icon: '🚫' },
+      { label: 'Super Admin', val: data.super_admins, color: '#d97706', icon: '🛡️' },
+      { label: 'Outlet Terdaftar', val: data.total_outlets, color: '#0284c7', icon: '📍' },
+      { label: 'Presensi Hari Ini', val: data.attendance_today, color: '#701c34', icon: '🕐' },
+      { label: 'Terlambat Hari Ini', val: data.late_today, color: '#ea580c', icon: '⏰' },
+      { label: 'Cuti Menunggu OK', val: data.pending_leaves, color: '#7c3aed', icon: '🌴' }
+    ];
+    wrap.innerHTML = stats.map(s => `
+      <div class="modern-card" style="padding:16px; text-align:center;">
+        <div style="font-size:22px; margin-bottom:4px;">${s.icon}</div>
+        <div style="font-size:26px; font-weight:800; color:${s.color}; line-height:1.1;">${Number(s.val || 0).toLocaleString('id-ID')}</div>
+        <div style="font-size:11px; color:#64748b; font-weight:600; margin-top:4px; text-transform:uppercase;">${s.label}</div>
+      </div>
+    `).join('');
+
+    // Presensi hari ini ringkas
+    const attBox = document.getElementById('sa-overview-attendance');
+    if (attBox) {
+      attBox.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#f8fafc; border-radius:10px;"><span>Total presensi hari ini</span><strong>${data.attendance_today}</strong></div>
+          <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#fff7ed; border-radius:10px;"><span>Terlambat</span><strong style="color:#ea580c;">${data.late_today}</strong></div>
+          <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#fef2f2; border-radius:10px;"><span>Laporan status Proses</span><strong style="color:#dc2626;">${data.pending_reports}</strong></div>
+          <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#fefce8; border-radius:10px;"><span>Laporan status Hold</span><strong style="color:#a16207;">${data.hold_reports}</strong></div>
+        </div>`;
+    }
+    // Divisi ringkas
+    const divBox = document.getElementById('sa-overview-divisions');
+    if (divBox) {
+      const counts = data.division_counts || {};
+      const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+      divBox.innerHTML = keys.length === 0 ? '<span style="color:#94a3b8;">Belum ada data divisi.</span>' :
+        keys.map(k => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 14px; border-bottom:1px solid #f1f5f9;">
+            <span style="font-weight:600;">${escapeHtml(k)}</span>
+            <span class="card-badge-tag" style="background:#f1f5f9; color:#475569;">${counts[k]} orang</span>
+          </div>`).join('');
+    }
+  } catch (err) {
+    console.error('loadSaOverview error:', err);
+    if (wrap) wrap.innerHTML = '<div class="modern-card" style="padding:18px; text-align:center; color:#ef4444; grid-column:1/-1;">Kesalahan koneksi saat memuat ringkasan.</div>';
+  }
+};
+
+// ---- TAB 2: MANAJEMEN PENGGUNA ----
+window.loadSaUsers = async () => {
+  try {
+    const res = await fetch('/api/admin/users');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.detail || 'Gagal memuat daftar pengguna.', 'error');
+      return;
+    }
+    AppState.saUsers = Array.isArray(data) ? data : [];
+    renderSaUsers((document.getElementById('sa-search-input') || {}).value || '');
+  } catch (err) {
+    console.error('loadSaUsers error:', err);
+    showToast('Kesalahan koneksi saat memuat pengguna.', 'error');
+  }
+};
+
+const renderSaUsers = (filterText = '') => {
+  const tbody = document.getElementById('sa-users-tbody');
+  if (!tbody) return;
+  const me = AppState.currentUser;
+  let list = AppState.saUsers || [];
+  const q = (filterText || '').toLowerCase().trim();
+  if (q) {
+    list = list.filter(e =>
+      (e.name || '').toLowerCase().includes(q) ||
+      (e.nip || '').toLowerCase().includes(q) ||
+      (e.email || '').toLowerCase().includes(q) ||
+      (e.division || '').toLowerCase().includes(q) ||
+      (e.role || '').toLowerCase().includes(q)
+    );
+  }
+  if (list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada pengguna yang cocok.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(e => {
+    const isSA = e.is_super_admin;
+    const isMe = me && e.id === me.id;
+    const inactive = e.account_status === 'Nonaktif';
+    const roleBadge = isSA
+      ? '<span class="card-badge-tag" style="background:linear-gradient(135deg,#fef3c7,#fde68a); color:#92400e; font-weight:800;">🛡️ SUPER ADMIN</span>'
+      : `<span style="font-size:12px;">${escapeHtml(e.role || '-')}</span>`;
+    return `
+      <tr style="${inactive ? 'opacity:.6;' : ''}">
+        <td>
+          <strong>${escapeHtml(e.name)}${isMe ? ' <span style="font-size:10px; color:#94a3b8;">(Anda)</span>' : ''}</strong>
+          <div style="font-size:11px; color:#64748b;">${escapeHtml(e.nip)} • ${escapeHtml(e.email || '-')}</div>
+        </td>
+        <td>
+          <span class="card-badge-tag" style="font-size:10px; color:${e.type === 'Management' ? 'var(--burgundy-primary)' : '#0284c7'};">${escapeHtml(e.type || '-')}</span>
+          <div style="font-size:11px; color:#64748b; margin-top:2px;">${escapeHtml(e.division || '-')}</div>
+        </td>
+        <td>${roleBadge}</td>
+        <td style="font-size:12px;">${escapeHtml(e.outlet_name || '-')}</td>
+        <td>
+          <span class="card-badge-tag" style="font-size:10px; background:${inactive ? '#fef2f2; color:#991b1b' : '#ecfdf5; color:#065f46'};">${inactive ? '🚫 Nonaktif' : '✅ Aktif'}</span>
+          <div style="font-size:10px; color:#94a3b8; margin-top:2px;">${escapeHtml(e.employment_status || '-')}</div>
+        </td>
+        <td>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn-primary" style="padding:5px 10px; font-size:11px;" onclick="window.openSaEditUser('${e.id}')">
+              <i data-feather="edit-2" style="width:11px; height:11px;"></i> Edit
+            </button>
+            <button class="btn-secondary" style="padding:5px 8px; font-size:11px;" title="Reset password login" onclick="window.saResetPassword('${e.id}')">🔑</button>
+            <button class="btn-secondary" style="padding:5px 8px; font-size:11px;" title="Reset PIN slip gaji" onclick="window.saResetPin('${e.id}')">🔒</button>
+            ${isMe ? '' : `<button class="btn-secondary" style="padding:5px 8px; font-size:11px; ${inactive ? 'color:#059669; border-color:#a7f3d0;' : 'color:#dc2626; border-color:#fca5a5;'}" title="${inactive ? 'Aktifkan akun' : 'Nonaktifkan akun'}" onclick="window.saToggleStatus('${e.id}')">${inactive ? '▶' : '⏸'}</button>`}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  if (window.feather) feather.replace();
+};
+window.saSearchUsers = (input) => renderSaUsers((input && input.value) || '');
+
+// ---- Dropdown helpers untuk modal user ----
+const SA_DIVISIONS_MGMT = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM", "PCD"];
+const SA_DIVISIONS_OPS = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
+window.saSyncDivisions = () => {
+  const typeSel = document.getElementById('sa-user-type');
+  const divSel = document.getElementById('sa-user-division');
+  if (!typeSel || !divSel) return;
+  const currentVal = divSel.value;
+  const list = typeSel.value === 'Management' ? SA_DIVISIONS_MGMT : SA_DIVISIONS_OPS;
+  divSel.innerHTML = list.map(d => `<option value="${d}">${d}</option>`).join('');
+  if (list.indexOf(currentVal) >= 0) divSel.value = currentVal;
+};
+window.saSyncRoleField = () => {
+  const superSel = document.getElementById('sa-user-superrole');
+  const roleInput = document.getElementById('sa-user-role');
+  if (!superSel || !roleInput) return;
+  if (superSel.value === SUPER_ADMIN_ROLE) {
+    roleInput.value = SUPER_ADMIN_ROLE;
+    roleInput.readOnly = true;
+    roleInput.style.background = '#fef3c7';
+  } else {
+    roleInput.readOnly = false;
+    roleInput.style.background = '';
+  }
+};
+const populateSaOutlets = (selectedId) => {
+  const sel = document.getElementById('sa-user-outlet');
+  if (!sel) return;
+  const outlets = AppState.outlets || [];
+  if (outlets.length === 0) {
+    sel.innerHTML = '<option value="">— Outlet belum termuat —</option>';
+    return;
+  }
+  sel.innerHTML = outlets.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`).join('');
+  if (selectedId) sel.value = selectedId;
+};
+
+// ---- Buka modal EDIT pengguna ----
+window.openSaEditUser = (userId) => {
+  const emp = (AppState.saUsers || []).find(e => e.id === userId);
+  if (!emp) { showToast('Data pengguna tidak ditemukan.', 'error'); return; }
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val !== undefined && val !== null) ? val : ''; };
+  document.getElementById('sa-user-mode').value = 'edit';
+  document.getElementById('sa-user-id').value = emp.id;
+  const titleEl = document.getElementById('sa-user-modal-title');
+  if (titleEl) titleEl.textContent = 'Edit Pengguna: ' + emp.name;
+  setVal('sa-user-name', emp.name);
+  setVal('sa-user-nip', emp.nip);
+  setVal('sa-user-email', emp.email);
+  setVal('sa-user-phone', emp.phone);
+  setVal('sa-user-type', emp.type);
+  window.saSyncDivisions && window.saSyncDivisions();
+  setVal('sa-user-division', emp.division);
+  // Kalau divisi tidak ada di daftar (mis. divisi kustom), tambahkan manual
+  const divSel = document.getElementById('sa-user-division');
+  if (divSel && emp.division) {
+    let exists = false;
+    for (let i = 0; i < divSel.options.length; i++) if (divSel.options[i].value === emp.division) { exists = true; break; }
+    if (!exists) { const opt = document.createElement('option'); opt.value = emp.division; opt.textContent = emp.division; divSel.appendChild(opt); }
+    divSel.value = emp.division;
+  }
+  const superSel = document.getElementById('sa-user-superrole');
+  if (superSel) superSel.value = emp.is_super_admin ? SUPER_ADMIN_ROLE : '';
+  setVal('sa-user-role', emp.role);
+  window.saSyncRoleField && window.saSyncRoleField();
+  populateSaOutlets(emp.outlet_id);
+  setVal('sa-user-account-status', emp.account_status || 'Aktif');
+  setVal('sa-user-employment-status', emp.employment_status || 'Tetap');
+  setVal('sa-user-base-salary', emp.base_salary);
+  setVal('sa-user-daily-allowance', emp.daily_allowance);
+  setVal('sa-user-meal-allowance', emp.meal_allowance || 0);
+  setVal('sa-user-transport-allowance', emp.transport_allowance || 0);
+  setVal('sa-user-rating', emp.rating);
+  setVal('sa-user-kpi-score', emp.kpi_score);
+  // Password/PIN awal hanya untuk mode TAMBAH
+  const pwGroup = document.getElementById('sa-user-password-group');
+  const pinGroup = document.getElementById('sa-user-pin-group');
+  if (pwGroup) pwGroup.style.display = 'none';
+  if (pinGroup) pinGroup.style.display = 'none';
+  const pwInput = document.getElementById('sa-user-password'); if (pwInput) pwInput.value = '';
+  const pinInput = document.getElementById('sa-user-pin'); if (pinInput) pinInput.value = '';
+  // Perlindungan diri sendiri: tidak bisa ubah role khusus / status akun sendiri
+  const me = AppState.currentUser;
+  const isSelf = me && emp.id === me.id;
+  if (superSel) superSel.disabled = isSelf;
+  const statusSel = document.getElementById('sa-user-account-status');
+  if (statusSel) statusSel.disabled = isSelf;
+  openModal('modal-sa-user');
+  if (window.feather) feather.replace();
+};
+
+// ---- Buka modal TAMBAH pengguna ----
+window.openSaAddUser = () => {
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val !== undefined && val !== null) ? val : ''; };
+  document.getElementById('sa-user-mode').value = 'create';
+  document.getElementById('sa-user-id').value = '';
+  const titleEl = document.getElementById('sa-user-modal-title');
+  if (titleEl) titleEl.textContent = 'Tambah Pengguna Baru';
+  ['sa-user-name', 'sa-user-nip', 'sa-user-email', 'sa-user-phone', 'sa-user-password', 'sa-user-pin',
+   'sa-user-base-salary', 'sa-user-daily-allowance', 'sa-user-meal-allowance', 'sa-user-transport-allowance',
+   'sa-user-rating', 'sa-user-kpi-score'].forEach(id => setVal(id, ''));
+  setVal('sa-user-type', 'Operasional');
+  window.saSyncDivisions && window.saSyncDivisions();
+  setVal('sa-user-division', 'Server');
+  const superSel = document.getElementById('sa-user-superrole');
+  if (superSel) { superSel.value = ''; superSel.disabled = false; }
+  setVal('sa-user-role', '');
+  window.saSyncRoleField && window.saSyncRoleField();
+  populateSaOutlets('');
+  setVal('sa-user-account-status', 'Aktif');
+  setVal('sa-user-employment-status', 'Tetap');
+  const statusSel = document.getElementById('sa-user-account-status');
+  if (statusSel) statusSel.disabled = false;
+  const pwGroup = document.getElementById('sa-user-password-group');
+  const pinGroup = document.getElementById('sa-user-pin-group');
+  if (pwGroup) pwGroup.style.display = '';
+  if (pinGroup) pinGroup.style.display = '';
+  openModal('modal-sa-user');
+  if (window.feather) feather.replace();
+};
+
+// ---- Simpan (create/edit) pengguna ----
+window.submitSaUser = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const mode = getVal('sa-user-mode');
+  const userId = getVal('sa-user-id');
+  const btn = document.getElementById('btn-sa-user-save');
+  const roleVal = getVal('sa-user-superrole') === SUPER_ADMIN_ROLE ? SUPER_ADMIN_ROLE : getVal('sa-user-role');
+
+  const body = {
+    name: getVal('sa-user-name'),
+    nip: getVal('sa-user-nip'),
+    email: getVal('sa-user-email'),
+    phone: getVal('sa-user-phone'),
+    type: getVal('sa-user-type'),
+    division: getVal('sa-user-division'),
+    role: roleVal,
+    outlet_id: getVal('sa-user-outlet'),
+    employment_status: getVal('sa-user-employment-status'),
+    account_status: getVal('sa-user-account-status'),
+    base_salary: getVal('sa-user-base-salary') === '' ? undefined : Number(getVal('sa-user-base-salary')),
+    daily_allowance: getVal('sa-user-daily-allowance') === '' ? undefined : Number(getVal('sa-user-daily-allowance')),
+    meal_allowance: getVal('sa-user-meal-allowance') === '' ? 0 : Number(getVal('sa-user-meal-allowance')),
+    transport_allowance: getVal('sa-user-transport-allowance') === '' ? 0 : Number(getVal('sa-user-transport-allowance')),
+    rating: getVal('sa-user-rating') === '' ? undefined : Number(getVal('sa-user-rating')),
+    kpi_score: getVal('sa-user-kpi-score') === '' ? undefined : Number(getVal('sa-user-kpi-score'))
+  };
+  if (mode === 'create') {
+    body.password = getVal('sa-user-password') || '';
+    body.pin_code = getVal('sa-user-pin') || '';
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+  try {
+    const res = await fetch(mode === 'create' ? '/api/admin/users' : `/api/admin/users/${userId}`, {
+      method: mode === 'create' ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Pengguna berhasil disimpan.', 'success');
+      closeModal('modal-sa-user');
+      if (mode === 'create' && data.credentials) {
+        showSaCredential('Akun Berhasil Dibuat', [
+          ['Nama', body.name],
+          ['NIP (login)', data.credentials.nip],
+          ['Email', data.credentials.email],
+          ['Password', data.credentials.password],
+          ['PIN Slip Gaji', data.credentials.pin]
+        ], 'Bagikan kredensial di atas ke pengguna, lalu minta dia ganti password via menu Profil Saya.');
+      }
+      await window.loadSaUsers();
+    } else {
+      showToast(data.detail || data.message || 'Gagal menyimpan pengguna.', 'error');
+    }
+  } catch (err) {
+    console.error('submitSaUser error:', err);
+    showToast('Kesalahan koneksi saat menyimpan pengguna.', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan Pengguna';
+      if (window.feather) feather.replace();
+    }
+  }
+};
+
+// ---- Reset password / PIN ----
+window.saResetPassword = async (userId) => {
+  const emp = (AppState.saUsers || []).find(e => e.id === userId);
+  if (!emp) return;
+  if (!confirm(`Reset password login untuk ${emp.name} (${emp.nip})?\n\nPassword baru akan dibuat otomatis dan yang lama tidak berlaku lagi.`)) return;
+  try {
+    const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success' && data.credentials) {
+      showSaCredential('Password Berhasil Direset', [
+        ['Nama', emp.name], ['NIP (login)', data.credentials.nip || emp.nip], ['Password Baru', data.credentials.password]
+      ], 'Segera bagikan password baru ini ke pengguna bersangkutan.');
+    } else {
+      showToast(data.detail || 'Gagal reset password.', 'error');
+    }
+  } catch (err) { showToast('Kesalahan koneksi saat reset password.', 'error'); }
+};
+
+window.saResetPin = async (userId) => {
+  const emp = (AppState.saUsers || []).find(e => e.id === userId);
+  if (!emp) return;
+  if (!confirm(`Reset PIN slip gaji untuk ${emp.name} (${emp.nip})?\n\nPIN baru 6 digit akan dibuat otomatis.`)) return;
+  try {
+    const res = await fetch(`/api/admin/users/${userId}/reset-pin`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success' && data.credentials) {
+      showSaCredential('PIN Berhasil Direset', [
+        ['Nama', emp.name], ['NIP (login)', data.credentials.nip || emp.nip], ['PIN Baru', data.credentials.pin]
+      ], 'PIN dipakai untuk membuka slip gaji di panel Payroll.');
+    } else {
+      showToast(data.detail || 'Gagal reset PIN.', 'error');
+    }
+  } catch (err) { showToast('Kesalahan koneksi saat reset PIN.', 'error'); }
+};
+
+// ---- Aktifkan / Nonaktifkan akun ----
+window.saToggleStatus = async (userId) => {
+  const emp = (AppState.saUsers || []).find(e => e.id === userId);
+  if (!emp) return;
+  const inactive = emp.account_status === 'Nonaktif';
+  const newStatus = inactive ? 'Aktif' : 'Nonaktif';
+  if (!inactive && emp.is_super_admin && !confirm(
+    `PERHATIAN: ${emp.name} ber-role SUPER ADMIN.\n\nJika ini SUPER ADMIN terakhir yang aktif, sistem akan menolak. Nonaktifkan akun ini?`
+  )) return;
+  if (!inactive && !emp.is_super_admin && !confirm(`Nonaktifkan akun ${emp.name} (${emp.nip})?\n\nAkun nonaktif tidak bisa login sama sekali.`)) return;
+  try {
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_status: newStatus })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || ('Akun ' + newStatus.toLowerCase() + 'kan.'), 'success');
+      await window.loadSaUsers();
+    } else {
+      showToast(data.detail || 'Gagal mengubah status akun.', 'error');
+    }
+  } catch (err) { showToast('Kesalahan koneksi saat mengubah status akun.', 'error'); }
+};
+
+// ---- Modal kredensial ----
+const showSaCredential = (title, rows, note) => {
+  const tEl = document.getElementById('sa-credential-title');
+  const bEl = document.getElementById('sa-credential-body');
+  if (!tEl || !bEl) { alert(rows.map(r => r.join(': ')).join('\n')); return; }
+  tEl.textContent = title;
+  bEl.innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
+      ${rows.map(r => `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; background:#f8fafc; padding:10px 14px; border-radius:10px;">
+          <span style="font-size:12px; color:#64748b; font-weight:600;">${escapeHtml(r[0])}</span>
+          <strong style="font-size:14px; color:var(--text-dark); user-select:all;">${escapeHtml(r[1] || '-')}</strong>
+        </div>`).join('')}
+    </div>
+    ${note ? `<p style="font-size:12px; color:#b45309; background:#fef3c7; padding:10px 12px; border-radius:10px; margin:0;">⚠️ ${escapeHtml(note)}</p>` : ''}
+  `;
+  openModal('modal-sa-credential');
+};
+
+// ---- TAB 3: PENGATURAN SISTEM ----
+const SA_SETTING_KEYS = ['geofence_tolerance_m', 'default_radius_m', 'gps_max_accuracy_m', 'late_grace_min', 'late_deduction_per_min', 'late_deduction_cap', 'annual_leave_days', 'allow_self_registration', 'app_name', 'app_tagline'];
+
+window.loadSaSettings = async () => {
+  try {
+    const res = await fetch('/api/admin/settings');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.detail || 'Gagal memuat pengaturan sistem.', 'error');
+      return;
+    }
+    const s = (data && data.settings) || {};
+    SA_SETTING_KEYS.forEach(k => {
+      const el = document.getElementById('sa-set-' + k);
+      if (el && s[k] !== undefined && s[k] !== null) el.value = String(s[k]);
+    });
+    AppState.saSettingsLoaded = true;
+  } catch (err) {
+    console.error('loadSaSettings error:', err);
+    showToast('Kesalahan koneksi saat memuat pengaturan.', 'error');
+  }
+};
+
+window.submitSaSettings = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const btn = document.getElementById('btn-sa-save-settings');
+  const patch = {};
+  SA_SETTING_KEYS.forEach(k => {
+    const el = document.getElementById('sa-set-' + k);
+    if (el) patch[k] = el.value;
+  });
+  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+  try {
+    const res = await fetch('/api/admin/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: patch })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Pengaturan sistem berhasil disimpan.', 'success');
+      window.loadSaSettings && window.loadSaSettings();
+    } else {
+      showToast(data.detail || data.message || 'Gagal menyimpan pengaturan.', 'error');
+    }
+  } catch (err) {
+    console.error('submitSaSettings error:', err);
+    showToast('Kesalahan koneksi saat menyimpan pengaturan.', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan Pengaturan Sistem';
+      if (window.feather) feather.replace();
+    }
+  }
 };
