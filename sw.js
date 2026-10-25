@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v66';  // Opsi B super ketat: semua approval (cuti/daily report/kalender/payroll/HR) HANYA utk SUPER ADMIN + PCD. BM/HRD/SPV/Head Kitchen/Head Bar juga tidak bisa approve
+const CACHE_NAME = 'tertib-disiplin-v67';  // Atur Tanggal Bergabung karyawan: field join_date di modal sa-user + modal khusus utk SUPER ADMIN/PCD di panel Cuti & Ijin + backend h_employeeUpdate_ support join_date
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

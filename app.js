@@ -943,6 +943,9 @@ const switchView = (viewName) => {
     // SUPER ADMIN: tampilkan banner shortcut "Atur Penyesuaian Cuti"
     const saBanner = document.getElementById('leaves-sa-adjustment-banner');
     if (saBanner) saBanner.style.display = isFullAccess() ? '' : 'none';
+    // v67: SUPER ADMIN + PCD: tampilkan banner shortcut "Atur Tanggal Bergabung"
+    const jdBanner = document.getElementById('leaves-join-date-banner');
+    if (jdBanner) jdBanner.style.display = (isSuperAdminUser() || (AppState.currentUser && AppState.currentUser.division === 'PCD')) ? '' : 'none';
   } else if (viewName === 'chat') {
     // Auto-load chat messages saat masuk view chat
     stopCamera();
@@ -5426,6 +5429,119 @@ window.openSaUsersPanel = () => {
   }, 250);
 };
 
+// ================= v67: ATUR TANGGAL BERGABUNG KARYAWAN =================
+// Modal khusus utk SUPER ADMIN + PCD — tidak perlu buka Panel SUPER ADMIN.
+// Langsung pilih karyawan + input tanggal + save → PUT /api/employees/:id { join_date }.
+AppState.__joinDate = { employees: [], selectedId: null };
+
+window.openJoinDateModal = async () => {
+  // Guard: hanya SUPER ADMIN atau PCD
+  const u = AppState.currentUser;
+  if (!u || (!isSuperAdminUser(u) && u.division !== 'PCD')) {
+    showToast('Hanya Super Admin atau PCD yang dapat mengatur Tanggal Bergabung.', 'error');
+    return;
+  }
+  // Reset form
+  const sel = document.getElementById('join-date-emp-select');
+  const inpGroup = document.getElementById('join-date-input-group');
+  const inp = document.getElementById('join-date-input');
+  const info = document.getElementById('join-date-info');
+  if (sel) sel.value = '';
+  if (inp) inp.value = '';
+  if (inpGroup) inpGroup.style.display = 'none';
+  if (info) { info.style.display = 'none'; info.innerHTML = ''; }
+  AppState.__joinDate.selectedId = null;
+
+  // Load employees list
+  if (sel) {
+    sel.innerHTML = '<option value="">— Memuat daftar karyawan... —</option>';
+    try {
+      const res = await fetch('/api/employees?limit=500');
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data && data.body && Array.isArray(data.body) ? data.body : []);
+      AppState.__joinDate.employees = list;
+      if (list.length === 0) {
+        sel.innerHTML = '<option value="">— Tidak ada karyawan —</option>';
+      } else {
+        sel.innerHTML = '<option value="">— Pilih karyawan —</option>' +
+          list.map(e => `<option value="${e.id}">${e.name} (${e.nip || '-'}) — ${e.division || '-'}/${e.role || '-'}</option>`).join('');
+      }
+    } catch (err) {
+      sel.innerHTML = '<option value="">— Gagal memuat daftar karyawan —</option>';
+      showToast('Gagal memuat daftar karyawan: ' + (err.message || 'kesalahan'), 'error');
+    }
+  }
+
+  openModal('modal-join-date');
+  if (window.feather) setTimeout(() => feather.replace(), 50);
+};
+
+window.onJoinDateEmpChange = (empId) => {
+  const inpGroup = document.getElementById('join-date-input-group');
+  const inp = document.getElementById('join-date-input');
+  const info = document.getElementById('join-date-info');
+  const emp = AppState.__joinDate.employees.find(e => e.id === empId);
+  if (!emp) {
+    if (inpGroup) inpGroup.style.display = 'none';
+    if (info) { info.style.display = 'none'; info.innerHTML = ''; }
+    AppState.__joinDate.selectedId = null;
+    return;
+  }
+  AppState.__joinDate.selectedId = empId;
+  if (inpGroup) inpGroup.style.display = 'block';
+  if (inp) inp.value = emp.join_date || '';
+  if (info) {
+    info.style.display = 'block';
+    info.innerHTML = `
+      <div><strong>Nama:</strong> ${emp.name || '-'}</div>
+      <div><strong>NIP:</strong> ${emp.nip || '-'}</div>
+      <div><strong>Divisi / Jabatan:</strong> ${emp.division || '-'} / ${emp.role || '-'}</div>
+      <div><strong>Outlet:</strong> ${emp.outlet_name || '-'}</div>
+      <div><strong>Tanggal Bergabung Saat Ini:</strong> ${emp.join_date || '<span style="color:#dc2626;">(belum diatur)</span>'}</div>
+    `;
+  }
+};
+
+window.saveJoinDate = async () => {
+  const empId = AppState.__joinDate.selectedId;
+  if (!empId) {
+    showToast('Pilih karyawan dulu.', 'warning');
+    return;
+  }
+  const inp = document.getElementById('join-date-input');
+  const jd = inp ? String(inp.value || '').trim() : '';
+  if (jd && !/^\d{4}-\d{2}-\d{2}$/.test(jd)) {
+    showToast('Format tanggal tidak valid. Gunakan YYYY-MM-DD.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btn-save-join-date');
+  const origText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+
+  try {
+    const res = await fetch(`/api/employees/${empId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ join_date: jd })
+    });
+    const data = await res.json();
+    if (res.ok && (data.status === 'success' || data.employee)) {
+      showToast('Tanggal bergabung berhasil disimpan.', 'success');
+      // Update local cache
+      const emp = AppState.__joinDate.employees.find(e => e.id === empId);
+      if (emp) emp.join_date = jd;
+      closeModal('modal-join-date');
+    } else {
+      showToast(data.detail || data.message || 'Gagal menyimpan tanggal bergabung.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal menyimpan: koneksi terputus.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
+  }
+};
+
 // ---- Tab switching ----
 window.saSwitchTab = (tab) => {
   ['overview', 'users', 'settings'].forEach(t => {
@@ -5754,6 +5870,8 @@ window.openSaEditUser = (userId) => {
   setVal('sa-user-rating', emp.rating);
   setVal('sa-user-kpi-score', emp.kpi_score);
   setVal('sa-user-leave-adjustment', Number(emp.leave_adjustment) || 0);
+  // v67: populate join_date (Tanggal Bergabung)
+  setVal('sa-user-join-date', emp.join_date || '');
   // Password/PIN awal hanya untuk mode TAMBAH
   const pwGroup = document.getElementById('sa-user-password-group');
   const pinGroup = document.getElementById('sa-user-pin-group');
@@ -5782,7 +5900,7 @@ window.openSaAddUser = () => {
   if (titleEl) titleEl.textContent = 'Tambah Pengguna Baru';
   ['sa-user-name', 'sa-user-nip', 'sa-user-email', 'sa-user-phone', 'sa-user-password', 'sa-user-pin',
    'sa-user-base-salary', 'sa-user-daily-allowance', 'sa-user-meal-allowance', 'sa-user-transport-allowance',
-   'sa-user-rating', 'sa-user-kpi-score', 'sa-user-leave-adjustment'].forEach(id => setVal(id, ''));
+   'sa-user-rating', 'sa-user-kpi-score', 'sa-user-leave-adjustment', 'sa-user-join-date'].forEach(id => setVal(id, ''));
   const leaveInfo = document.getElementById('sa-user-leave-info');
   if (leaveInfo) { leaveInfo.style.display = 'none'; leaveInfo.innerHTML = ''; }
   setVal('sa-user-type', 'Operasional');
@@ -5831,7 +5949,9 @@ window.submitSaUser = async (e) => {
     transport_allowance: getVal('sa-user-transport-allowance') === '' ? 0 : Number(getVal('sa-user-transport-allowance')),
     rating: getVal('sa-user-rating') === '' ? undefined : Number(getVal('sa-user-rating')),
     kpi_score: getVal('sa-user-kpi-score') === '' ? undefined : Number(getVal('sa-user-kpi-score')),
-    leave_adjustment: getVal('sa-user-leave-adjustment') === '' ? 0 : Number(getVal('sa-user-leave-adjustment'))
+    leave_adjustment: getVal('sa-user-leave-adjustment') === '' ? 0 : Number(getVal('sa-user-leave-adjustment')),
+    // v67: kirim join_date utk integrasi cuti prorata
+    join_date: getVal('sa-user-join-date') || ''
   };
   if (mode === 'create') {
     body.password = getVal('sa-user-password') || '';
