@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v60';  // RBAC strict: karyawan biasa hanya lihat 9 panel; admin panel (DB Karyawan/Outlets/Data Center/Super Admin) hanya utk role SUPER ADMIN
+const CACHE_NAME = 'tertib-disiplin-v61';  // Hapus App Lock + Session Timeout + Hardening (v59 rollback) — RBAC strict v60 tetap aktif
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

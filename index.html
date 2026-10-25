@@ -168,45 +168,6 @@
   </div>
 </div>
 
-<!-- ==========================================
-     APP LOCK SCREEN — Kunci otomatis saat idle / tab di-hide
-     Buka dgn PIN slip gaji (diverifikasi via /api/payroll/verify-pin)
-     ========================================== -->
-<div id="app-lock-screen" style="display:none; position:fixed; inset:0; z-index:9999; background:linear-gradient(135deg, #4c0519 0%, #701c34 60%, #4c0519 100%); display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box;">
-  <div style="background:#fff; border-radius:20px; padding:30px 26px; max-width:380px; width:100%; box-shadow:0 24px 60px rgba(0,0,0,0.4); text-align:center;">
-    <!-- Logo + Title -->
-    <div style="width:64px; height:64px; background:#fef2f2; color:#991b1b; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 14px auto;">
-      <i data-feather="lock" style="width:30px; height:30px;"></i>
-    </div>
-    <h2 style="font-size:20px; font-weight:800; color:#1e293b; margin:0 0 4px 0;">Aplikasi Terkunci</h2>
-    <p style="font-size:12px; color:#64748b; margin:0 0 6px 0;">Untuk keamanan data, aplikasi otomatis terkunci saat tidak digunakan.</p>
-    <p id="app-lock-user-name" style="font-size:13px; color:#475569; font-weight:600; margin:0 0 18px 0;"></p>
-
-    <!-- PIN input -->
-    <div class="form-group" style="text-align:left;">
-      <label class="form-label required" style="font-size:12px;">PIN Keamanan (6 digit)</label>
-      <input type="password" id="app-lock-pin-input" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" autocomplete="off" placeholder="••••••"
-        style="text-align:center; font-size:26px; letter-spacing:10px; font-weight:700; padding:12px; border:2px solid #e2e8f0; border-radius:12px; width:100%; box-sizing:border-box;">
-      <p style="font-size:10.5px; color:#94a3b8; margin:6px 0 0 0;">PIN sama dgn PIN slip gaji Anda. Hubungi Super Admin jika lupa PIN.</p>
-    </div>
-
-    <!-- Pesan error -->
-    <p id="app-lock-error" style="display:none; font-size:12px; color:#dc2626; background:#fef2f2; padding:8px 10px; border-radius:8px; margin:0 0 12px 0; font-weight:600;"></p>
-
-    <!-- Tombol Buka -->
-    <button type="button" id="btn-app-lock-unlock" style="width:100%; background:#701c34; color:#fff; border:none; padding:13px; border-radius:12px; font-size:14px; font-weight:700; cursor:pointer; margin-bottom:10px;">
-      🔓 Buka Kunci
-    </button>
-
-    <!-- Tombol Keluar -->
-    <button type="button" id="btn-app-lock-logout" style="width:100%; background:transparent; color:#64748b; border:1px solid #e2e8f0; padding:10px; border-radius:10px; font-size:12px; font-weight:600; cursor:pointer;">
-      Keluar &amp; Login Ulang
-    </button>
-
-    <p id="app-lock-attempt-counter" style="display:none; font-size:11px; color:#b45309; margin:10px 0 0 0; font-weight:600;"></p>
-  </div>
-</div>
-
 <div class="app-layout">
 
   <!-- Left Sidebar (Burgundy Theme Matching Mockup) -->
