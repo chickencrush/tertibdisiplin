@@ -26,6 +26,10 @@ const AppState = {
   attendanceLogs: [],
   payslips: [],
   kpiSummary: null,
+  kpiDivisionStats: [],  // cache divisionStats KPI untuk re-render saat mode ganti
+  saUsers: [],           // daftar pengguna Panel Super Admin
+  saOverview: null,      // cache ringkasan sistem Panel Super Admin
+  leaveRequests: [],     // cache pengajuan cuti/ijin
   activeChatChannel: '#general',
   selectedPayslipForPin: null,
   deviceCoordinates: { lat: 0, lon: 0 },
@@ -258,9 +262,9 @@ const applyAccessControl = () => {
     li.style.display = allowed ? '' : 'none';
   });
 
-  // Pemilih Dashboard Management / Tim Operasional hanya untuk Super admin & HRD
+  // Pemilih Dashboard Management / Tim Operasional untuk Super admin, OM & PCD
   const modeSwitcher = document.querySelector('.mode-switcher-container');
-  if (modeSwitcher) modeSwitcher.style.display = isFullAccess(user) ? '' : 'none';
+  if (modeSwitcher) modeSwitcher.style.display = (isFullAccess(user) || isSuperAdminUser(user)) ? '' : 'none';
   AppState.currentMode = user.type === 'Management' ? 'Management' : 'Operasional';
   const bm = document.getElementById('btn-mode-management');
   const bo = document.getElementById('btn-mode-operasional');
@@ -885,8 +889,10 @@ const switchView = (viewName) => {
 };
 
 // Switch Dashboard Mode: Management vs Tim Operasional
-// Saat diklik, filter SEMUA data (dashboard, daily report, data center) berdasarkan tipe
+// Saat diklik, filter SEMUA data di SEMUA panel (dashboard, daily report, presensi,
+// data center, database karyawan, Panel Super Admin, cuti & ijin, payroll, KPI).
 window.switchDashboardMode = (mode) => {
+  if (mode !== 'Management' && mode !== 'Operasional') return;
   AppState.currentMode = mode;
   const bm = document.getElementById('btn-mode-management');
   const bo = document.getElementById('btn-mode-operasional');
@@ -894,26 +900,12 @@ window.switchDashboardMode = (mode) => {
   if (bo) bo.classList.toggle('active', mode === 'Operasional');
 
   if (mode === 'Management') {
-    showToast('Beralih ke Tampilan Management — hanya data karyawan Management', 'info');
+    showToast('Beralih ke Tampilan Management — semua panel kini menampilkan data karyawan Management', 'info');
   } else {
-    showToast('Beralih ke Tampilan Tim Operasional — hanya data karyawan Operasional', 'info');
+    showToast('Beralih ke Tampilan Tim Operasional — semua panel kini menampilkan data karyawan Operasional', 'info');
   }
 
-  // Re-render semua panel yang ada di layar saat ini (reports, kanban, presensi, stats)
-  renderDashboardReportsStream();
-  renderDailyReportBoard();
-  renderAttendanceTable(AppState.attendanceLogs || []);
-  // Jika di Data Center, re-render employee list dengan filter mode
-  const dcTbody = document.getElementById('dc-employees-tbody');
-  if (dcTbody) {
-    renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || '');
-  }
-  // Jika di Database Karyawan, re-render tabel karyawan dengan filter mode
-  if (document.getElementById('employees-tbody')) {
-    renderEmployeesTable(AppState.employees || []);
-  }
-  // Update stat cards
-  updateDashboardStats && updateDashboardStats();
+  rerenderAllPanels_();
   if (window.feather) feather.replace();
 };
 const switchDashboardMode = window.switchDashboardMode;
@@ -1111,8 +1103,8 @@ const loadEmployees = async () => {
     const res = await fetch('/api/employees');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.employees = data;
-    renderEmployeesTable(data);
+    AppState.employees = Array.isArray(data) ? data : [];
+    renderEmployeesTable(AppState.employees);
   } catch (err) {
     console.error('Failed loading employees:', err);
   }
@@ -1124,7 +1116,7 @@ const loadDailyReports = async () => {
     const res = await fetch('/api/daily-reports');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.dailyReports = data;
+    AppState.dailyReports = Array.isArray(data) ? data : [];
     renderDashboardReportsStream();
     renderDailyReportBoard();
   } catch (err) {
@@ -1151,10 +1143,12 @@ const loadKpiSummary = async () => {
       if (adminTableCard) adminTableCard.style.display = 'none';
       if (leaderboardCard) leaderboardCard.style.display = 'none';
       renderStaffRatingsCards([]);
+      AppState.kpiDivisionStats = [];
       renderKpiTable([]);
     } else {
       // Admin: show leaderboard & per-division table, hide personal card
       renderStaffRatingsCards(data.topStaff || []);
+      AppState.kpiDivisionStats = data.divisionStats || [];
       renderKpiTable(data.divisionStats || []);
       if (personalCard) personalCard.style.display = 'none';
       if (adminTableCard) adminTableCard.style.display = 'block';
@@ -1237,8 +1231,8 @@ const loadAttendanceLogs = async () => {
     const res = await fetch('/api/attendance');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.attendanceLogs = data;
-    renderAttendanceTable(data);
+    AppState.attendanceLogs = Array.isArray(data) ? data : [];
+    renderAttendanceTable(AppState.attendanceLogs);
   } catch (err) {
     console.error('Failed loading attendance:', err);
   }
@@ -1250,8 +1244,8 @@ const loadPayslips = async () => {
     const res = await fetch('/api/payroll/slips');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.payslips = data;
-    renderPayslipsTable(data);
+    AppState.payslips = Array.isArray(data) ? data : [];
+    renderPayslipsTable(AppState.payslips);
 
     // Summary
     const sumRes = await fetch('/api/payroll/summary');
@@ -2649,9 +2643,15 @@ const renderEmployeesTable = (list) => {
   if (divFilter !== 'all') filtered = filtered.filter(e => e.division === divFilter);
   if (outletFilter !== 'all') filtered = filtered.filter(e => e.outlet_id === outletFilter);
   if (search) filtered = filtered.filter(e => e.name.toLowerCase().includes(search) || e.nip.toLowerCase().includes(search) || e.role.toLowerCase().includes(search));
-  // Filter global topbar: outlet + pencarian (kombinasi dengan filter lokal panel ini)
+  // Filter global topbar: mode + outlet + pencarian (kombinasi dengan filter lokal panel ini)
+  filtered = filtered.filter(e => matchGlobalMode_(e.type, e.division));
   if (gf.outlet !== 'all') filtered = filtered.filter(e => e.outlet_id === gf.outlet);
   if (gf.search) filtered = filtered.filter(e => matchGlobalSearch_(gf.search, [e.name, e.nip, e.role, e.division, e.outlet_name]));
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan untuk Mode ${activeModeLabel_()}${gf.outlet !== 'all' || gf.search ? ' / filter aktif' : ''}.</td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = filtered.slice(0, 100).map(e => {
     return `
@@ -2729,8 +2729,19 @@ const openOrgTreeModal = () => {
 const renderPayslipsTable = (slips) => {
   const tbody = document.getElementById('payslips-tbody');
   if (!tbody) return;
+  if (slips) AppState.payslips = slips;   // simpan cache untuk re-render saat mode berubah
 
-  tbody.innerHTML = slips.slice(0, 100).map(s => {
+  // Filter global topbar: mode Management / Tim Operasional (berdasarkan divisi)
+  // Catatan: data slip tidak punya outlet_id, jadi filter outlet topbar tidak diterapkan di sini
+  const gf = getGlobalFilters();
+  const list = (slips || AppState.payslips || []).filter(s => matchGlobalMode_(s.type, s.division));
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada slip gaji untuk Mode ${activeModeLabel_()}.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.slice(0, 100).map(s => {
     const m = !!s.masked;
     const hide = (v) => (m ? '••••••' : v);
     return `
@@ -2987,7 +2998,16 @@ const renderKpiTable = (stats) => {
   const tbody = document.getElementById('kpi-division-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = stats.map(s => {
+  // Filter global topbar: mode Management / Tim Operasional (berdasarkan tipe divisi)
+  const gf = getGlobalFilters();
+  const list = (stats || []).filter(s => matchGlobalMode_(s.type, s.division));
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada data KPI divisi untuk Mode ${activeModeLabel_()}.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(s => {
     let badgeClass = 'status-selesai';
     let statusText = 'Sangat Memuaskan';
     if (s.avg_kpi < 85) {
@@ -3388,7 +3408,7 @@ const loadCalendarEvents = async () => {
     const res = await fetch('/api/calendar/events');
     if (!res.ok) return;
     const data = await res.json();
-    renderCalendarEvents(data);
+    renderCalendarEvents(Array.isArray(data) ? data : []);
   } catch (err) {
     console.error('Failed loading calendar:', err);
   }
@@ -3479,8 +3499,8 @@ const loadLeaveRequests = async () => {
     const res = await fetch('/api/leaves');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.leaveRequests = data;
-    renderLeaveRequestsList(data);
+    AppState.leaveRequests = Array.isArray(data) ? data : [];
+    renderLeaveRequestsList(AppState.leaveRequests);
   } catch (err) {
     console.error('Failed loading leave requests:', err);
   }
@@ -3526,14 +3546,28 @@ const renderLeaveBalance = (b) => {
 const renderLeaveRequestsList = (requests) => {
   const tbody = document.getElementById('leaves-tbody');
   if (!tbody) return;
-  if (!requests || requests.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">Belum ada pengajuan cuti/ijin.</td></tr>';
+  if (requests) AppState.leaveRequests = requests;   // simpan cache untuk re-render saat mode berubah
+
+  // Filter global topbar: mode + outlet + periode + pencarian
+  const gf = getGlobalFilters();
+  let list = requests || AppState.leaveRequests || [];
+  list = list.filter(l => matchGlobalMode_(l.employee_type, l.division));
+  if (gf.outlet !== 'all') list = list.filter(l => l.outlet_id === gf.outlet);
+  list = list.filter(l => dateInPeriod_(l.start_date, gf.cutoff, gf.todayStr));
+  list = list.filter(l => matchGlobalSearch_(gf.search, [l.employee_name, l.division, l.type, l.reason]));
+
+  if (list.length === 0) {
+    const filtered = gf.outlet !== 'all' || gf.period !== 'all' || gf.search ||
+      gf.mode === 'Management' || gf.mode === 'Operasional';
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">${filtered
+      ? `Tidak ada pengajuan cuti/ijin untuk filter aktif (Mode: ${activeModeLabel_()}).`
+      : 'Belum ada pengajuan cuti/ijin.'}</td></tr>`;
     return;
   }
   const isApprover = isLeaveApprover();
   const me = AppState.currentUser;
 
-  tbody.innerHTML = requests.map(l => {
+  tbody.innerHTML = list.map(l => {
     let statusBadge = '';
     if (l.status === 'Pending') statusBadge = '<span class="status-badge-pill status-proses" style="background:#fef3c7; color:#92400e;">Menunggu Approval</span>';
     else if (l.status === 'Approved') statusBadge = '<span class="status-badge-pill status-selesai" style="background:#d1fae5; color:#065f46;">Disetujui</span>';
@@ -4716,6 +4750,31 @@ const matchGlobalSearch_ = (search, fields) => {
   return fields.join('|').toLowerCase().includes(search);
 };
 
+// Apakah karyawan/baris data cocok dengan mode dashboard aktif (Management vs Tim Operasional)?
+// Prioritas: field `type` jika ada; kalau tidak ada, turunkan dari divisi (MANAGEMENT_DIVISIONS).
+const matchGlobalMode_ = (type, division) => {
+  const mode = AppState.currentMode || '';
+  if (mode !== 'Management' && mode !== 'Operasional') return true;   // mode tidak dikenal = tampilkan semua
+  if (type) return String(type) === mode;
+  const isMgmt = MANAGEMENT_DIVISIONS.indexOf(division) >= 0;
+  return mode === 'Management' ? isMgmt : !isMgmt;
+};
+
+// Label mode aktif untuk pesan/empty-state, mis. "Mode: Management"
+const activeModeLabel_ = () => {
+  const mode = AppState.currentMode || '';
+  return (mode === 'Management' || mode === 'Operasional') ? mode : 'Semua';
+};
+
+// Baca status tab aktif di stream dashboard ("All"/"Proses"/"Hold"/"Selesai")
+// supaya re-render (ganti mode / filter global) tidak me-reset pilihan user.
+const currentStreamStatus_ = () => {
+  const active = document.querySelector('.reviews-tabs-nav .tab-pill-btn.active');
+  if (!active) return 'All';
+  const m = /filterDashboardReports\('([^']+)'/ .exec(active.getAttribute('onclick') || '');
+  return m ? m[1] : 'All';
+};
+
 // Isi dropdown "Semua Outlet" di topbar dengan daftar outlet dari AppState
 const populateGlobalOutletFilter = () => {
   const sel = document.getElementById('filter-outlet-select');
@@ -4744,19 +4803,30 @@ const populateGlobalPeriodFilter = () => {
 window.populateGlobalOutletFilter = populateGlobalOutletFilter;
 window.populateGlobalPeriodFilter = populateGlobalPeriodFilter;
 
+// Render ulang SEMUA panel yang menampilkan data karyawan sesuai filter global aktif
+// (mode Management/Operasional + outlet + periode + pencarian).
+// Dipakai oleh switchDashboardMode & applyGlobalFilters. Setiap render aman dipanggil
+// walau panelnya tidak sedang terbuka (fungsi render punya guard tbody sendiri).
+const rerenderAllPanels_ = () => {
+  const safe = (label, fn) => {
+    try { fn(); } catch (err) { console.error(`rerenderAllPanels_ [${label}]:`, err); }
+  };
+  safe('stream', () => renderDashboardReportsStream(currentStreamStatus_()));
+  safe('daily-report', () => renderDailyReportBoard());
+  safe('attendance', () => renderAttendanceTable(AppState.attendanceLogs || []));
+  safe('data-center', () => renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || ''));
+  safe('employees', () => renderEmployeesTable(AppState.employees || []));
+  safe('sa-users', () => renderSaUsers(document.getElementById('sa-search-input')?.value || ''));
+  safe('sa-overview', () => renderSaOverviewDivisions());
+  safe('leaves', () => renderLeaveRequestsList(AppState.leaveRequests || []));
+  safe('payslips', () => renderPayslipsTable(AppState.payslips || []));
+  safe('kpi', () => renderKpiTable(AppState.kpiDivisionStats || []));
+  safe('stats', () => updateDashboardStats && updateDashboardStats());
+};
+
 // Terapkan semua filter global: render ulang semua panel yang datanya sudah ada di AppState
 const applyGlobalFilters = () => {
-  renderDashboardReportsStream();
-  renderDailyReportBoard();
-  renderAttendanceTable(AppState.attendanceLogs || []);
-  updateDashboardStats && updateDashboardStats();
-  // Data Center & Database Karyawan (hanya jika panelnya sedang ada di DOM)
-  if (document.getElementById('dc-employees-tbody')) {
-    renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || '');
-  }
-  if (document.getElementById('employees-tbody')) {
-    renderEmployeesTable(AppState.employees || []);
-  }
+  rerenderAllPanels_();
 };
 window.applyGlobalFilters = applyGlobalFilters;
 
@@ -5035,22 +5105,32 @@ window.loadSaOverview = async () => {
           <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#fefce8; border-radius:10px;"><span>Laporan status Hold</span><strong style="color:#a16207;">${data.hold_reports}</strong></div>
         </div>`;
     }
-    // Divisi ringkas
-    const divBox = document.getElementById('sa-overview-divisions');
-    if (divBox) {
-      const counts = data.division_counts || {};
-      const keys = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-      divBox.innerHTML = keys.length === 0 ? '<span style="color:#94a3b8;">Belum ada data divisi.</span>' :
-        keys.map(k => `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 14px; border-bottom:1px solid #f1f5f9;">
-            <span style="font-weight:600;">${escapeHtml(k)}</span>
-            <span class="card-badge-tag" style="background:#f1f5f9; color:#475569;">${counts[k]} orang</span>
-          </div>`).join('');
-    }
+    // Divisi ringkas — mode-aware (Management vs Tim Operasional), di-render oleh helper
+    AppState.saOverview = data;
+    renderSaOverviewDivisions();
   } catch (err) {
     console.error('loadSaOverview error:', err);
     if (wrap) wrap.innerHTML = '<div class="modern-card" style="padding:18px; text-align:center; color:#ef4444; grid-column:1/-1;">Kesalahan koneksi saat memuat ringkasan.</div>';
   }
+};
+
+// Kotak "Distribusi Divisi" di Ringkasan Super Admin — ikut filter mode topbar
+const renderSaOverviewDivisions = () => {
+  const divBox = document.getElementById('sa-overview-divisions');
+  if (!divBox || !AppState.saOverview) return;
+  const counts = AppState.saOverview.division_counts || {};
+  let keys = Object.keys(counts);
+  const gf = getGlobalFilters();
+  if (gf.mode === 'Management') keys = keys.filter(k => MANAGEMENT_DIVISIONS.indexOf(k) >= 0);
+  else if (gf.mode === 'Operasional') keys = keys.filter(k => MANAGEMENT_DIVISIONS.indexOf(k) < 0);
+  keys.sort((a, b) => counts[b] - counts[a]);
+  divBox.innerHTML = keys.length === 0
+    ? `<span style="color:#94a3b8;">Tidak ada data divisi untuk Mode ${activeModeLabel_()}.</span>`
+    : keys.map(k => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 14px; border-bottom:1px solid #f1f5f9;">
+            <span style="font-weight:600;">${escapeHtml(k)}</span>
+            <span class="card-badge-tag" style="background:#f1f5f9; color:#475569;">${counts[k]} orang</span>
+          </div>`).join('');
 };
 
 // ---- TAB 2: MANAJEMEN PENGGUNA ----
@@ -5075,6 +5155,13 @@ const renderSaUsers = (filterText = '') => {
   if (!tbody) return;
   const me = AppState.currentUser;
   let list = AppState.saUsers || [];
+
+  // Filter global topbar: mode Management / Tim Operasional (berdasarkan tipe akun)
+  const gf = getGlobalFilters();
+  if (gf.mode === 'Management' || gf.mode === 'Operasional') {
+    list = list.filter(e => (e.type || '') === gf.mode);
+  }
+
   const q = (filterText || '').toLowerCase().trim();
   if (q) {
     list = list.filter(e =>
@@ -5085,8 +5172,23 @@ const renderSaUsers = (filterText = '') => {
       (e.role || '').toLowerCase().includes(q)
     );
   }
+
+  // Catatan filter aktif di atas tabel (feedback visual bahwa tombol mode berfungsi)
+  const note = document.getElementById('sa-users-filter-note');
+  if (note) {
+    const parts = [];
+    parts.push(`Mode: <b>${activeModeLabel_()}</b>`);
+    if (gf.outlet !== 'all') {
+      const o = (AppState.outlets || []).find(x => x.id === gf.outlet);
+      parts.push(`Outlet: <b>${escapeHtml(o ? o.name : gf.outlet)}</b>`);
+    }
+    if (gf.search) parts.push(`Pencarian: "<b>${escapeHtml(gf.search)}</b>"`);
+    note.innerHTML = `🔍 Menampilkan <b>${list.length}</b> pengguna • ${parts.join(' • ')}`;
+  }
+
   if (list.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada pengguna yang cocok.</td></tr>';
+    const modeFiltered = gf.mode === 'Management' || gf.mode === 'Operasional';
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada pengguna${modeFiltered ? ` untuk Mode ${activeModeLabel_()}` : ' yang cocok'}.</td></tr>`;
     return;
   }
   tbody.innerHTML = list.map(e => {
