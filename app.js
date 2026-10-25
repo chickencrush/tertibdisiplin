@@ -161,10 +161,18 @@ const LEAVE_APPROVER_DIVISIONS = ['OM', 'PCD', 'HRD', 'BM', 'HRGA'];
 // Role khusus "SUPER ADMIN" disimpan di kolom role akun (diatur lewat
 // Panel Super Admin atau sheet employees). Akun dengan role ini mendapat
 // akses ke SEMUA panel + Panel Super Admin (kelola user & pengaturan sistem).
+//
+// ⚠️ v60: isSuperAdminUser sekarang STRICT — hanya cek role === 'SUPER ADMIN'.
+// Divisi OM/PCD TIDAK lagi auto-promote jadi Super Admin. Admin harus eksplisit
+// set role='SUPER ADMIN' via Panel Super Admin > Pengguna > Edit Karyawan.
 // ==========================================
 const SUPER_ADMIN_ROLE = 'SUPER ADMIN';
 const isSuperAdminUser = (user = AppState.currentUser) =>
-  !!user && (String(user.role || '').trim().toUpperCase() === SUPER_ADMIN_ROLE || FULL_ACCESS_DIVISIONS.includes(user.division));
+  !!user && String(user.role || '').trim().toUpperCase() === SUPER_ADMIN_ROLE;
+
+// isFullAccess: alias ke isSuperAdminUser (backward compat).
+// Sebelumnya cek FULL_ACCESS_DIVISIONS, sekarang strict role check.
+const isFullAccess = (user = AppState.currentUser) => isSuperAdminUser(user);
 
 // ==========================================
 // Shift kerja per kelompok divisi (senada dengan MANAGEMENT/OPERASIONAL_DIVISIONS di Code.gs)
@@ -271,24 +279,22 @@ window.populateShiftOptions = () => {
 const populateShiftOptions = window.populateShiftOptions;
 
 const VIEW_ACCESS = {
+  // === 9 PANEL YANG BISA DIAKSES SEMUA KARYAWAN (data terfilter ke akun sendiri di backend) ===
   'dashboard': 'all',
   'presensi': 'all',
-  'daily-report': 'all',       // semua bisa akses — BM lihat semua divisi, lainnya lihat sendiri (filter di backend)
-  'payroll': 'all',            // karyawan biasa hanya melihat slip sendiri (butuh PIN)
-  'chat': 'all',               // saluran dibatasi lagi di CHAT_CHANNEL_RULES
-  'calendar': 'all',
-  'leaves': 'all',             // semua karyawan bisa ajukan cuti & lihat pengajuan sendiri
-  'profile': 'all',            // semua karyawan bisa edit profil sendiri
-  // Database Karyawan: hanya Super Admin + HRD + Finance + HRGA
-  'employees': ['OM', 'PCD', 'HRD', 'Finance', 'HRGA'],
-  // KPI: semua bisa buka panel — TAPI non-Super-Admin hanya lihat data PRIBADI (dipisah di backend h_kpi_)
+  'daily-report': 'all',
+  'payroll': 'all',
   'kpi': 'all',
-  // Input Data Center: HANYA Super Admin (OM + PCD)
-  'data-center': ['OM', 'PCD'],
-  // Titik Lokasi Outlet: hanya Super Admin
-  'outlets': ['OM', 'PCD'],
-  // Panel Super Admin: hanya role SUPER ADMIN / divisi OM+PCD (dicek khusus di canAccessView)
-  'superadmin': ['OM', 'PCD']
+  'chat': 'all',
+  'calendar': 'all',
+  'leaves': 'all',
+  'profile': 'all',
+  // === PANEL ADMIN: HANYA SUPER ADMIN (role === 'SUPER ADMIN') ===
+  // 'superadmin' = sentinel value, dicek oleh canAccessView via isSuperAdminUser
+  'employees': 'superadmin',     // Database Karyawan
+  'data-center': 'superadmin',   // Input Data Center
+  'outlets': 'superadmin',       // Titik Lokasi Outlet
+  'superadmin': 'superadmin'     // Panel Super Admin
 };
 const CHAT_CHANNEL_RULES = {
   '#general': null,
@@ -298,19 +304,19 @@ const CHAT_CHANNEL_RULES = {
   '#logistik': { divisions: ['Logistik', 'Driver', 'Produksi', 'Security', 'HRGA', 'Finance'] }
 };
 
-const isFullAccess = (user = AppState.currentUser) => !!user && FULL_ACCESS_DIVISIONS.includes(user.division);
 const isPayrollAdmin = (user = AppState.currentUser) => !!user && PAYROLL_DIVISIONS.includes(user.division);
 const canAccessView = (view, user = AppState.currentUser) => {
   if (!user) return false;
-  if (isSuperAdminUser(user)) return true;   // SUPER ADMIN: semua panel
-  if (isFullAccess(user)) return true;
   const rule = VIEW_ACCESS[view];
   if (!rule) return false;
-  return rule === 'all' || rule.includes(user.division);
+  if (rule === 'all') return true;             // 9 panel umum
+  if (rule === 'superadmin') return isSuperAdminUser(user);  // panel admin: strict role check
+  // Legacy: array of divisions (untuk backward compat jika ada rule lama)
+  return Array.isArray(rule) && rule.includes(user.division);
 };
 const canAccessChannel = (channel, user = AppState.currentUser) => {
   if (!user) return false;
-  if (isFullAccess(user)) return true;
+  if (isSuperAdminUser(user)) return true;
   if (!Object.prototype.hasOwnProperty.call(CHAT_CHANNEL_RULES, channel)) return false;
   const rule = CHAT_CHANNEL_RULES[channel];
   if (!rule) return true;
@@ -329,9 +335,10 @@ const applyAccessControl = () => {
     li.style.display = allowed ? '' : 'none';
   });
 
-  // Pemilih Dashboard Management / Tim Operasional untuk Super admin, OM & PCD
+  // Pemilih Dashboard Management / Tim Operasional HANYA untuk Super Admin
+  // (sebelumnya: isFullAccess(user) || isSuperAdminUser(user) — sekarang strict)
   const modeSwitcher = document.querySelector('.mode-switcher-container');
-  if (modeSwitcher) modeSwitcher.style.display = (isFullAccess(user) || isSuperAdminUser(user)) ? '' : 'none';
+  if (modeSwitcher) modeSwitcher.style.display = isSuperAdminUser(user) ? '' : 'none';
   AppState.currentMode = user.type === 'Management' ? 'Management' : 'Operasional';
   const bm = document.getElementById('btn-mode-management');
   const bo = document.getElementById('btn-mode-operasional');
@@ -347,7 +354,8 @@ const applyAccessControl = () => {
     el.style.display = (m ? canAccessChannel(m[1]) : true) ? '' : 'none';
   });
 
-  document.body.dataset.access = isSuperAdminUser(user) ? 'super' : (isFullAccess(user) ? 'full' : (canAccessView('employees', user) ? 'manager' : 'staff'));
+  // body dataset access: super (SUPER ADMIN role) / staff (karyawan biasa)
+  document.body.dataset.access = isSuperAdminUser(user) ? 'super' : 'staff';
 };
 
 // ==========================================
@@ -3679,7 +3687,33 @@ const loadCalendarEvents = async () => {
     const res = await fetch('/api/calendar/events');
     if (!res.ok) return;
     const data = await res.json();
-    renderCalendarEvents(Array.isArray(data) ? data : []);
+    let events = Array.isArray(data) ? data : [];
+    // v60: Filter event utk non-Super-Admin — hanya tampilkan event yg relevan:
+    //   (a) event sendiri (organizer_name === user.name), ATAU
+    //   (b) event umum (attendees_division kosong / 'Semua' / 'All' / 'Umum' / 'Manajemen & Operasional' / 'Semua Outlet'), ATAU
+    //   (c) event yg attendees_division mengandung divisi user
+    // Backend (h_calList_) belum filter — ini filter sisi frontend sbg lapis keamanan.
+    const u = AppState.currentUser;
+    if (u && !isSuperAdminUser(u)) {
+      const myName = String(u.name || '').trim().toLowerCase();
+      const myDiv = String(u.division || '').trim();
+      events = events.filter(ev => {
+        const org = String(ev.organizer_name || '').trim().toLowerCase();
+        if (org && org === myName) return true;  // event sendiri
+        const ad = String(ev.attendees_division || '').trim();
+        if (!ad) return true;  // tanpa divisi = umum
+        const adLow = ad.toLowerCase();
+        if (adLow === 'semua' || adLow === 'all' || adLow === 'umum' ||
+            adLow.indexOf('semua outlet') >= 0 || adLow.indexOf('semua divisi') >= 0 ||
+            adLow.indexOf('manajemen & operasional') >= 0 || adLow.indexOf('management & operasional') >= 0) {
+          return true;  // event umum
+        }
+        // Cek apakah divisi user disebut di attendees_division (misal "OM, HRD, Server")
+        if (ad.split(/[,/&\s]+/).some(d => d.trim() === myDiv)) return true;
+        return false;
+      });
+    }
+    renderCalendarEvents(events);
   } catch (err) {
     console.error('Failed loading calendar:', err);
   }
@@ -5955,3 +5989,283 @@ window.submitSaSettings = async (e) => {
     }
   }
 };
+
+// ============================================================
+// APP LOCK & SECURITY HARDENING (v59)
+// ============================================================
+// Fitur:
+// 1. App Lock Screen — kunci otomatis saat idle 5 menit / tab di-hide 30 detik.
+//    Buka dgn PIN slip gaji (diverifikasi via /api/payroll/verify-pin yg sudah
+//    punya brute-force protection: 5x salah = lock 5 menit di backend).
+// 2. 3x salah PIN lokal = force logout (clearSessionData + reload ke login).
+// 3. Session timeout 30 menit idle = force logout penuh (token dibersihkan).
+// 4. Hardening:
+//    - contextmenu (klik kanan) diblokir di production
+//    - iframe embedding diblokir (frame-buster)
+//    - Shortcut DevTools (F12, Ctrl+Shift+I/J/C, Ctrl+U) diblokir
+// ============================================================
+
+const AppLock = (() => {
+  const IDLE_LOCK_MS = 5 * 60 * 1000;        // 5 menit idle -> lock
+  const IDLE_LOGOUT_MS = 30 * 60 * 1000;     // 30 menit idle -> logout penuh
+  const BG_LOCK_MS = 30 * 1000;              // 30 detik di-background -> lock saat kembali
+  const MAX_LOCAL_FAILS = 3;                 // 3x salah PIN lokal -> force logout
+
+  let lastActivity = Date.now();
+  let lastHiddenAt = 0;
+  let idleTimer = null;
+  let locked = false;
+  let localFails = 0;
+
+  const isProd = () => {
+    // Hanya aktifkan hardening di production (bukan file:// atau localhost)
+    const h = location.hostname || '';
+    return h !== 'localhost' && h !== '127.0.0.1' && h !== '' && h.indexOf('file:') < 0;
+  };
+
+  const isLocked = () => locked;
+
+  const showLockScreen = () => {
+    if (locked) return;
+    locked = true;
+    const scr = document.getElementById('app-lock-screen');
+    if (!scr) return;
+    scr.style.display = 'flex';
+    // Tampilkan nama user
+    const u = AppState.currentUser;
+    const nameEl = document.getElementById('app-lock-user-name');
+    if (nameEl && u) nameEl.textContent = 'Halo, ' + (u.name || 'Karyawan');
+    // Reset input & error
+    const inp = document.getElementById('app-lock-pin-input');
+    if (inp) { inp.value = ''; setTimeout(() => inp.focus(), 100); }
+    const errEl = document.getElementById('app-lock-error');
+    if (errEl) errEl.style.display = 'none';
+    // Update counter
+    const ctrEl = document.getElementById('app-lock-attempt-counter');
+    if (ctrEl) {
+      if (localFails > 0) {
+        ctrEl.style.display = 'block';
+        ctrEl.textContent = 'Percobaan gagal: ' + localFails + '/' + MAX_LOCAL_FAILS + '. Sisa: ' + (MAX_LOCAL_FAILS - localFails) + ' percobaan.';
+      } else {
+        ctrEl.style.display = 'none';
+      }
+    }
+  };
+
+  const hideLockScreen = () => {
+    locked = false;
+    const scr = document.getElementById('app-lock-screen');
+    if (scr) scr.style.display = 'none';
+  };
+
+  const lock = () => {
+    if (!AppState.currentUser) return;  // tidak login -> tidak perlu lock
+    showLockScreen();
+  };
+
+  const forceLogout = (notice) => {
+    // Hapus sesi & kembali ke login
+    try { clearSessionData(); } catch (e) { /* abaikan */ }
+    hideLockScreen();
+    if (notice) { try { sessionStorage.setItem('td_notice', notice); } catch (e) {} }
+    setTimeout(() => {
+      if (typeof restartToLogin === 'function') restartToLogin(notice);
+      else if (window.location && window.location.reload) window.location.reload();
+    }, 300);
+  };
+
+  const unlock = async () => {
+    const inp = document.getElementById('app-lock-pin-input');
+    if (!inp) return;
+    const pin = String(inp.value || '').trim();
+    if (!/^\d{6}$/.test(pin)) {
+      const errEl = document.getElementById('app-lock-error');
+      if (errEl) {
+        errEl.textContent = 'PIN harus 6 digit angka.';
+        errEl.style.display = 'block';
+      }
+      inp.focus();
+      return;
+    }
+
+    const btn = document.getElementById('btn-app-lock-unlock');
+    const origText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Memverifikasi...'; }
+
+    try {
+      const res = await fetch('/api/payroll/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pin })
+      });
+      const data = await res.json();
+      if (res.ok && (data.status === 'authenticated' || data.payslip_token)) {
+        // Berhasil
+        localFails = 0;
+        hideLockScreen();
+        // Reset activity tracker
+        lastActivity = Date.now();
+        if (window.feather) feather.replace();
+      } else {
+        // Gagal (backend sudah track brute-force via checkLock_/regFail_)
+        localFails++;
+        const errEl = document.getElementById('app-lock-error');
+        if (errEl) {
+          errEl.textContent = data.detail || 'PIN salah. Coba lagi.';
+          errEl.style.display = 'block';
+        }
+        inp.value = '';
+        inp.focus();
+        const ctrEl = document.getElementById('app-lock-attempt-counter');
+        if (ctrEl) {
+          ctrEl.style.display = 'block';
+          ctrEl.textContent = 'Percobaan gagal: ' + localFails + '/' + MAX_LOCAL_FAILS + '. Sisa: ' + Math.max(0, MAX_LOCAL_FAILS - localFails) + ' percobaan.';
+        }
+        if (localFails >= MAX_LOCAL_FAILS) {
+          forceLogout('Terlalu banyak percobaan PIN salah. Silakan login kembali.');
+        }
+      }
+    } catch (err) {
+      const errEl = document.getElementById('app-lock-error');
+      if (errEl) {
+        errEl.textContent = 'Koneksi terputus. Coba lagi.';
+        errEl.style.display = 'block';
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = origText; }
+    }
+  };
+
+  // === Activity tracking ===
+  const resetActivity = () => {
+    lastActivity = Date.now();
+  };
+
+  const tickIdle = () => {
+    if (!AppState.currentUser) return;  // tidak login -> skip
+    if (locked) return;                  // sudah terkunci -> jangan double-trigger
+    const now = Date.now();
+    const idleFor = now - lastActivity;
+    if (idleFor >= IDLE_LOGOUT_MS) {
+      // Idle > 30 menit -> logout penuh
+      forceLogout('Sesi berakhir karena tidak ada aktivitas selama 30 menit. Silakan login kembali.');
+    } else if (idleFor >= IDLE_LOCK_MS) {
+      // Idle > 5 menit -> lock screen
+      lock();
+    }
+  };
+
+  const startIdleTimer = () => {
+    if (idleTimer) clearInterval(idleTimer);
+    idleTimer = setInterval(tickIdle, 15000);  // cek tiap 15 detik
+  };
+
+  // === Visibility handler (tab switch / minimize) ===
+  const setupVisibilityHandler = () => {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        lastHiddenAt = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        if (lastHiddenAt > 0 && AppState.currentUser && !locked) {
+          const hiddenFor = Date.now() - lastHiddenAt;
+          if (hiddenFor >= BG_LOCK_MS) {
+            lock();
+          }
+        }
+        lastHiddenAt = 0;
+        resetActivity();  // reset agar tidak langsung trigger idle logout
+      }
+    });
+    // Track user activity (throttled)
+    let lastEvt = 0;
+    const onAct = () => {
+      const now = Date.now();
+      if (now - lastEvt > 5000) {  // throttle 5 detik
+        lastEvt = now;
+        resetActivity();
+      }
+    };
+    ['mousemove', 'keydown', 'touchstart', 'click', 'scroll'].forEach(evt => {
+      document.addEventListener(evt, onAct, { passive: true });
+    });
+  };
+
+  // === Hardening ===
+  const setupHardening = () => {
+    if (!isProd()) return;  // skip di dev/file:// supaya tidak ganggu testing
+
+    // 1. Block klik kanan
+    document.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (typeof showToast === 'function') {
+        showToast('Klik kanan dinonaktifkan untuk keamanan.', 'warning');
+      }
+      return false;
+    });
+
+    // 2. Frame-buster: kalau di-embed iframe, redirect top ke URL sendiri
+    try {
+      if (window.top !== window.self) {
+        window.top.location.href = window.self.location.href;
+      }
+    } catch (e) {
+      // cross-origin block — tetap coba redirect
+      try { window.top.location = window.self.location; } catch (_) {}
+    }
+
+    // 3. Block shortcut DevTools (light deterrence)
+    document.addEventListener('keydown', (e) => {
+      // F12
+      if (e.key === 'F12') { e.preventDefault(); return false; }
+      // Ctrl+Shift+I / J / C (Windows/Linux) atau Cmd+Opt+I/J/C (Mac)
+      const k = (e.key || '').toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (k === 'i' || k === 'j' || k === 'c')) {
+        e.preventDefault(); return false;
+      }
+      // Ctrl+U (view source)
+      if ((e.ctrlKey || e.metaKey) && k === 'u') {
+        e.preventDefault(); return false;
+      }
+    });
+  };
+
+  // === Init ===
+  const init = () => {
+    // Bind tombol
+    const btnUnlock = document.getElementById('btn-app-lock-unlock');
+    const btnLogout = document.getElementById('btn-app-lock-logout');
+    const pinInput = document.getElementById('app-lock-pin-input');
+
+    if (btnUnlock) btnUnlock.addEventListener('click', unlock);
+    if (btnLogout) btnLogout.addEventListener('click', () => {
+      if (confirm('Keluar dari akun & kembali ke layar login?')) {
+        forceLogout('Anda keluar dari layar kunci aplikasi.');
+      }
+    });
+    if (pinInput) {
+      pinInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); unlock(); }
+      });
+      // Hanya izinkan digit
+      pinInput.addEventListener('input', (e) => {
+        e.target.value = String(e.target.value || '').replace(/\D/g, '').slice(0, 6);
+      });
+    }
+
+    setupVisibilityHandler();
+    setupHardening();
+    startIdleTimer();
+  };
+
+  return { init, lock, unlock, isLocked, forceLogout };
+})();
+window.AppLock = AppLock;
+
+// Init AppLock setelah DOM ready (secepatnya agar hardening aktif)
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => AppLock.init(), 100);
+  });
+} else {
+  setTimeout(() => AppLock.init(), 100);
+}
