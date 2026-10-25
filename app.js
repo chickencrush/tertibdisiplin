@@ -151,10 +151,12 @@ const staggerViewCards = (view) => {
 // Hak akses panel per divisi
 // ==========================================
 // Super Admin (full akses semua panel): OM + PCD
+// v66: OPIS B (SUPER KETAT) — semua approval HANYA utk PCD division + SUPER ADMIN (role).
+// BM/HRD/SPV/Head Kitchen/Head Bar TIDAK bisa approve.
 const FULL_ACCESS_DIVISIONS = ['OM', 'PCD'];
-const PAYROLL_DIVISIONS = ['OM', 'PCD', 'HRD', 'Finance'];
+const PAYROLL_DIVISIONS = ['PCD'];
 // Divisi yang bisa approve/reject pengajuan cuti
-const LEAVE_APPROVER_DIVISIONS = ['OM', 'PCD', 'HRD', 'BM', 'HRGA'];
+const LEAVE_APPROVER_DIVISIONS = ['PCD'];
 
 // ==========================================
 // ROLE SUPER ADMIN
@@ -3814,7 +3816,8 @@ const openCreateEventModal = () => {
 };
 
 // ================= LEAVE REQUESTS (CUTI & IJIN) =================
-const isLeaveApprover = (user = AppState.currentUser) => !!user && LEAVE_APPROVER_DIVISIONS.includes(user.division);
+// v66: OPIS B — SUPER ADMIN (role) ATAU PCD division dapat approve cuti.
+const isLeaveApprover = (user = AppState.currentUser) => !!user && (isSuperAdminUser(user) || LEAVE_APPROVER_DIVISIONS.includes(user.division));
 
 // State for leave requests
 AppState.leaveRequests = [];
