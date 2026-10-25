@@ -218,8 +218,6 @@ const VIEW_ACCESS = {
   'data-center': ['OM', 'PCD'],
   // Titik Lokasi Outlet: hanya Super Admin
   'outlets': ['OM', 'PCD'],
-  // Database & Backup: hanya Super Admin
-  'database': ['OM', 'PCD'],
   // Panel Super Admin: hanya role SUPER ADMIN / divisi OM+PCD (dicek khusus di canAccessView)
   'superadmin': ['OM', 'PCD']
 };
@@ -800,7 +798,6 @@ const switchView = (viewName) => {
     'profile': ['Profil Saya', 'Edit data diri, foto profil, password, dan PIN slip gaji'],
     'data-center': ['Input Data Center', 'Edit data karyawan, gaji, dan KPI — Khusus Super Admin'],
     'outlets': ['Pengaturan Titik Outlet', 'Konfigurasi Titik Koordinat GPS dan Toleransi Radius Geofencing'],
-    'database': ['Pusat Kontrol Database & Backup', 'Kelola Penyimpanan SQLite, Unduh Cadangan .db, Ekspor CSV & Live Inspector'],
     'superadmin': ['Panel Super Admin', 'Kelola Pengguna, Hak Akses, dan Pengaturan Seluruh Sistem Aplikasi']
   };
 
@@ -867,11 +864,6 @@ const switchView = (viewName) => {
     stopCamera();
     window.stopChatPolling && window.stopChatPolling();
     renderProfileView && renderProfileView();
-  } else if (viewName === 'database') {
-    stopCamera();
-    window.stopChatPolling && window.stopChatPolling();
-    loadDatabaseOverview();
-    loadDatabaseTableData();
   } else if (viewName === 'superadmin') {
     // Panel Super Admin — muat ringkasan + daftar pengguna + pengaturan
     stopCamera();

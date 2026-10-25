@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v55';  // Backend version check banner + 404 panduan deploy + iPhone modal fix lebih agresif (100dvh + flex-start)
+const CACHE_NAME = 'tertib-disiplin-v56';  // Panel Database & Backup dihapus dari semua akun (nav + section + route)
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
