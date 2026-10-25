@@ -920,10 +920,11 @@ const switchView = (viewName) => {
   }
 
   if (viewName === 'presensi') {
-    // Don't auto-start camera (it may prompt user before they're ready).
-    // User can click "Buka Kamera" or just press "AMBIL SELFIE & PRESENSI" —
-    // the submit handler will start the camera on demand.
-    // But DO trigger GPS detection so the geofence banner shows the right state.
+    // v68: Kamera OTOMATIS terbuka saat masuk panel Presensi (tanpa tombol Buka Kamera).
+    // SetFaceStatus('loading') dipanggil di dalam startCamera. Kalau permission denied,
+    // indikator berubah jadi "Kamera ditolak" + toast instruksi — user tetap bisa
+    // presensi lewat tombol kamera HP.
+    window.startCamera && window.startCamera();
     // Pastikan dropdown shift sesuai divisi user (jaga-jaga kalau populate belum jalan)
     window.populateShiftOptions && window.populateShiftOptions();
     if (!AppState.gpsOk && !AppState.gpsLoading) {
@@ -2287,15 +2288,18 @@ const updateAttendanceClock = () => {
 };
 
 // --- Camera Start (async, with proper state tracking) ---
+// v68: dipanggil otomatis saat masuk panel Presensi (tanpa tombol Buka Kamera).
 window.startCamera = async () => {
   const video = document.getElementById('camera-feed');
   if (!video) return;
   if (AppState.cameraLoading || AppState.cameraReady) return; // prevent duplicate calls
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showToast('Browser tidak mendukung akses kamera. Gunakan tombol kamera HP saat presensi.', 'warning');
+    setFaceStatus('idle', 'Kamera tidak didukung browser');
     return;
   }
   AppState.cameraLoading = true;
+  setFaceStatus('loading');
   // Update button label if exists
   const btn = document.getElementById('btn-submit-checkin');
   try {
@@ -2312,14 +2316,23 @@ window.startCamera = async () => {
     });
     AppState.cameraReady = true;
     AppState.cameraLoading = false;
+    // v68: init FaceDetector API (kalau tersedia — Chrome/Android), lalu mulai loop deteksi
+    try {
+      if ('FaceDetector' in window) {
+        AppState.faceDetection.detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+        AppState.faceDetection.apiAvailable = true;
+      }
+    } catch (e) { /* FaceDetector tidak tersedia — pakai fallback heuristik */ }
+    startFaceDetection();
   } catch (err) {
     AppState.cameraReady = false;
     AppState.cameraLoading = false;
+    stopFaceDetection();
     const msg = (err && err.name === 'NotAllowedError')
-      ? 'Akses kamera ditolak. Izinkan kamera di browser, atau gunakan tombol kamera HP saat presensi.'
+      ? 'Akses kamera ditolak. Izinkan kamera di browser (ikon gembok di address bar), lalu keluar-masuk panel Presensi lagi.'
       : 'Kamera tidak tersedia. Anda bisa presensi dengan kamera HP saat klik tombol presensi.';
     console.warn('Camera error:', err && err.message);
-    // Don't alert here — the user will see the warning when they try to presensi
+    setFaceStatus('idle', (err && err.name === 'NotAllowedError') ? 'Kamera ditolak — izinkan akses di browser' : 'Kamera tidak tersedia');
     showToast(msg, 'warning');
   }
 };
@@ -2335,8 +2348,149 @@ const stopCamera = () => {
   }
   AppState.cameraReady = false;
   AppState.cameraLoading = false;
+  stopFaceDetection();   // v68: hentikan face detection loop
   const video = document.getElementById('camera-feed');
   if (video) video.srcObject = null;
+  setFaceStatus('idle'); // reset indikator
+};
+
+// ================= v68: FACE DETECTION & INDICATOR =================
+// Deteksi wajah utk indikator presensi:
+//  - Prioritas: FaceDetector API (Chrome/Android) — akurat
+//  - Fallback: heuristik skin-tone di area tengah frame — cukup utk guidance
+// Indikator 4 state:
+//  idle    : kamera belum aktif (abu)
+//  loading : kamera sedang dibuka (biru berkedip)
+//  seeking : kamera aktif, wajah belum sesuai (kuning)
+//  ok      : wajah sesuai posisi (HIJAU)
+AppState.faceDetection = { timer: null, detector: null, apiAvailable: false, seekingCount: 0, okCount: 0 };
+
+const FACE_STATUS_STYLES = {
+  idle:    { bg: '#f1f5f9', border: '#e2e8f0', text: '#64748b', icon: '📷', label: 'Kamera belum aktif' },
+  loading: { bg: '#eff6ff', border: '#93c5fd', text: '#1e40af', icon: '⏳', label: 'Membuka kamera...' },
+  seeking: { bg: '#fffbeb', border: '#fcd34d', text: '#92400e', icon: '🙂', label: 'Cari wajah — posisikan wajah di dalam ring' },
+  ok:      { bg: '#ecfdf5', border: '#10b981', text: '#065f46', icon: '✅', label: 'Wajah sesuai posisi — siap presensi!' }
+};
+
+const setFaceStatus = (state, customLabel) => {
+  const s = FACE_STATUS_STYLES[state] || FACE_STATUS_STYLES.idle;
+  const box = document.getElementById('face-status-indicator');
+  const iconEl = document.getElementById('face-status-icon');
+  const textEl = document.getElementById('face-status-text');
+  const ring = document.getElementById('face-ring-overlay');
+  if (box) {
+    box.style.background = s.bg;
+    box.style.borderColor = s.border;
+  }
+  if (textEl) {
+    textEl.textContent = customLabel || s.label;
+    textEl.style.color = s.text;
+  }
+  if (iconEl) iconEl.textContent = s.icon;
+  if (ring) {
+    if (state === 'ok') {
+      ring.style.borderColor = '#10b981';
+      ring.style.borderStyle = 'solid';
+      ring.style.boxShadow = '0 0 18px rgba(16, 185, 129, 0.65)';
+    } else if (state === 'seeking') {
+      ring.style.borderColor = 'rgba(252, 211, 77, 0.9)';
+      ring.style.borderStyle = 'dashed';
+      ring.style.boxShadow = 'none';
+    } else {
+      ring.style.borderColor = 'rgba(255,255,255,0.55)';
+      ring.style.borderStyle = 'dashed';
+      ring.style.boxShadow = 'none';
+    }
+  }
+};
+
+// Heuristik skin-tone: hitung persentase pixel "warna kulit" di area tengah frame.
+// Cukup akurat utk guidance selfie (bukan biometrik) — korelasi kuat dgn ada wajah di frame.
+const detectFaceHeuristic_ = (video) => {
+  const canvas = document.getElementById('face-detect-canvas');
+  if (!canvas) return false;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return false;
+  try {
+    // Draw frame video ke canvas kecil 64x48
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const data = ctx.getImageData(
+      canvas.width * 0.2, canvas.height * 0.1,   // area tengah (20%-80% x, 10%-90% y)
+      canvas.width * 0.6, canvas.height * 0.8
+    ).data;
+    let skin = 0, total = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      // Skin tone range (umum utk selfie): r>g>b, brightness cukup
+      if (r > 80 && g > 40 && b > 20 && r > g && g > b && (r - b) > 12 && (r - g) > 8) skin++;
+    }
+    const pct = (skin / total) * 100;
+    // Threshold: >14% skin pixels di area tengah = kemungkinan besar ada wajah
+    return pct > 14;
+  } catch (e) {
+    return false;   // canvas error (misal video belum ready)
+  }
+};
+
+const detectFaceNative_ = async (video) => {
+  if (!AppState.faceDetection.detector) return null;
+  try {
+    const faces = await AppState.faceDetection.detector.detect(video);
+    return faces && faces.length > 0;
+  } catch (e) {
+    return null;
+  }
+};
+
+const updateFaceIndicator = async () => {
+  if (!AppState.cameraReady || !AppState.cameraStream) return;
+  const video = document.getElementById('camera-feed');
+  if (!video || !video.videoWidth) return;
+
+  let hasFace = null;
+  // Coba native FaceDetector dulu
+  if (AppState.faceDetection.apiAvailable) {
+    hasFace = await detectFaceNative_(video);
+  }
+  // Fallback / primary: heuristik skin-tone
+  if (hasFace === null || hasFace === undefined) {
+    hasFace = detectFaceHeuristic_(video);
+  }
+
+  // Debounce: butuh 2 deteksi berturut-turut yg sama agar indikator tidak flicker
+  if (hasFace) {
+    AppState.faceDetection.okCount++;
+    AppState.faceDetection.seekingCount = 0;
+  } else {
+    AppState.faceDetection.seekingCount++;
+    AppState.faceDetection.okCount = 0;
+  }
+
+  if (AppState.faceDetection.okCount >= 2) {
+    setFaceStatus('ok');
+  } else if (AppState.faceDetection.seekingCount >= 1) {
+    setFaceStatus('seeking');
+  }
+};
+
+const startFaceDetection = () => {
+  if (AppState.faceDetection.timer) return;   // sudah jalan
+  AppState.faceDetection.okCount = 0;
+  AppState.faceDetection.seekingCount = 0;
+  setFaceStatus('seeking');
+  // Sampling tiap 400ms — cukup responsif tanpa berat CPU
+  AppState.faceDetection.timer = setInterval(updateFaceIndicator, 400);
+};
+
+const stopFaceDetection = () => {
+  if (AppState.faceDetection.timer) {
+    clearInterval(AppState.faceDetection.timer);
+    AppState.faceDetection.timer = null;
+  }
+  AppState.faceDetection.detector = null;
+  AppState.faceDetection.apiAvailable = false;
+  AppState.faceDetection.okCount = 0;
+  AppState.faceDetection.seekingCount = 0;
 };
 
 // --- Haversine Distance Calculation (client-side) ---
