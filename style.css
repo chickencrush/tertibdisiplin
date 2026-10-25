@@ -2902,6 +2902,82 @@ html {
   }
 }
 
+/* Fix: iOS Safari modal overflow + tombol hilang di iPhone (khusus modal pengajuan cuti & modal sempit lainnya)
+   Penyebab: input[type=date] & select panjang di iOS punya min-width internal, dan grid 1fr 1fr
+   tidak selalu diturunkan ke 1 kolom oleh attribute selector. Solusi: paksa width 100%, max-width 100%,
+   box-sizing border-box, dan single-column grid di dalam modal-card saat layar < 600px. */
+@supports (-webkit-touch-callout: none) {
+  /* Hanya iOS Safari */
+  .modal-card {
+    width: 100% !important;
+    max-width: min(94vw, 540px) !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+  .modal-body, .modal-footer, .modal-header {
+    box-sizing: border-box !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+  .modal-body > * {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .modal-body form,
+  .modal-body .form-group,
+  .modal-body .form-control,
+  .modal-body input,
+  .modal-body select,
+  .modal-body textarea {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .modal-footer {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    flex-wrap: wrap !important;
+  }
+  .modal-footer > button {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Generic mobile fix: paksa grid 1fr 1fr -> 1 kolom di dalam modal pada layar < 600px */
+@media (max-width: 600px) {
+  .modal-card {
+    width: 94vw !important;
+    max-width: 94vw !important;
+    margin: 0 auto !important;
+    overflow-x: hidden !important;
+  }
+  .modal-body [style*="grid-template-columns"],
+  .modal-body [style*="grid-template-columns:1fr 1fr"],
+  .modal-body [style*="grid-template-columns: 1fr 1fr"],
+  .leave-date-grid {
+    grid-template-columns: 1fr !important;
+    min-width: 0 !important;
+  }
+  .modal-body [style*="grid-template-columns"] > *,
+  .leave-date-grid > * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  .modal-footer {
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .modal-footer > button {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+}
+
 /* Fix: iOS Safari overflow-x hidden */
 html, body {
   overflow-x: hidden;

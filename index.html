@@ -254,14 +254,27 @@
       </li>
       <li>
         <a class="nav-item" data-view="data-center">
-          <i data-feather="shield"></i>
-          <span>SUPER ADMIN</span>
+          <i data-feather="edit-3"></i>
+          <span>Input Data Center</span>
         </a>
       </li>
       <li>
         <a class="nav-item" data-view="profile">
           <i data-feather="user"></i>
           <span>Profil Saya</span>
+        </a>
+      </li>
+      <li>
+        <a class="nav-item" data-view="database">
+          <i data-feather="database"></i>
+          <span>Database & Backup</span>
+        </a>
+      </li>
+      <li>
+        <a class="nav-item" data-view="superadmin" id="nav-superadmin">
+          <i data-feather="shield"></i>
+          <span>Panel Super Admin</span>
+          <span class="badge" style="background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff;">SA</span>
         </a>
       </li>
     </ul>
@@ -312,13 +325,16 @@
 
       <div class="topbar-right">
         <!-- Quick Filters matching mockup: Period and Outlet -->
-        <select class="select-filter" id="filter-period-select" onchange="applyGlobalFilters()">
-          <!-- Populated dynamically by app.js on load -->
+        <select class="select-filter" id="filter-period-select" title="Filter Periode Data" onchange="applyGlobalFilters()">
+          <option value="all">Semua Periode</option>
+          <option value="today">Hari Ini</option>
+          <option value="week">7 Hari Terakhir</option>
+          <option value="month">30 Hari Terakhir</option>
         </select>
 
-        <select class="select-filter" id="filter-outlet-select" onchange="applyGlobalFilters()">
+        <select class="select-filter" id="filter-outlet-select" title="Filter Outlet" onchange="applyGlobalFilters()">
           <option value="all">Semua Outlet</option>
-          <!-- Populated dynamically by app.js on load -->
+          <!-- Populated dynamically by app.js (populateGlobalOutletFilter) setelah data outlet termuat -->
         </select>
 
         <!-- Search Input -->
@@ -333,8 +349,8 @@
           <span class="dot-badge"></span>
         </button>
 
-        <!-- User Profile Pill & Dropdown -->
-        <div class="user-profile-pill" id="user-profile-btn" onclick="toggleUserSwitchModal()">
+        <!-- User Profile Pill — klik untuk membuka Profil Saya -->
+        <div class="user-profile-pill" id="user-profile-btn" title="Buka Profil Saya" onclick="switchView('profile')">
           <img src="./icons/logo.png" onerror="this.onerror=null;this.src=window.LOGO_FALLBACK" alt="Avatar" class="user-avatar-circle" id="current-user-avatar">
           <div class="user-meta">
             <div class="user-name-label" id="current-user-name">Admin Tertib Disiplin</div>
@@ -1063,6 +1079,28 @@
 
       <!-- VIEW 8.5: CUTI & IJIN -->
       <section class="view-panel" id="view-leaves">
+
+        <!-- SUPER ADMIN ONLY: Banner shortcut untuk atur penyesuaian cuti per-karyawan -->
+        <div class="modern-card" id="leaves-sa-adjustment-banner" style="margin-bottom:16px; border-left:4px solid var(--burgundy-primary); display:none;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
+              <div style="width:42px; height:42px; background:linear-gradient(135deg,#fef3c7,#fde68a); color:#92400e; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <i data-feather="tool" style="width:20px; height:20px;"></i>
+              </div>
+              <div style="min-width:0;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <strong style="font-size:14px; color:var(--text-dark);">Atur Penyesuaian Sisa Cuti Karyawan</strong>
+                  <span class="card-badge-tag" style="background:#fef2f2; color:#991b1b; font-size:11px; font-weight:700;">👑 Super Admin</span>
+                </div>
+                <p style="font-size:12px; color:#64748b; margin:4px 0 0 0;">Tambah/kurangi jatah cuti tahunan per-karyawan (±hari). Klik tombol di kanan untuk membuka Panel SUPER ADMIN &rarr; Pengguna, lalu pilih karyawan dan isi kolom <strong>Penyesuaian Cuti Tahunan</strong>.</p>
+              </div>
+            </div>
+            <button class="btn-primary" id="btn-leave-open-sa-users" onclick="window.openSaUsersPanel && window.openSaUsersPanel()" style="background:var(--burgundy-primary); flex-shrink:0;">
+              <i data-feather="settings" style="width:13px; height:13px;"></i> Atur Penyesuaian Cuti
+            </button>
+          </div>
+        </div>
+
         <div style="display:grid; grid-template-columns: 1fr 340px; gap:24px;">
 
           <!-- Left: Leave Requests List -->
@@ -1103,52 +1141,6 @@
             <!-- Filled dynamically by renderLeaveBalance() -->
           </div>
         </div>
-
-        <!-- SUPER ADMIN ONLY: Data Cuti Semua Karyawan (Management & Operasional) -->
-        <div class="modern-card" id="leaves-all-card" style="margin-top:24px; display:none;">
-          <div class="card-title-row">
-            <div>
-              <h3>Data Cuti Semua Karyawan</h3>
-              <p style="font-size:12px; color:#64748b;">Rekap sisa cuti tahunan seluruh karyawan Management &amp; Operasional &mdash; hanya tampil untuk akun Super Admin.</p>
-            </div>
-            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-              <select class="select-filter" id="leaves-all-type-filter" onchange="window.renderAllLeaveBalances && window.renderAllLeaveBalances()">
-                <option value="all">Semua (Management &amp; Operasional)</option>
-                <option value="Management">Management</option>
-                <option value="Operasional">Tim Operasional</option>
-              </select>
-              <button class="btn-secondary" id="btn-leaves-all-reload" onclick="window.loadAllLeaveBalances && window.loadAllLeaveBalances()" title="Muat ulang data cuti semua karyawan">
-                <i data-feather="refresh-cw" style="width:13px; height:13px;"></i> Muat Ulang
-              </button>
-              <button class="btn-primary" id="btn-leaves-all-joindate" onclick="window.openBulkJoinDateModal && window.openBulkJoinDateModal()" title="Perbaiki massal Tanggal Masuk karyawan (hanya Super Admin)" style="background:var(--burgundy-primary);">
-                <i data-feather="calendar" style="width:13px; height:13px;"></i> Atur Tanggal Masuk
-              </button>
-            </div>
-          </div>
-
-          <div id="leaves-all-summary" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;"></div>
-
-          <div style="overflow-x:auto; margin-top:14px;">
-            <table class="payslip-table" id="leaves-all-table">
-              <thead>
-                <tr>
-                  <th>NIP &amp; Nama</th>
-                  <th>Tipe &amp; Divisi</th>
-                  <th>Jabatan &amp; Outlet</th>
-                  <th>Tgl Masuk</th>
-                  <th>Hak Cuti</th>
-                  <th>Terpakai</th>
-                  <th>Pending</th>
-                  <th>Sisa Cuti</th>
-                  <th>Aksi</th>
-                </tr>
-              </thead>
-              <tbody id="leaves-all-tbody">
-                <tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">Memuat data cuti karyawan...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
       </section>
 
       <!-- VIEW 9: PENGATURAN TITIK OUTLET (GPS GEOFENCE) -->
@@ -1185,7 +1177,7 @@
         </div>
       </section>
 
-      <!-- VIEW 9.5: PANEL SUPER ADMIN (Khusus Super Admin OM + PCD) -->
+      <!-- VIEW 9.5: INPUT DATA CENTER (Khusus Super Admin OM) -->
       <section class="view-panel" id="view-data-center">
 
         <!-- Header Card -->
@@ -1194,9 +1186,9 @@
             <div>
               <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                 <span class="card-badge-tag" style="background:#fef2f2; color:#991b1b; font-size:12px; font-weight:700;">👑 Khusus Super Admin (OM + PCD)</span>
-                <span style="font-size:12px; color:#64748b;">Pusat kendali penuh sistem &mdash; kelola karyawan, cuti, dan konfigurasi outlet</span>
+                <span style="font-size:12px; color:#64748b;">Edit data karyawan, gaji, dan KPI langsung terhubung ke akun masing-masing</span>
               </div>
-              <h3 style="font-size:20px; color:var(--burgundy-dark); margin:0 0 4px 0;">👑 Panel Super Admin</h3>
+              <h3 style="font-size:18px; color:var(--text-dark); margin:0 0 4px 0;">Pusat Input Data Karyawan</h3>
               <p style="font-size:13px; color:#64748b; margin:0;">Semua perubahan di sini langsung tersimpan ke database karyawan dan terhubung ke akun yang bersangkutan.</p>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
@@ -1205,46 +1197,6 @@
                 <input type="text" id="dc-search-input" placeholder="Cari nama, NIP, jabatan, divisi..." oninput="window.dcSearchEmployees && window.dcSearchEmployees(this)">
               </div>
             </div>
-          </div>
-
-          <!-- Quick Access: SUPER ADMIN Tools -->
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:18px;">
-            <a href="#" onclick="event.preventDefault(); window.switchView && window.switchView('leaves');" style="display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid #e2e8f0; border-radius:10px; background:#fafbff; text-decoration:none; color:inherit;">
-              <div style="width:36px; height:36px; background:#ede9fe; color:#5b21b6; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                <i data-feather="briefcase" style="width:18px; height:18px;"></i>
-              </div>
-              <div>
-                <div style="font-size:13px; font-weight:700; color:var(--text-dark);">Data Cuti Semua Karyawan</div>
-                <div style="font-size:11px; color:#64748b;">Rekap sisa cuti + Atur Tanggal Masuk massal</div>
-              </div>
-            </a>
-            <a href="#" onclick="event.preventDefault(); window.switchView && window.switchView('outlets');" style="display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid #e2e8f0; border-radius:10px; background:#fafbff; text-decoration:none; color:inherit;">
-              <div style="width:36px; height:36px; background:#dbeafe; color:#1e40af; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                <i data-feather="map-pin" style="width:18px; height:18px;"></i>
-              </div>
-              <div>
-                <div style="font-size:13px; font-weight:700; color:var(--text-dark);">Titik Lokasi Outlet (GPS)</div>
-                <div style="font-size:11px; color:#64748b;">Koordinat & radius geofencing presensi</div>
-              </div>
-            </a>
-            <a href="#" onclick="event.preventDefault(); window.switchView && window.switchView('employees');" style="display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid #e2e8f0; border-radius:10px; background:#fafbff; text-decoration:none; color:inherit;">
-              <div style="width:36px; height:36px; background:#fef3c7; color:#92400e; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                <i data-feather="users" style="width:18px; height:18px;"></i>
-              </div>
-              <div>
-                <div style="font-size:13px; font-weight:700; color:var(--text-dark);">Database Karyawan</div>
-                <div style="font-size:11px; color:#64748b;">Kelola data karyawan, skala upah</div>
-              </div>
-            </a>
-            <a href="#" onclick="event.preventDefault(); window.switchView && window.switchView('payroll');" style="display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid #e2e8f0; border-radius:10px; background:#fafbff; text-decoration:none; color:inherit;">
-              <div style="width:36px; height:36px; background:#dcfce7; color:#065f46; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                <i data-feather="dollar-sign" style="width:18px; height:18px;"></i>
-              </div>
-              <div>
-                <div style="font-size:13px; font-weight:700; color:var(--text-dark);">Payroll &amp; E-Payslip</div>
-                <div style="font-size:11px; color:#64748b;">Generate slip gaji bulanan</div>
-              </div>
-            </a>
           </div>
         </div>
 
@@ -1474,6 +1426,364 @@
         </div>
       </section>
 
+      <!-- VIEW 10: MANAJEMEN DATABASE & BACKUP -->
+      <section class="view-panel" id="view-database">
+        
+        <!-- System Health & Status Banner -->
+        <div class="modern-card" style="margin-bottom:20px; border-left:4px solid var(--burgundy-primary);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                <span class="card-badge-tag" style="background:#ecfdf5; color:#065f46; font-size:12px; font-weight:700;">🟢 SQLite 3 Active & Online</span>
+                <span style="font-size:12px; color:#64748b;">Single-File Relational Database</span>
+              </div>
+              <h3 style="font-size:18px; color:var(--text-dark); margin:0 0 4px 0;">Pusat Kontrol Database & Backup Perusahaan</h3>
+              <p style="font-size:13px; color:#64748b; margin:0;" id="db-path-display">Lokasi File: <code>enterprise_ops.db</code></p>
+            </div>
+
+            <!-- Quick Action Buttons -->
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <a href="#" onclick="openDatabaseSheet(event)" class="btn-primary" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; padding:10px 16px;">
+                <i data-feather="download"></i> Buka Spreadsheet (Backup)
+              </a>
+              <button class="btn-secondary" onclick="exportCurrentTableCsv()" style="display:inline-flex; align-items:center; gap:6px;">
+                <i data-feather="file-text"></i> Ekspor CSV / Excel
+              </button>
+              <button class="btn-secondary" onclick="confirmResetDatabase()" style="display:inline-flex; align-items:center; gap:6px; color:#dc2626; border-color:#fca5a5;">
+                <i data-feather="rotate-ccw"></i> Reset Database
+              </button>
+            </div>
+          </div>
+
+          <!-- Metadata Stat Cards -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-top:20px;">
+            <div style="background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
+              <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Ukuran Database</span>
+              <h4 style="font-size:18px; color:var(--text-dark); margin:4px 0 0 0;" id="db-file-size">-</h4>
+            </div>
+            <div style="background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
+              <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Total Tabel Aktif</span>
+              <h4 style="font-size:18px; color:var(--text-dark); margin:4px 0 0 0;" id="db-table-count">7 Tabel</h4>
+            </div>
+            <div style="background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
+              <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Total Record / Baris</span>
+              <h4 style="font-size:18px; color:var(--burgundy-primary); margin:4px 0 0 0;" id="db-record-count">-</h4>
+            </div>
+            <div style="background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
+              <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Terakhir Diperbarui</span>
+              <h4 style="font-size:13px; color:#334155; margin:6px 0 0 0;" id="db-last-modified">-</h4>
+            </div>
+          </div>
+        </div>
+
+        <!-- Panduan & Cara Kontrol Database -->
+        <div class="modern-card" style="margin-bottom:20px;">
+          <div class="card-title-row">
+            <div>
+              <h3>3 Cara Mengontrol & Mengelola Database Ini</h3>
+              <p style="font-size:12px; color:#64748b;">Panduan mudah mengontrol, mengedit data massal, dan mem-backup basis data sistem</p>
+            </div>
+            <span class="card-badge-tag" style="background:#f1f5f9; color:#475569;">💡 Panduan Admin</span>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:10px;">
+            <!-- Cara 1 -->
+            <div style="border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#ffffff;">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <span style="background:var(--burgundy-light); color:var(--burgundy-primary); width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-weight:700;">1</span>
+                <strong style="color:var(--text-dark); font-size:14px;">Melalui Tampilan Web App</strong>
+              </div>
+              <p style="font-size:12px; color:#64748b; line-height:1.5;">
+                Gunakan menu di navigasi sebelah kiri:
+                <br>• <strong>Database Karyawan</strong>: Tambah / edit karyawan, mutasi outlet, skala upah.
+                <br>• <strong>Titik Lokasi Outlet</strong>: Ubah koordinat GPS & radius geofencing presensi.
+                <br>• <strong>Payroll Autopilot</strong>: Generate slip gaji bulanan 1-klik.
+                <br>• <strong>Live Inspector di Bawah</strong>: Telusuri seluruh tabel database langsung di browser!
+              </p>
+            </div>
+
+            <!-- Cara 2 -->
+            <div style="border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#ffffff;">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <span style="background:#dbeafe; color:#1e40af; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-weight:700;">2</span>
+                <strong style="color:var(--text-dark); font-size:14px;">Aplikasi GUI: DB Browser for SQLite</strong>
+              </div>
+              <p style="font-size:12px; color:#64748b; line-height:1.5;">
+                Ingin tampilan spreadsheet mirip Excel?
+                <br>1. Download software gratis <strong>DB Browser for SQLite</strong> (<a href="https://sqlitebrowser.org/" target="_blank" style="color:#2563eb; font-weight:600;">sqlitebrowser.org</a>).
+                <br>2. Buka berkas <code>enterprise_ops.db</code> di folder aplikasi ini.
+                <br>3. Klik tab <strong>"Browse Data"</strong>: Anda bisa edit cell apapun langsung, tambah baris, atau import/export ratusan data dari Excel (.xlsx / .csv).
+              </p>
+            </div>
+
+            <!-- Cara 3 -->
+            <div style="border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#ffffff;">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <span style="background:#fef3c7; color:#92400e; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-weight:700;">3</span>
+                <strong style="color:var(--text-dark); font-size:14px;">Backup & Restore Mandiri</strong>
+              </div>
+              <p style="font-size:12px; color:#64748b; line-height:1.5;">
+                Karena database SQLite berbentuk file tunggal:
+                <br>• <strong>Backup</strong>: Cukup klik tombol <em>"Unduh Backup (.db)"</em> di atas, atau copy file <code>enterprise_ops.db</code> ke Google Drive / flashdisk.
+                <br>• <strong>Restore</strong>: Cukup timpa file <code>enterprise_ops.db</code> dengan file cadangan Anda jika sewaktu-waktu ingin mengembalikan data.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Table Explorer / Inspector -->
+        <div class="modern-card">
+          <div class="card-title-row">
+            <div>
+              <h3>Live Table Inspector & Data Browser</h3>
+              <p style="font-size:12px; color:#64748b;">Lihat dan telusuri isi tabel database langsung secara real-time</p>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <!-- Select Table -->
+              <select id="db-select-table" class="form-control" style="width:180px; padding:8px 12px; font-weight:600;" onchange="changeDatabaseTable(this.value)">
+                <option value="employees">Tabel: employees (Karyawan)</option>
+                <option value="outlets">Tabel: outlets (Lokasi GPS)</option>
+                <option value="attendance">Tabel: attendance (Presensi)</option>
+                <option value="daily_reports">Tabel: daily_reports (Laporan)</option>
+                <option value="payslips">Tabel: payslips (Payroll)</option>
+                <option value="calendar_events">Tabel: calendar_events (Agenda)</option>
+                <option value="chat_messages">Tabel: chat_messages (Chat)</option>
+              </select>
+
+              <!-- Search -->
+              <input type="text" id="db-table-search" class="form-control" placeholder="Cari dalam tabel..." style="width:200px; padding:8px 12px;" oninput="debounceDatabaseSearch()">
+
+              <!-- Download CSV -->
+              <button class="btn-primary" onclick="exportCurrentTableCsv()" style="display:inline-flex; align-items:center; gap:6px;">
+                <i data-feather="download"></i> Ekspor CSV Tabel Ini
+              </button>
+            </div>
+          </div>
+
+          <!-- Table Container -->
+          <div style="overflow-x:auto; margin-top:16px; border:1px solid #e2e8f0; border-radius:12px;">
+            <table class="payslip-table" id="db-inspector-table" style="font-size:12px;">
+              <thead id="db-inspector-thead">
+                <!-- Dynamically populated -->
+              </thead>
+              <tbody id="db-inspector-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Pagination Bar -->
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:10px;">
+            <div style="font-size:12px; color:#64748b;" id="db-inspector-count-label">
+              Menampilkan 0 dari 0 data
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="btn-secondary" id="db-btn-prev" onclick="prevDatabasePage()" style="padding:6px 12px; font-size:12px;">
+                ◀ Halaman Sebelumnya
+              </button>
+              <button class="btn-secondary" id="db-btn-next" onclick="nextDatabasePage()" style="padding:6px 12px; font-size:12px;">
+                Halaman Berikutnya ▶
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- VIEW 11: PANEL SUPER ADMIN (Kelola Seluruh Sistem Aplikasi) -->
+      <section class="view-panel" id="view-superadmin">
+
+        <!-- Header -->
+        <div class="modern-card" style="margin-bottom:20px; border-left:4px solid #f59e0b;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                <span class="card-badge-tag" style="background:linear-gradient(135deg,#fef3c7,#fde68a); color:#92400e; font-size:12px; font-weight:800;">🛡️ SUPER ADMIN — Kontrol Penuh Sistem</span>
+                <span style="font-size:12px; color:#64748b;">Kelola pengguna, hak akses, dan pengaturan seluruh aplikasi dari satu tempat</span>
+              </div>
+              <h3 style="font-size:18px; color:var(--text-dark); margin:0 0 4px 0;">Panel Super Admin</h3>
+              <p style="font-size:13px; color:#64748b; margin:0;">Tambah/edit pengguna, ubah akses &amp; role, reset password/PIN, aktif/nonaktifkan akun, dan atur parameter sistem tanpa perlu edit kode.</p>
+            </div>
+            <button class="btn-primary" onclick="window.openSaAddUser && window.openSaAddUser()">
+              <i data-feather="user-plus"></i> Tambah Pengguna Baru
+            </button>
+          </div>
+
+          <!-- Tab bar -->
+          <div style="display:flex; gap:8px; margin-top:18px; flex-wrap:wrap; background:#f1f5f9; padding:6px; border-radius:14px;">
+            <button class="tab-pill-btn active" id="sa-tab-btn-overview" onclick="window.saSwitchTab && window.saSwitchTab('overview')">📊 Ringkasan Sistem</button>
+            <button class="tab-pill-btn" id="sa-tab-btn-users" onclick="window.saSwitchTab && window.saSwitchTab('users')">👥 Manajemen Pengguna</button>
+            <button class="tab-pill-btn" id="sa-tab-btn-settings" onclick="window.saSwitchTab && window.saSwitchTab('settings')">⚙️ Pengaturan Sistem</button>
+          </div>
+        </div>
+
+        <!-- ======== TAB 1: RINGKASAN SISTEM ======== -->
+        <div id="sa-tab-overview">
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:14px; margin-bottom:20px;" id="sa-overview-stats">
+            <!-- Populated by loadSaOverview() -->
+            <div class="modern-card" style="padding:18px; text-align:center; color:#94a3b8; grid-column:1/-1;">Memuat ringkasan sistem...</div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
+            <div class="modern-card">
+              <div class="card-title-row">
+                <div>
+                  <h3>Ringkasan Presensi Hari Ini</h3>
+                  <p style="font-size:12px; color:#64748b;">Aktivitas presensi seluruh outlet hari ini</p>
+                </div>
+              </div>
+              <div id="sa-overview-attendance" style="font-size:13px; color:#475569;">Memuat...</div>
+            </div>
+            <div class="modern-card">
+              <div class="card-title-row">
+                <div>
+                  <h3>Jumlah Karyawan per Divisi</h3>
+                  <p style="font-size:12px; color:#64748b;">Distribusi personel aktif &amp; nonaktif</p>
+                </div>
+              </div>
+              <div id="sa-overview-divisions" style="font-size:13px; color:#475569;">Memuat...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ======== TAB 2: MANAJEMEN PENGGUNA ======== -->
+        <div id="sa-tab-users" style="display:none;">
+          <div class="modern-card">
+            <div class="card-title-row">
+              <div>
+                <h3>Daftar Semua Pengguna</h3>
+                <p style="font-size:12px; color:#64748b;">Edit data, ubah akses/divisi/role, reset password &amp; PIN, nonaktifkan akun</p>
+              </div>
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <div class="search-pill" style="width:230px;">
+                  <i data-feather="search" style="width:14px; height:14px; color:#94a3b8;"></i>
+                  <input type="text" id="sa-search-input" placeholder="Cari nama, NIP, email, divisi..." oninput="window.saSearchUsers && window.saSearchUsers(this)">
+                </div>
+                <button class="btn-primary" style="padding:8px 14px; font-size:12px;" onclick="window.openSaAddUser && window.openSaAddUser()">
+                  <i data-feather="user-plus" style="width:13px; height:13px;"></i> Tambah
+                </button>
+              </div>
+            </div>
+
+            <p id="sa-users-filter-note" style="font-size:11.5px; color:#475569; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:7px 12px; margin:12px 0 0 0;">🔍 Memuat filter...</p>
+
+            <div style="overflow-x:auto; margin-top:14px;">
+              <table class="payslip-table" id="sa-users-table">
+                <thead>
+                  <tr>
+                    <th>Pengguna</th>
+                    <th>Tipe &amp; Divisi (Akses)</th>
+                    <th>Jabatan / Role</th>
+                    <th>Outlet</th>
+                    <th>Sisa Cuti</th>
+                    <th>Status Akun</th>
+                    <th style="min-width:210px;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="sa-users-tbody">
+                  <tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Memuat pengguna...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="font-size:11px; color:#94a3b8; margin:10px 0 0 0;">💡 Role <strong>SUPER ADMIN</strong> memberikan akses penuh ke seluruh panel &amp; pengaturan sistem. Hati-hati menonaktifkan akun SUPER ADMIN terakhir.</p>
+          </div>
+        </div>
+
+        <!-- ======== TAB 3: PENGATURAN SISTEM ======== -->
+        <div id="sa-tab-settings" style="display:none;">
+          <div class="modern-card" style="margin-bottom:20px;">
+            <div class="card-title-row">
+              <div>
+                <h3>Pengaturan Sistem Aplikasi</h3>
+                <p style="font-size:12px; color:#64748b;">Semua nilai di bawah langsung dipakai oleh sistem saat disimpan — tanpa perlu edit kode Apps Script</p>
+              </div>
+              <span class="card-badge-tag" id="sa-settings-updated-badge" style="background:#f1f5f9; color:#475569;">Terakhir diubah: -</span>
+            </div>
+
+            <form onsubmit="window.submitSaSettings && window.submitSaSettings(event)">
+              <!-- Section 1: Geofence & GPS -->
+              <div style="background:#eff6ff; padding:14px 16px; border-radius:12px; margin-bottom:14px;">
+                <p style="font-size:11px; color:#1e40af; font-weight:700; text-transform:uppercase; margin:0 0 12px 0;">📍 1. Geofence &amp; GPS Presensi</p>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label required">Toleransi GPS di Luar Radius (meter)</label>
+                    <input type="number" class="form-control" id="sa-set-geofence_tolerance_m" min="0" max="60" step="1" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Cadangan agar karyawan di tepi radius tidak ditolak karena ketidakakuratan GPS. Disarankan 5-15.</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Radius Default Outlet (meter)</label>
+                    <input type="number" class="form-control" id="sa-set-default_radius_m" min="10" max="1000" step="5" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dipakai jika radius outlet belum diisi. Ubah radius per outlet di menu Titik Lokasi Outlet.</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Akurasi GPS Maksimum (meter)</label>
+                    <input type="number" class="form-control" id="sa-set-gps_max_accuracy_m" min="10" max="500" step="5" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Presensi ditolak jika akurasi GPS device lebih buruk dari nilai ini.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 2: Keterlambatan -->
+              <div style="background:#fef2f2; padding:14px 16px; border-radius:12px; margin-bottom:14px;">
+                <p style="font-size:11px; color:#991b1b; font-weight:700; text-transform:uppercase; margin:0 0 12px 0;">⏰ 2. Aturan Keterlambatan</p>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label required">Toleransi Terlambat (menit)</label>
+                    <input type="number" class="form-control" id="sa-set-late_grace_min" min="0" max="120" step="1" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Telat di bawah nilai ini masih dianggap "Hadir Tepat Waktu".</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Potongan per Menit (Rp)</label>
+                    <input type="number" class="form-control" id="sa-set-late_deduction_per_min" min="0" max="100000" step="500" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dihitung dari menit setelah batas toleransi.</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Potongan Maksimum per Presensi (Rp)</label>
+                    <input type="number" class="form-control" id="sa-set-late_deduction_cap" min="0" max="1000000" step="5000" required>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 3: Cuti & Aplikasi -->
+              <div style="background:#f0fdf4; padding:14px 16px; border-radius:12px; margin-bottom:14px;">
+                <p style="font-size:11px; color:#065f46; font-weight:700; text-transform:uppercase; margin:0 0 12px 0;">🌴 3. Cuti &amp; Aplikasi</p>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                  <div class="form-group">
+                    <label class="form-label required">Jatah Cuti Tahunan (hari)</label>
+                    <input type="number" class="form-control" id="sa-set-annual_leave_days" min="0" max="365" step="1" required>
+                    <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Karyawan baru otomatis dihitung prorata.</p>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label required">Registrasi Mandiri</label>
+                    <select class="form-control" id="sa-set-allow_self_registration">
+                      <option value="1">Aktif — karyawan bisa daftar sendiri</option>
+                      <option value="0">Nonaktif — akun dibuat SUPER ADMIN</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-top:12px;">
+                  <div class="form-group">
+                    <label class="form-label">Nama Aplikasi</label>
+                    <input type="text" class="form-control" id="sa-set-app_name" maxlength="40">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Tagline Aplikasi</label>
+                    <input type="text" class="form-control" id="sa-set-app_tagline" maxlength="100">
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" class="btn-secondary" onclick="window.loadSaSettings && window.loadSaSettings()">↺ Kembalikan Nilai Tersimpan</button>
+                <button type="submit" class="btn-primary" id="btn-sa-save-settings">
+                  <i data-feather="save" style="width:13px; height:13px;"></i> Simpan Pengaturan Sistem
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+      </section>
 
     </main>
   </div>
@@ -1746,16 +2056,16 @@
 
 <!-- 8. Modal: Ajukan Cuti / Ijin Baru -->
 <div class="modal-overlay" id="modal-leave-create">
-  <div class="modal-card" style="max-width:540px;">
+  <div class="modal-card" style="max-width:540px; width:100%; box-sizing:border-box; overflow-x:hidden;">
     <div class="modal-header">
       <h3>Ajukan Cuti / Ijin Baru</h3>
       <button class="modal-close-btn" onclick="closeModal('modal-leave-create')">&times;</button>
     </div>
-    <form onsubmit="window.submitLeaveRequest && window.submitLeaveRequest(event)">
+    <form onsubmit="window.submitLeaveRequest && window.submitLeaveRequest(event)" style="width:100%; box-sizing:border-box;">
       <div class="modal-body">
         <div class="form-group">
           <label class="form-label required">Tipe Cuti / Ijin</label>
-          <select class="form-control" id="leave-form-type" required>
+          <select class="form-control" id="leave-form-type" required style="width:100%; max-width:100%; box-sizing:border-box;">
             <option value="Cuti Tahunan">Cuti Tahunan (potong jatah 12 hari/tahun)</option>
             <option value="Cuti Sakit">Cuti Sakit (wajib lampirkan surat dokter)</option>
             <option value="Izin">Izin (keperluan pribadi, tidak potong jatah cuti)</option>
@@ -1765,29 +2075,29 @@
           </select>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-          <div class="form-group">
+        <div class="leave-date-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; min-width:0;">
+          <div class="form-group" style="min-width:0;">
             <label class="form-label required">Tanggal Mulai</label>
-            <input type="date" class="form-control" id="leave-form-start" required>
+            <input type="date" class="form-control" id="leave-form-start" required style="width:100%; max-width:100%; box-sizing:border-box;">
           </div>
-          <div class="form-group">
+          <div class="form-group" style="min-width:0;">
             <label class="form-label required">Tanggal Selesai</label>
-            <input type="date" class="form-control" id="leave-form-end" required>
+            <input type="date" class="form-control" id="leave-form-end" required style="width:100%; max-width:100%; box-sizing:border-box;">
           </div>
         </div>
 
         <div class="form-group">
           <label class="form-label required">Alasan / Keterangan</label>
-          <textarea class="form-control" id="leave-form-reason" rows="3" placeholder="Contoh: Libur keluarga, kontrol dokter, urusan keluarga, dll." required></textarea>
+          <textarea class="form-control" id="leave-form-reason" rows="3" placeholder="Contoh: Libur keluarga, kontrol dokter, urusan keluarga, dll." required style="width:100%; max-width:100%; box-sizing:border-box;"></textarea>
         </div>
 
         <div class="form-group">
           <label class="form-label">Lampiran (URL surat dokter / bukti) — opsional</label>
-          <input type="text" class="form-control" id="leave-form-attachment" placeholder="Tempel URL surat dokter / bukti (jika ada)">
+          <input type="text" class="form-control" id="leave-form-attachment" placeholder="Tempel URL surat dokter / bukti (jika ada)" style="width:100%; max-width:100%; box-sizing:border-box;">
           <p style="font-size:11px; color:#94a3b8; margin-top:4px;">Untuk Cuti Sakit &gt; 2 hari, lampirkan surat dokter.</p>
         </div>
 
-        <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:10px 12px; font-size:11.5px; color:#92400e; margin-top:8px;">
+        <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:10px 12px; font-size:11.5px; color:#92400e; margin-top:8px; max-width:100%; box-sizing:border-box; overflow-wrap:break-word;">
           <i data-feather="info" style="width:12px; height:12px; vertical-align:middle;"></i>
           <strong>Info:</strong> Hari Minggu tidak dihitung sebagai hari kerja. Jumlah hari akan dihitung otomatis.
         </div>
@@ -1925,75 +2235,184 @@
   </div>
 </div>
 
+<!-- 10. Modal: Tambah / Edit Pengguna (Panel Super Admin) -->
+<div class="modal-overlay" id="modal-sa-user">
+  <div class="modal-card" style="max-width:700px;">
+    <div class="modal-header">
+      <h3 id="sa-user-modal-title">Tambah Pengguna Baru</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-sa-user')">&times;</button>
+    </div>
+    <form onsubmit="window.submitSaUser && window.submitSaUser(event)">
+      <input type="hidden" id="sa-user-mode" value="create">
+      <input type="hidden" id="sa-user-id" value="">
+      <div class="modal-body">
+
+        <!-- Section 1: Identitas -->
+        <div style="background:#f8fafc; padding:12px 14px; border-radius:10px; margin-bottom:14px;">
+          <p style="font-size:11px; color:var(--burgundy-primary); font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">🪪 1. Identitas Pengguna</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Nama Lengkap</label>
+              <input type="text" class="form-control" id="sa-user-name" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">NIP (untuk login)</label>
+              <input type="text" class="form-control" id="sa-user-nip" required maxlength="30">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Email</label>
+              <input type="email" class="form-control" id="sa-user-email" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">No. HP / WhatsApp</label>
+              <input type="tel" class="form-control" id="sa-user-phone" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Hak Akses -->
+        <div style="background:#fff7ed; padding:12px 14px; border-radius:10px; margin-bottom:14px; border:1px solid #fed7aa;">
+          <p style="font-size:11px; color:#9a3412; font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">🛡️ 2. Hak Akses &amp; Role (mengatur panel yang bisa dibuka)</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Tipe Akun</label>
+              <select class="form-control" id="sa-user-type" onchange="window.saSyncDivisions && window.saSyncDivisions()" required>
+                <option value="Operasional">Tim Operasional</option>
+                <option value="Management">Management</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Divisi (penentu akses panel)</label>
+              <select class="form-control" id="sa-user-division" required>
+                <!-- Populated dynamically by saSyncDivisions() -->
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Role Khusus</label>
+              <select class="form-control" id="sa-user-superrole" onchange="window.saSyncRoleField && window.saSyncRoleField()">
+                <option value="">Role standar (karyawan / jabatan biasa)</option>
+                <option value="SUPER ADMIN">SUPER ADMIN — akses penuh seluruh sistem</option>
+              </select>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">SUPER ADMIN bisa membuka semua panel + Panel Super Admin.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Jabatan / Role Tampilan</label>
+              <input type="text" class="form-control" id="sa-user-role" required maxlength="100">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Titik Outlet</label>
+              <select class="form-control" id="sa-user-outlet" required>
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Status Akun</label>
+              <select class="form-control" id="sa-user-account-status" required>
+                <option value="Aktif">Aktif — bisa login &amp; presensi</option>
+                <option value="Nonaktif">Nonaktif — diblokir dari sistem</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label required">Status Kerja</label>
+              <select class="form-control" id="sa-user-employment-status" required>
+                <option value="Tetap">Tetap</option>
+                <option value="Kontrak">Kontrak</option>
+                <option value="Probation">Probation</option>
+                <option value="Resign">Resign</option>
+              </select>
+            </div>
+            <div class="form-group" id="sa-user-password-group">
+              <label class="form-label">Password Awal (opsional)</label>
+              <input type="text" class="form-control" id="sa-user-password" placeholder="Kosongkan = dibuat otomatis" autocomplete="off">
+            </div>
+          </div>
+          <div class="form-group" id="sa-user-pin-group">
+            <label class="form-label">PIN Slip Gaji Awal (opsional)</label>
+            <input type="text" class="form-control" id="sa-user-pin" placeholder="Kosongkan = 6 digit otomatis" maxlength="6" inputmode="numeric">
+          </div>
+        </div>
+
+        <!-- Section 3: Gaji & KPI -->
+        <div style="background:#ecfdf5; padding:12px 14px; border-radius:10px;">
+          <p style="font-size:11px; color:#065f46; font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">💰 3. Gaji, Tunjangan &amp; KPI</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Gaji Pokok Bulanan (Rp)</label>
+              <input type="number" class="form-control" id="sa-user-base-salary" min="0" max="100000000" step="100000" placeholder="Kosong = ikut skala grade">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tunjangan Kehadiran Harian (Rp)</label>
+              <input type="number" class="form-control" id="sa-user-daily-allowance" min="0" max="1000000" step="5000" placeholder="Kosong = ikut skala grade">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Uang Makan Harian (Rp)</label>
+              <input type="number" class="form-control" id="sa-user-meal-allowance" min="0" max="500000" step="5000" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Uang Transport Harian (Rp)</label>
+              <input type="number" class="form-control" id="sa-user-transport-allowance" min="0" max="500000" step="5000" placeholder="0">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Rating Karyawan (0-5)</label>
+              <input type="number" class="form-control" id="sa-user-rating" min="0" max="5" step="0.1" placeholder="5">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Skor KPI (0-100%)</label>
+              <input type="number" class="form-control" id="sa-user-kpi-score" min="0" max="100" step="1" placeholder="90">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Penyesuaian Cuti Tahunan (±hari)</label>
+            <input type="number" class="form-control" id="sa-user-leave-adjustment" min="-30" max="30" step="0.5" placeholder="0">
+            <p style="font-size:10px; color:#94a3b8; margin:4px 0 0 0;">
+              Tambah/kurangi jatah cuti tahunan karyawan tahun ini. Mis. <b>+2</b> = bonus 2 hari, <b>-3</b> = potong 3 hari.
+              Default <b>0</b>. Hanya berlaku untuk tahun berjalan (reset tiap tahun).
+            </p>
+            <div id="sa-user-leave-info" style="display:none; margin-top:8px; padding:8px 12px; border-radius:8px; background:#f0fdf4; border:1px solid #bbf7d0; font-size:12px; color:#065f46;"></div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('modal-sa-user')">Batal</button>
+        <button type="submit" class="btn-primary" id="btn-sa-user-save">
+          <i data-feather="save" style="width:13px; height:13px;"></i> Simpan Pengguna
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 11. Modal: Kredensial Akun (hasil tambah user / reset password / reset PIN) -->
+<div class="modal-overlay" id="modal-sa-credential">
+  <div class="modal-card" style="max-width:460px;">
+    <div class="modal-header">
+      <h3 id="sa-credential-title">Kredensial Akun</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-sa-credential')">&times;</button>
+    </div>
+    <div class="modal-body" id="sa-credential-body">
+      <!-- Populated dynamically -->
+    </div>
+    <div class="modal-footer" style="justify-content:center;">
+      <button type="button" class="btn-primary" onclick="closeModal('modal-sa-credential')">Saya Sudah Mencatat</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
-
-<!-- Modal: Edit Tanggal Masuk PER KARYAWAN (SUPER ADMIN only) -->
-<div class="modal-overlay" id="modal-edit-join-date">
-  <div class="modal-card" style="max-width:440px;">
-    <div class="modal-header">
-      <h3>Edit Tanggal Masuk Karyawan</h3>
-      <button class="modal-close-btn" onclick="closeModal('modal-edit-join-date')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div style="background:#eff6ff; border:1px solid #3b82f6; border-radius:8px; padding:12px 14px; margin-bottom:14px; display:flex; gap:12px; align-items:center;">
-        <div style="width:40px; height:40px; background:var(--burgundy-soft); color:var(--burgundy-primary); border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; flex-shrink:0;" id="edit-jd-avatar">?</div>
-        <div style="flex:1; min-width:0;">
-          <div style="font-weight:700; color:#0f172a; font-size:14px;" id="edit-jd-name">-</div>
-          <div style="font-size:11px; color:#64748b; margin-top:2px;" id="edit-jd-meta">-</div>
-        </div>
-      </div>
-      <div class="form-group">
-        <label style="font-size:12px; font-weight:600; color:#374151;">Tanggal Masuk Baru <span style="color:#ef4444;">*</span></label>
-        <input type="date" class="form-control" id="input-edit-join-date" style="margin-top:4px;">
-        <p style="font-size:11px; color:#64748b; margin-top:4px;">Jatah cuti tahunan dihitung berdasarkan tanggal ini. Tahun lalu/lebih lama = 12 hari/tahun. Tahun ini = prorata bulanan (Jan=12, Mei=8, Okt=3, Des=1).</p>
-      </div>
-      <div id="edit-join-date-result" style="margin-top:12px; display:none;"></div>
-    </div>
-    <div class="modal-footer" style="justify-content:flex-end; gap:8px;">
-      <button type="button" class="btn-secondary" onclick="closeModal('modal-edit-join-date')">Batal</button>
-      <button type="button" class="btn-primary" id="btn-edit-join-date-submit" onclick="window.submitEditJoinDate && window.submitEditJoinDate()" style="background:var(--burgundy-primary);">
-        <i data-feather="save" style="width:13px; height:13px;"></i> Simpan Tanggal Masuk
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Modal: Bulk Update Tanggal Masuk Karyawan (SUPER ADMIN only) -->
-<div class="modal-overlay" id="modal-bulk-join-date">
-  <div class="modal-card" style="max-width:480px;">
-    <div class="modal-header">
-      <h3>Atur Tanggal Masuk Karyawan</h3>
-      <button class="modal-close-btn" onclick="closeModal('modal-bulk-join-date')">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; padding:12px 14px; margin-bottom:14px; font-size:12px; color:#92400e; line-height:1.5;">
-        <strong>Kenapa ini penting?</strong> Jatah cuti tahunan dihitung berdasarkan Tanggal Masuk. Karyawan yang Tanggal Masuk-nya tahun lalu atau lebih lama mendapat jatah <strong>12 hari</strong>/tahun. Karyawan baru tahun ini mendapat prorata bulanan (mis. masuk bulan Mei = 8 hari, bulan Okt = 3 hari). Jika Tanggal Masuk keliru (mis. terisi tanggal import data), jatah cuti akan terlihat kecil &mdash; gunakan tombol ini untuk memperbaiki massal.
-      </div>
-      <div class="form-group">
-        <label style="font-size:12px; font-weight:600; color:#374151;">Tanggal Masuk Baru <span style="color:#ef4444;">*</span></label>
-        <input type="date" class="form-control" id="input-bulk-join-date" style="margin-top:4px;">
-        <p style="font-size:11px; color:#64748b; margin-top:4px;">Format otomatis YYYY-MM-DD. Pilih tanggal masuk yang sebenarnya.</p>
-      </div>
-      <div class="form-group" style="margin-top:12px;">
-        <label style="font-size:12px; font-weight:600; color:#374151;">Terapkan ke</label>
-        <select class="select-filter" id="input-bulk-join-date-scope" style="margin-top:4px; width:100%;">
-          <option value="all">Semua Karyawan (Management &amp; Operasional)</option>
-          <option value="Management">Hanya Karyawan Management</option>
-          <option value="Operasional">Hanya Karyawan Operasional</option>
-        </select>
-        <p style="font-size:11px; color:#64748b; margin-top:4px;">Hanya karyawan dengan tipe sesuai pilihan yang akan diupdate Tanggal Masuk-nya.</p>
-      </div>
-      <div id="bulk-join-date-result" style="margin-top:12px; display:none;"></div>
-    </div>
-    <div class="modal-footer" style="justify-content:flex-end; gap:8px;">
-      <button type="button" class="btn-secondary" onclick="closeModal('modal-bulk-join-date')">Batal</button>
-      <button type="button" class="btn-primary" id="btn-bulk-join-date-submit" onclick="window.submitBulkJoinDate && window.submitBulkJoinDate()" style="background:var(--burgundy-primary);">
-        <i data-feather="save" style="width:13px; height:13px;"></i> Update Tanggal Masuk
-      </button>
-    </div>
-  </div>
-</div>
 
 <script src="./config.js"></script>
 <script src="./api-client.js"></script>

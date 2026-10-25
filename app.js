@@ -26,6 +26,10 @@ const AppState = {
   attendanceLogs: [],
   payslips: [],
   kpiSummary: null,
+  kpiDivisionStats: [],  // cache divisionStats KPI untuk re-render saat mode ganti
+  saUsers: [],           // daftar pengguna Panel Super Admin
+  saOverview: null,      // cache ringkasan sistem Panel Super Admin
+  leaveRequests: [],     // cache pengajuan cuti/ijin
   activeChatChannel: '#general',
   selectedPayslipForPin: null,
   deviceCoordinates: { lat: 0, lon: 0 },
@@ -153,6 +157,16 @@ const PAYROLL_DIVISIONS = ['OM', 'PCD', 'HRD', 'Finance'];
 const LEAVE_APPROVER_DIVISIONS = ['OM', 'PCD', 'HRD', 'BM', 'HRGA'];
 
 // ==========================================
+// ROLE SUPER ADMIN
+// Role khusus "SUPER ADMIN" disimpan di kolom role akun (diatur lewat
+// Panel Super Admin atau sheet employees). Akun dengan role ini mendapat
+// akses ke SEMUA panel + Panel Super Admin (kelola user & pengaturan sistem).
+// ==========================================
+const SUPER_ADMIN_ROLE = 'SUPER ADMIN';
+const isSuperAdminUser = (user = AppState.currentUser) =>
+  !!user && (String(user.role || '').trim().toUpperCase() === SUPER_ADMIN_ROLE || FULL_ACCESS_DIVISIONS.includes(user.division));
+
+// ==========================================
 // Shift kerja per kelompok divisi (senada dengan MANAGEMENT/OPERASIONAL_DIVISIONS di Code.gs)
 // Dropdown "Pilihan Shift Kerja" hanya menampilkan shift sesuai divisi akun yang login.
 // ==========================================
@@ -200,10 +214,14 @@ const VIEW_ACCESS = {
   'employees': ['OM', 'PCD', 'HRD', 'Finance', 'HRGA'],
   // KPI: semua bisa buka panel — TAPI non-Super-Admin hanya lihat data PRIBADI (dipisah di backend h_kpi_)
   'kpi': 'all',
-  // Panel Super Admin (Input Data Center): HANYA Super Admin (OM + PCD)
+  // Input Data Center: HANYA Super Admin (OM + PCD)
   'data-center': ['OM', 'PCD'],
   // Titik Lokasi Outlet: hanya Super Admin
-  'outlets': ['OM', 'PCD']
+  'outlets': ['OM', 'PCD'],
+  // Database & Backup: hanya Super Admin
+  'database': ['OM', 'PCD'],
+  // Panel Super Admin: hanya role SUPER ADMIN / divisi OM+PCD (dicek khusus di canAccessView)
+  'superadmin': ['OM', 'PCD']
 };
 const CHAT_CHANNEL_RULES = {
   '#general': null,
@@ -217,6 +235,7 @@ const isFullAccess = (user = AppState.currentUser) => !!user && FULL_ACCESS_DIVI
 const isPayrollAdmin = (user = AppState.currentUser) => !!user && PAYROLL_DIVISIONS.includes(user.division);
 const canAccessView = (view, user = AppState.currentUser) => {
   if (!user) return false;
+  if (isSuperAdminUser(user)) return true;   // SUPER ADMIN: semua panel
   if (isFullAccess(user)) return true;
   const rule = VIEW_ACCESS[view];
   if (!rule) return false;
@@ -243,9 +262,9 @@ const applyAccessControl = () => {
     li.style.display = allowed ? '' : 'none';
   });
 
-  // Pemilih Dashboard Management / Tim Operasional hanya untuk Super admin & HRD
+  // Pemilih Dashboard Management / Tim Operasional untuk Super admin, OM & PCD
   const modeSwitcher = document.querySelector('.mode-switcher-container');
-  if (modeSwitcher) modeSwitcher.style.display = isFullAccess(user) ? '' : 'none';
+  if (modeSwitcher) modeSwitcher.style.display = (isFullAccess(user) || isSuperAdminUser(user)) ? '' : 'none';
   AppState.currentMode = user.type === 'Management' ? 'Management' : 'Operasional';
   const bm = document.getElementById('btn-mode-management');
   const bo = document.getElementById('btn-mode-operasional');
@@ -261,9 +280,8 @@ const applyAccessControl = () => {
     el.style.display = (m ? canAccessChannel(m[1]) : true) ? '' : 'none';
   });
 
-  document.body.dataset.access = isFullAccess(user) ? 'full' : (canAccessView('employees', user) ? 'manager' : 'staff');
+  document.body.dataset.access = isSuperAdminUser(user) ? 'super' : (isFullAccess(user) ? 'full' : (canAccessView('employees', user) ? 'manager' : 'staff'));
 };
-window.applyAccessControl = applyAccessControl; // expose untuk testing & debugging
 
 // ==========================================
 // Sidebar (menu geser) untuk layar HP
@@ -335,6 +353,8 @@ const loadAllAppData = async () => {
   await Promise.all(criticalJobs);
 
   populateRegisterOutlets();
+  populateGlobalOutletFilter && populateGlobalOutletFilter();
+  populateGlobalPeriodFilter && populateGlobalPeriodFilter();
   populateDivisionDropdowns();
   switchView('dashboard');
   updateDashboardStats && updateDashboardStats();
@@ -624,6 +644,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   initSidebarToggle();
+  initGlobalSearch();
   ['login-identifier', 'login-password'].forEach(id => {
     const f = document.getElementById(id);
     if (f) f.addEventListener('input', () => showLoginError(''));
@@ -771,8 +792,10 @@ const switchView = (viewName) => {
     'calendar': ['Kalender & Agenda Meeting', 'Jadwal Briefing, Audit QC, dan Agenda Operasional'],
     'leaves': ['Cuti & Ijin Karyawan', 'Pengajuan cuti, Ijin, dan Sisa Cuti Tahunan'],
     'profile': ['Profil Saya', 'Edit data diri, foto profil, password, dan PIN slip gaji'],
-    'data-center': ['Panel Super Admin', 'Pusat kendali Super Admin — kelola karyawan, gaji, KPI, dan akses cepat fitur lain'],
-    'outlets': ['Pengaturan Titik Outlet', 'Konfigurasi Titik Koordinat GPS dan Toleransi Radius Geofencing']
+    'data-center': ['Input Data Center', 'Edit data karyawan, gaji, dan KPI — Khusus Super Admin'],
+    'outlets': ['Pengaturan Titik Outlet', 'Konfigurasi Titik Koordinat GPS dan Toleransi Radius Geofencing'],
+    'database': ['Pusat Kontrol Database & Backup', 'Kelola Penyimpanan SQLite, Unduh Cadangan .db, Ekspor CSV & Live Inspector'],
+    'superadmin': ['Panel Super Admin', 'Kelola Pengguna, Hak Akses, dan Pengaturan Seluruh Sistem Aplikasi']
   };
 
   const titleEl = document.getElementById('page-title');
@@ -807,10 +830,9 @@ const switchView = (viewName) => {
     stopCamera();
     loadLeaveBalance && loadLeaveBalance();
     loadLeaveRequests && loadLeaveRequests();
-    // Data Cuti Semua Karyawan — kartu hanya tampil & dimuat untuk Super Admin (OM/PCD)
-    const leavesAllCard = document.getElementById('leaves-all-card');
-    if (leavesAllCard) leavesAllCard.style.display = isFullAccess() ? '' : 'none';
-    if (isFullAccess()) window.loadAllLeaveBalances && window.loadAllLeaveBalances();
+    // SUPER ADMIN: tampilkan banner shortcut "Atur Penyesuaian Cuti"
+    const saBanner = document.getElementById('leaves-sa-adjustment-banner');
+    if (saBanner) saBanner.style.display = isFullAccess() ? '' : 'none';
   } else if (viewName === 'chat') {
     // Auto-load chat messages saat masuk view chat
     stopCamera();
@@ -827,7 +849,7 @@ const switchView = (viewName) => {
     // Mulai polling real-time
     window.startChatPolling && window.startChatPolling();
   } else if (viewName === 'data-center') {
-    // Panel Super Admin — load employees & outlets
+    // Input Data Center — load employees & outlets
     stopCamera();
     // Stop chat polling kalau keluar dari view chat (hemat network)
     window.stopChatPolling && window.stopChatPolling();
@@ -839,6 +861,18 @@ const switchView = (viewName) => {
     stopCamera();
     window.stopChatPolling && window.stopChatPolling();
     renderProfileView && renderProfileView();
+  } else if (viewName === 'database') {
+    stopCamera();
+    window.stopChatPolling && window.stopChatPolling();
+    loadDatabaseOverview();
+    loadDatabaseTableData();
+  } else if (viewName === 'superadmin') {
+    // Panel Super Admin — muat ringkasan + daftar pengguna + pengaturan
+    stopCamera();
+    window.stopChatPolling && window.stopChatPolling();
+    window.loadSaOverview && window.loadSaOverview();
+    window.loadSaUsers && window.loadSaUsers();
+    window.loadSaSettings && window.loadSaSettings();
   } else {
     stopCamera();
     // Stop chat polling kalau keluar dari view chat (hemat network)
@@ -856,11 +890,12 @@ const switchView = (viewName) => {
     }
   }
 };
-window.switchView = switchView; // expose sejak boot (di dalam fungsi juga self-expose utk jaga-jaga)
 
 // Switch Dashboard Mode: Management vs Tim Operasional
-// Saat diklik, filter SEMUA data (dashboard, daily report, data center) berdasarkan tipe
+// Saat diklik, filter SEMUA data di SEMUA panel (dashboard, daily report, presensi,
+// data center, database karyawan, Panel Super Admin, cuti & ijin, payroll, KPI).
 window.switchDashboardMode = (mode) => {
+  if (mode !== 'Management' && mode !== 'Operasional') return;
   AppState.currentMode = mode;
   const bm = document.getElementById('btn-mode-management');
   const bo = document.getElementById('btn-mode-operasional');
@@ -868,21 +903,12 @@ window.switchDashboardMode = (mode) => {
   if (bo) bo.classList.toggle('active', mode === 'Operasional');
 
   if (mode === 'Management') {
-    showToast('Beralih ke Tampilan Management — hanya data karyawan Management', 'info');
+    showToast('Beralih ke Tampilan Management — semua panel kini menampilkan data karyawan Management', 'info');
   } else {
-    showToast('Beralih ke Tampilan Tim Operasional — hanya data karyawan Operasional', 'info');
+    showToast('Beralih ke Tampilan Tim Operasional — semua panel kini menampilkan data karyawan Operasional', 'info');
   }
 
-  // Re-render semua panel yang ada di layar saat ini
-  renderDashboardReportsStream();
-  renderDailyReportBoard();
-  // Jika di Data Center, re-render employee list dengan filter mode
-  const dcTbody = document.getElementById('dc-employees-tbody');
-  if (dcTbody) {
-    renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || '');
-  }
-  // Update stat cards
-  updateDashboardStats && updateDashboardStats();
+  rerenderAllPanels_();
   if (window.feather) feather.replace();
 };
 const switchDashboardMode = window.switchDashboardMode;
@@ -953,6 +979,9 @@ const loadOutlets = async () => {
     const outletList = Array.isArray(data) ? data : (data && data.body && Array.isArray(data.body) ? data.body : []);
     AppState.outlets = outletList;
     AppState.outletsLoadError = '';
+
+    // Isi dropdown filter "Semua Outlet" di topbar dengan daftar outlet
+    window.populateGlobalOutletFilter && window.populateGlobalOutletFilter();
 
     // Populate presensi outlet select
     const pSelect = document.getElementById('presensi-outlet-select');
@@ -1077,8 +1106,8 @@ const loadEmployees = async () => {
     const res = await fetch('/api/employees');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.employees = data;
-    renderEmployeesTable(data);
+    AppState.employees = Array.isArray(data) ? data : [];
+    renderEmployeesTable(AppState.employees);
   } catch (err) {
     console.error('Failed loading employees:', err);
   }
@@ -1090,7 +1119,7 @@ const loadDailyReports = async () => {
     const res = await fetch('/api/daily-reports');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.dailyReports = data;
+    AppState.dailyReports = Array.isArray(data) ? data : [];
     renderDashboardReportsStream();
     renderDailyReportBoard();
   } catch (err) {
@@ -1117,10 +1146,12 @@ const loadKpiSummary = async () => {
       if (adminTableCard) adminTableCard.style.display = 'none';
       if (leaderboardCard) leaderboardCard.style.display = 'none';
       renderStaffRatingsCards([]);
+      AppState.kpiDivisionStats = [];
       renderKpiTable([]);
     } else {
       // Admin: show leaderboard & per-division table, hide personal card
       renderStaffRatingsCards(data.topStaff || []);
+      AppState.kpiDivisionStats = data.divisionStats || [];
       renderKpiTable(data.divisionStats || []);
       if (personalCard) personalCard.style.display = 'none';
       if (adminTableCard) adminTableCard.style.display = 'block';
@@ -1203,8 +1234,8 @@ const loadAttendanceLogs = async () => {
     const res = await fetch('/api/attendance');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.attendanceLogs = data;
-    renderAttendanceTable(data);
+    AppState.attendanceLogs = Array.isArray(data) ? data : [];
+    renderAttendanceTable(AppState.attendanceLogs);
   } catch (err) {
     console.error('Failed loading attendance:', err);
   }
@@ -1216,8 +1247,8 @@ const loadPayslips = async () => {
     const res = await fetch('/api/payroll/slips');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.payslips = data;
-    renderPayslipsTable(data);
+    AppState.payslips = Array.isArray(data) ? data : [];
+    renderPayslipsTable(AppState.payslips);
 
     // Summary
     const sumRes = await fetch('/api/payroll/summary');
@@ -1371,6 +1402,13 @@ const updateDashboardStats = () => {
   if (!AppState.currentUser) return;
   const u = AppState.currentUser;
   const adminMode = isDashboardAdmin();
+  const gf = getGlobalFilters();
+
+  // Karyawan sesuai filter global (mode + outlet) — dipakai untuk rating & kehadiran
+  let scopeEmps = AppState.employees || [];
+  if (gf.mode === 'Management') scopeEmps = scopeEmps.filter(e => MANAGEMENT_DIVISIONS.indexOf(e.division) >= 0);
+  else if (gf.mode === 'Operasional') scopeEmps = scopeEmps.filter(e => MANAGEMENT_DIVISIONS.indexOf(e.division) < 0);
+  if (gf.outlet !== 'all') scopeEmps = scopeEmps.filter(e => e.outlet_id === gf.outlet);
 
   // Stat 1: Reports count
   const reportsEl = document.getElementById('stat-reports-value');
@@ -1378,6 +1416,11 @@ const updateDashboardStats = () => {
     let myReports = AppState.dailyReports || [];
     if (!adminMode) {
       myReports = myReports.filter(r => r.reporter_id === u.id);
+    } else {
+      if (gf.mode === 'Management') myReports = myReports.filter(r => r.type === 'Management');
+      else if (gf.mode === 'Operasional') myReports = myReports.filter(r => r.type !== 'Management');
+      if (gf.outlet !== 'all') myReports = myReports.filter(r => r.outlet_id === gf.outlet);
+      myReports = myReports.filter(r => dateInPeriod_(r.created_at, gf.cutoff, gf.todayStr));
     }
     reportsEl.textContent = myReports.length;
   }
@@ -1387,39 +1430,42 @@ const updateDashboardStats = () => {
   const ratingsSubEl = document.getElementById('stat-ratings-subtitle');
   if (ratingsEl) {
     if (adminMode) {
-      // Admin: tampilkan rata-rata semua karyawan
-      const emps = AppState.employees || [];
-      const avgRating = emps.length > 0
-        ? (emps.reduce((sum, e) => sum + (e.rating || 0), 0) / emps.length).toFixed(1)
+      // Admin: rata-rata karyawan sesuai filter mode + outlet
+      const avgRating = scopeEmps.length > 0
+        ? (scopeEmps.reduce((sum, e) => sum + (e.rating || 0), 0) / scopeEmps.length).toFixed(1)
         : '-';
       ratingsEl.innerHTML = avgRating + ' <span>/ 5</span>';
-      if (ratingsSubEl) ratingsSubEl.textContent = '⭐ Rata-rata ' + emps.length + ' karyawan';
+      if (ratingsSubEl) ratingsSubEl.textContent = '⭐ Rata-rata ' + scopeEmps.length + ' karyawan' + (gf.outlet !== 'all' ? ' • outlet terpilih' : '') + (gf.mode !== 'Management' ? ' • Tim Operasional' : ' • Management');
     } else {
       ratingsEl.innerHTML = (u.rating || 0) + ' <span>/ 5</span>';
       if (ratingsSubEl) ratingsSubEl.textContent = '⭐ Rating pribadi Anda';
     }
   }
 
-  // Stat 3: Attendance rate (pribadi)
+  // Stat 3: Attendance rate
   const attEl = document.getElementById('stat-attendance-value');
   const attSubEl = document.getElementById('stat-attendance-subtitle');
   if (attEl) {
     let myLogs = AppState.attendanceLogs || [];
+    // Filter global: mode + outlet + periode
+    if (gf.mode === 'Management') myLogs = myLogs.filter(a => MANAGEMENT_DIVISIONS.indexOf(a.division) >= 0);
+    else if (gf.mode === 'Operasional') myLogs = myLogs.filter(a => MANAGEMENT_DIVISIONS.indexOf(a.division) < 0);
+    if (gf.outlet !== 'all') myLogs = myLogs.filter(a => a.outlet_id === gf.outlet);
+    myLogs = myLogs.filter(a => dateInPeriod_(a.date, gf.cutoff, gf.todayStr));
     if (!adminMode && u.id) {
       myLogs = myLogs.filter(a => a.employee_id === u.id);
     }
-    const today = new Date().toISOString().split('T')[0];
-    const todayLogs = myLogs.filter(a => a.date === today);
+    const todayLogs = myLogs.filter(a => a.date === gf.todayStr);
     if (adminMode) {
-      // Admin: tampilkan persentase kehadiran hari ini dari semua karyawan
-      const totalEmps = (AppState.employees || []).length;
+      // Admin: persentase kehadiran hari ini dari karyawan dalam scope filter
+      const totalEmps = scopeEmps.length;
       const pct = totalEmps > 0 ? Math.round((todayLogs.length / totalEmps) * 100) : 0;
       attEl.textContent = pct + '%';
       if (attSubEl) attSubEl.textContent = '❤️ ' + todayLogs.length + ' dari ' + totalEmps + ' karyawan hadir hari ini';
     } else {
-      // Personal: tampilkan jumlah hari hadir
+      // Personal: tampilkan jumlah hari hadir (dalam periode terpilih)
       attEl.textContent = myLogs.length;
-      if (attSubEl) attSubEl.textContent = '❤️ Total hari presensi Anda';
+      if (attSubEl) attSubEl.textContent = gf.period === 'all' ? '❤️ Total hari presensi Anda' : '❤️ Hari presensi Anda (' + gf.period + ')';
     }
   }
 };
@@ -1428,13 +1474,14 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
   const container = document.getElementById('dashboard-reports-stream');
   if (!container) return;
 
+  const gf = getGlobalFilters();
   let reports = AppState.dailyReports;
   // Filter by current mode (Management / Operasional) untuk Super Admin
   if (isDashboardAdmin() && AppState.currentMode) {
     if (AppState.currentMode === 'Management') {
       reports = reports.filter(r => r.type === 'Management');
     } else if (AppState.currentMode === 'Operasional') {
-      reports = reports.filter(r => r.type === 'Operasional');
+      reports = reports.filter(r => r.type !== 'Management');
     }
   }
   // Non-Super-Admin: hanya tampilkan laporan sendiri di dashboard
@@ -1444,6 +1491,10 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
   if (filterStatus !== 'All') {
     reports = reports.filter(r => r.status.toLowerCase() === filterStatus.toLowerCase());
   }
+  // Filter global topbar: outlet + periode + pencarian
+  if (gf.outlet !== 'all') reports = reports.filter(r => r.outlet_id === gf.outlet);
+  reports = reports.filter(r => dateInPeriod_(r.created_at, gf.cutoff, gf.todayStr));
+  reports = reports.filter(r => matchGlobalSearch_(gf.search, [r.title, r.description, r.reporter_name, r.outlet_name, r.division]));
 
   if (reports.length === 0) {
     const msg = isDashboardAdmin()
@@ -1567,13 +1618,20 @@ const renderDailyReportBoard = () => {
   const divFilter = document.getElementById('report-filter-division')?.value || 'all';
   const statusFilter = document.getElementById('report-filter-status')?.value || 'all';
   const search = document.getElementById('report-search-box')?.value?.toLowerCase() || '';
+  const gf = getGlobalFilters();
 
   let list = AppState.dailyReports;
   // Filter by current mode (Management / Operasional)
   if (AppState.currentMode === 'Management') {
-    list = list.filter(r => r.type === 'Management' || r.type === 'Management');
+    list = list.filter(r => r.type === 'Management');
   } else if (AppState.currentMode === 'Operasional') {
-    list = list.filter(r => r.type === 'Operasional' || r.type !== 'Management');
+    list = list.filter(r => r.type !== 'Management');
+  }
+  // Filter global topbar: outlet + periode + pencarian global
+  if (gf.outlet !== 'all') list = list.filter(r => r.outlet_id === gf.outlet);
+  list = list.filter(r => dateInPeriod_(r.created_at, gf.cutoff, gf.todayStr));
+  if (gf.search) {
+    list = list.filter(r => matchGlobalSearch_(gf.search, [r.title, r.report_number, r.description, r.reporter_name, r.outlet_name]));
   }
   if (divFilter !== 'all') list = list.filter(r => r.division === divFilter);
   if (statusFilter !== 'all') list = list.filter(r => r.status === statusFilter);
@@ -2508,12 +2566,29 @@ const renderAttendanceTable = (logs) => {
   const tbody = document.getElementById('attendance-tbody');
   if (!tbody) return;
 
-  if (!logs || logs.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">Belum ada data presensi hari ini.</td></tr>';
+  logs = logs || AppState.attendanceLogs || [];
+
+  // Filter global topbar: mode + outlet + periode + pencarian
+  const gf = getGlobalFilters();
+  let filtered = logs;
+  if (gf.mode === 'Management') {
+    filtered = filtered.filter(l => MANAGEMENT_DIVISIONS.indexOf(l.division) >= 0);
+  } else if (gf.mode === 'Operasional') {
+    filtered = filtered.filter(l => MANAGEMENT_DIVISIONS.indexOf(l.division) < 0);
+  }
+  if (gf.outlet !== 'all') filtered = filtered.filter(l => l.outlet_id === gf.outlet);
+  filtered = filtered.filter(l => dateInPeriod_(l.date, gf.cutoff, gf.todayStr));
+  filtered = filtered.filter(l => matchGlobalSearch_(gf.search, [l.employee_name, l.division, l.outlet_name, l.shift_name]));
+
+  if (!filtered || filtered.length === 0) {
+    const emptyMsg = (gf.outlet !== 'all' || gf.period !== 'all' || gf.search)
+      ? 'Tidak ada data presensi yang cocok dengan filter (outlet/periode/pencarian).'
+      : 'Belum ada data presensi hari ini.';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8;">${emptyMsg}</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = logs.map(l => {
+  tbody.innerHTML = filtered.map(l => {
     const isLate = l.late_minutes > 0;
     const lateBadge = isLate ? `<span style="color:#ef4444; font-weight:700;">+${l.late_minutes} Menit (Denda: ${formatRupiah(l.late_deduction)})</span>` : '<span style="color:#10b981; font-weight:700;">Tepat Waktu</span>';
     const checkInTime = l.check_in_time ? l.check_in_time.split(' ')[1] : '-';
@@ -2564,12 +2639,22 @@ const renderEmployeesTable = (list) => {
   const divFilter = document.getElementById('emp-filter-division')?.value || 'all';
   const outletFilter = document.getElementById('emp-filter-outlet')?.value || 'all';
   const search = document.getElementById('emp-search-input')?.value?.toLowerCase() || '';
+  const gf = getGlobalFilters();
 
   let filtered = list;
   if (typeFilter !== 'all') filtered = filtered.filter(e => e.type === typeFilter);
   if (divFilter !== 'all') filtered = filtered.filter(e => e.division === divFilter);
   if (outletFilter !== 'all') filtered = filtered.filter(e => e.outlet_id === outletFilter);
   if (search) filtered = filtered.filter(e => e.name.toLowerCase().includes(search) || e.nip.toLowerCase().includes(search) || e.role.toLowerCase().includes(search));
+  // Filter global topbar: mode + outlet + pencarian (kombinasi dengan filter lokal panel ini)
+  filtered = filtered.filter(e => matchGlobalMode_(e.type, e.division));
+  if (gf.outlet !== 'all') filtered = filtered.filter(e => e.outlet_id === gf.outlet);
+  if (gf.search) filtered = filtered.filter(e => matchGlobalSearch_(gf.search, [e.name, e.nip, e.role, e.division, e.outlet_name]));
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan untuk Mode ${activeModeLabel_()}${gf.outlet !== 'all' || gf.search ? ' / filter aktif' : ''}.</td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = filtered.slice(0, 100).map(e => {
     return `
@@ -2647,8 +2732,19 @@ const openOrgTreeModal = () => {
 const renderPayslipsTable = (slips) => {
   const tbody = document.getElementById('payslips-tbody');
   if (!tbody) return;
+  if (slips) AppState.payslips = slips;   // simpan cache untuk re-render saat mode berubah
 
-  tbody.innerHTML = slips.slice(0, 100).map(s => {
+  // Filter global topbar: mode Management / Tim Operasional (berdasarkan divisi)
+  // Catatan: data slip tidak punya outlet_id, jadi filter outlet topbar tidak diterapkan di sini
+  const gf = getGlobalFilters();
+  const list = (slips || AppState.payslips || []).filter(s => matchGlobalMode_(s.type, s.division));
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada slip gaji untuk Mode ${activeModeLabel_()}.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.slice(0, 100).map(s => {
     const m = !!s.masked;
     const hide = (v) => (m ? '••••••' : v);
     return `
@@ -2905,7 +3001,16 @@ const renderKpiTable = (stats) => {
   const tbody = document.getElementById('kpi-division-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = stats.map(s => {
+  // Filter global topbar: mode Management / Tim Operasional (berdasarkan tipe divisi)
+  const gf = getGlobalFilters();
+  const list = (stats || []).filter(s => matchGlobalMode_(s.type, s.division));
+
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada data KPI divisi untuk Mode ${activeModeLabel_()}.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(s => {
     let badgeClass = 'status-selesai';
     let statusText = 'Sangat Memuaskan';
     if (s.avg_kpi < 85) {
@@ -3306,7 +3411,7 @@ const loadCalendarEvents = async () => {
     const res = await fetch('/api/calendar/events');
     if (!res.ok) return;
     const data = await res.json();
-    renderCalendarEvents(data);
+    renderCalendarEvents(Array.isArray(data) ? data : []);
   } catch (err) {
     console.error('Failed loading calendar:', err);
   }
@@ -3397,8 +3502,8 @@ const loadLeaveRequests = async () => {
     const res = await fetch('/api/leaves');
     if (!res.ok) return;
     const data = await res.json();
-    AppState.leaveRequests = data;
-    renderLeaveRequestsList(data);
+    AppState.leaveRequests = Array.isArray(data) ? data : [];
+    renderLeaveRequestsList(AppState.leaveRequests);
   } catch (err) {
     console.error('Failed loading leave requests:', err);
   }
@@ -3409,18 +3514,28 @@ const renderLeaveBalance = (b) => {
   if (!card || !b) return;
   const remainingColor = (b.remaining || 0) >= 6 ? '#10b981' : ((b.remaining || 0) >= 3 ? '#f59e0b' : '#ef4444');
   const usedPct = b.entitlement > 0 ? Math.min(100, Math.round((b.used / b.entitlement) * 100)) : 0;
+  const adj = Number(b.adjustment) || 0;
+  // Subjudul dinamis: tampilkan sumber jatah (pengaturan SUPER ADMIN) + penyesuaian individu
+  const subtitle = adj !== 0
+    ? `Hak dasar <b>${b.base_entitlement || 0}</b> hari + penyesuaian <b style="color:${adj > 0 ? '#059669' : '#dc2626'};">${adj > 0 ? '+' : ''}${adj}</b> hari (diatur SUPER ADMIN)`
+    : `Jatah tahunan <b>${b.entitlement || 0}</b> hari (diatur lewat Panel Super Admin)`;
+  const adjChip = adj !== 0 ? `
+      <div style="background:#fefce8; padding:10px 12px; border-radius:10px; border:1px solid #fde68a;">
+        <p style="font-size:10px; color:#92400e; margin:0; text-transform:uppercase; font-weight:700;">Penyesuaian</p>
+        <p style="font-size:18px; font-weight:800; color:${adj > 0 ? '#059669' : '#dc2626'}; margin:2px 0 0 0;">${adj > 0 ? '+' : ''}${adj}</p>
+      </div>` : '';
   card.innerHTML = `
     <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap;">
       <div>
         <h3 style="margin:0; font-size:16px;">Sisa Cuti Tahunan ${b.year || ''}</h3>
-        <p style="margin:4px 0 0 0; font-size:12px; color:#64748b;">Berdasarkan UU Ketenagakerjaan (12 hari/tahun)</p>
+        <p style="margin:4px 0 0 0; font-size:12px; color:#64748b;">${subtitle}</p>
       </div>
       <div style="text-align:right;">
         <div style="font-size:32px; font-weight:800; color:${remainingColor}; line-height:1;">${b.remaining || 0}</div>
         <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">hari tersisa</div>
       </div>
     </div>
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-bottom:14px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:10px; margin-bottom:14px;">
       <div style="background:#f8fafc; padding:10px 12px; border-radius:10px; border:1px solid #e2e8f0;">
         <p style="font-size:10px; color:#64748b; margin:0; text-transform:uppercase; font-weight:700;">Hak Cuti</p>
         <p style="font-size:18px; font-weight:800; color:var(--burgundy-primary); margin:2px 0 0 0;">${b.entitlement || 0}</p>
@@ -3433,6 +3548,7 @@ const renderLeaveBalance = (b) => {
         <p style="font-size:10px; color:#64748b; margin:0; text-transform:uppercase; font-weight:700;">Pending</p>
         <p style="font-size:18px; font-weight:800; color:#f59e0b; margin:2px 0 0 0;">${b.pending || 0}</p>
       </div>
+      ${adjChip}
     </div>
     <div style="background:#e2e8f0; border-radius:8px; height:8px; overflow:hidden;">
       <div style="background:linear-gradient(90deg, var(--burgundy-primary), var(--burgundy-light)); height:100%; width:${usedPct}%; transition:width 0.3s;"></div>
@@ -3441,387 +3557,31 @@ const renderLeaveBalance = (b) => {
   `;
 };
 
-// ================= DATA CUTI SEMUA KARYAWAN (KHUSUS SUPER ADMIN OM/PCD) =================
-// Rekap sisa cuti tahunan seluruh karyawan Management & Operasional di panel Cuti & Ijin.
-// Kartu hanya tampil untuk Super Admin (isFullAccess = OM/PCD); endpoint backend juga di-guard 403.
-AppState.allLeaveBalances = [];
-AppState.allLeaveBalancesLoading = false;
-
-const hideAllLeavesCard = () => {
-  const card = document.getElementById('leaves-all-card');
-  if (card) card.style.display = 'none';
-};
-
-const loadAllLeaveBalances = async () => {
-  if (!isFullAccess()) { hideAllLeavesCard(); return; }
-  const card = document.getElementById('leaves-all-card');
-  if (card) card.style.display = '';
-  const tbody = document.getElementById('leaves-all-tbody');
-  if (AppState.allLeaveBalancesLoading) return;
-  AppState.allLeaveBalancesLoading = true;
-  // Tampilkan pesan error yang jelas di tabel (jangan diam saja — supaya jelas kalau
-  // backend belum dideploy / koneksi gagal, bukan dianggap "tidak ada data")
-  const setErr = (html) => {
-    AppState.allLeaveBalances = [];
-    const summaryEl = document.getElementById('leaves-all-summary');
-    if (summaryEl) summaryEl.innerHTML = '';
-    if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#b91c1c; padding:20px; font-size:13px;">' + html + '</td></tr>';
-  };
-  try {
-    const res = await fetch('/api/leaves/all-balances');
-    if (res.status === 403) { hideAllLeavesCard(); return; }
-    if (!res.ok) {
-      let detail = '';
-      try { const j = await res.json(); detail = (j && j.detail) ? String(j.detail) : ''; } catch (e) { /* abaikan */ }
-      if (res.status === 404) {
-        setErr('<b>Endpoint data cuti belum ada di server (HTTP 404).</b><br><span style="color:#64748b; font-size:12px;">Backend Code.gs belum diperbarui: buka Apps Script &rarr; ganti seluruh isi Code.gs dengan file terbaru &rarr; Deploy &rarr; Manage deployments &rarr; Edit &rarr; New version &rarr; Deploy. Setelah itu klik "Muat Ulang".</span>');
-      } else {
-        setErr('Gagal memuat data cuti (HTTP ' + res.status + '). ' + escapeHtml(detail) + '<br><span style="color:#64748b; font-size:12px;">Coba klik "Muat Ulang".</span>');
-      }
-      return;
-    }
-    const data = await res.json();
-    AppState.allLeaveBalances = (data && data.items) ? data.items : [];
-    renderAllLeaveBalances();
-  } catch (err) {
-    console.error('Failed loading all leave balances:', err);
-    setErr('Gagal menghubungi server. Periksa koneksi internet, lalu klik "Muat Ulang".');
-  } finally {
-    AppState.allLeaveBalancesLoading = false;
-  }
-};
-
-const renderAllLeaveBalances = (errorMsg) => {
-  const tbody = document.getElementById('leaves-all-tbody');
-  if (!tbody) return;
-  const sel = document.getElementById('leaves-all-type-filter');
-  const f = sel ? sel.value : 'all';
-  const all = AppState.allLeaveBalances || [];
-  const items = all.filter((it) => f === 'all' || String(it.type || '').trim() === f);
-
-  // Format angka 1 desimal tanpa floating-point noise (mis. 2.3000000000000003 -> "2.3", 12 -> "12", 57.49999999999998 -> "57.5")
-  const fmt1 = (n) => {
-    const v = Math.round((Number(n) || 0) * 10) / 10;
-    return Number.isInteger(v) ? String(v) : v.toFixed(1);
-  };
-  // Penjumlahan aman (bulatkan tiap item dulu, lalu total)
-  const sum1 = (arr, key) => fmt1(arr.reduce((s, it) => s + (Math.round((Number(it[key]) || 0) * 10) / 10), 0));
-
-  // Ringkasan total per filter
-  const summaryEl = document.getElementById('leaves-all-summary');
-  if (summaryEl) {
-    if (!items.length) {
-      summaryEl.innerHTML = '';
-    } else {
-      const chip = (label, value, color) => `
-        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:8px 14px; display:flex; align-items:center; gap:8px;">
-          <span style="font-size:10px; color:#64748b; font-weight:700; text-transform:uppercase;">${label}</span>
-          <span style="font-size:16px; font-weight:800; color:${color};">${value}</span>
-        </div>`;
-      summaryEl.innerHTML =
-        chip('Karyawan', items.length, '#0f172a') +
-        chip('Total Hak', sum1(items, 'entitlement'), 'var(--burgundy-primary)') +
-        chip('Terpakai', sum1(items, 'used'), '#ef4444') +
-        chip('Pending', sum1(items, 'pending'), '#f59e0b') +
-        chip('Total Sisa', sum1(items, 'remaining'), '#10b981');
-    }
-  }
-
-  if (errorMsg) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#b91c1c; padding:20px; font-size:13px;">' + errorMsg + '</td></tr>';
-    return;
-  }
-  if (!all.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">Belum ada data karyawan. Klik "Muat Ulang" untuk mencoba lagi.</td></tr>';
-    return;
-  }
-  if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan dengan tipe "' + escapeHtml(f) + '".<br><span style="font-size:11px;">Jika kolom Tipe karyawan belum terisi, perbarui lewat Database Karyawan (Tipe: Management / Operasional). Data gabungan tetap bisa dilihat dengan pilihan "Semua".</span></td></tr>';
-    return;
-  }
-  // Format tanggal masuk YYYY-MM-DD -> DD MMM YYYY (mis. 2024-03-15 -> 15 Mar 2024)
-  const fmtDate = (d) => {
-    const s = String(d || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s || '-';
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!m) return s;
-    return m[3] + ' ' + months[Number(m[2]) - 1] + ' ' + m[1];
-  };
-  tbody.innerHTML = items.map((it) => {
-    const rem = Math.round((Number(it.remaining) || 0) * 10) / 10;
-    const remColor = rem >= 6 ? '#10b981' : (rem >= 3 ? '#f59e0b' : '#ef4444');
-    const isMg = it.type === 'Management';
-    const typeBadge = `<span class="status-badge-pill" style="background:${isMg ? '#ede9fe' : '#e0f2fe'}; color:${isMg ? '#5b21b6' : '#075985'};">${escapeHtml(it.type) || '-'}</span>`;
-    // Indikator warna tgl masuk: hijau jika tahun lalu/lebih lama (jatah 12), kuning jika tahun ini (prorata)
-    const jd = String(it.join_date || '');
-    const jdYear = jd.match(/^\d{4}/);
-    const thisYear = new Date().getFullYear();
-    const isProrata = jdYear && Number(jdYear[0]) === thisYear;
-    const jdColor = isProrata ? '#f59e0b' : '#10b981';
-    return `
-      <tr>
-        <td>
-          <div style="font-weight:700; color:#0f172a;">${escapeHtml(it.name) || '-'}</div>
-          <div style="font-size:11px; color:#64748b;">NIP ${escapeHtml(it.nip) || '-'}</div>
-        </td>
-        <td>
-          ${typeBadge}
-          <div style="font-size:11px; color:#64748b; margin-top:2px;">${escapeHtml(it.division) || '-'}</div>
-        </td>
-        <td>
-          <div style="font-size:13px; color:#0f172a;">${escapeHtml(it.role) || '-'}</div>
-          <div style="font-size:11px; color:#64748b;">${escapeHtml(it.outlet_name) || '-'}</div>
-        </td>
-        <td style="font-weight:600; color:${jdColor}; font-size:12px;">${escapeHtml(fmtDate(it.join_date))}${isProrata ? '<br><span style="font-size:10px; color:#94a3b8;">prorata</span>' : ''}</td>
-        <td style="font-weight:700; color:#0f172a;">${fmt1(it.entitlement)}</td>
-        <td style="font-weight:700; color:#ef4444;">${fmt1(it.used)}</td>
-        <td style="font-weight:700; color:#f59e0b;">${fmt1(it.pending)}</td>
-        <td style="font-weight:800; font-size:15px; color:${remColor};">${fmt1(rem)}</td>
-        <td>
-          <button class="btn-secondary" onclick="window.openEditJoinDate && window.openEditJoinDate('${it.employee_id}')" title="Edit Tanggal Masuk karyawan ini" style="padding:5px 10px; font-size:11px;">
-            <i data-feather="edit-3" style="width:11px; height:11px;"></i> Edit Tgl Masuk
-          </button>
-        </td>
-      </tr>`;
-  }).join('');
-  // Re-render feather icons yang baru ditambahkan
-  if (window.feather) feather.replace();
-};
-window.renderAllLeaveBalances = renderAllLeaveBalances;
-window.loadAllLeaveBalances = loadAllLeaveBalances;
-
-// ============ EDIT TANGGAL MASUK PER KARYAWAN (SUPER ADMIN ONLY) ============
-// Buka modal edit utk satu karyawan tertentu. Setelah update, jatah cuti langsung
-// dihitung ulang (prorata bulanan). Pakai PUT /api/employees/{id} yang sudah
-// menerima patch join_date sejak v51.
-AppState.editJoinDateEmployeeId = null;
-
-const openEditJoinDate = (employeeId) => {
-  if (!isFullAccess()) {
-    showToast('Hanya Super Admin (OM/PCD) yang dapat mengubah Tanggal Masuk karyawan.', 'error');
-    return;
-  }
-  // Cari data karyawan dari AppState.allLeaveBalances (sudah termuat)
-  const it = (AppState.allLeaveBalances || []).find((x) => x.employee_id === employeeId);
-  if (!it) {
-    showToast('Data karyawan tidak ditemukan. Klik "Muat Ulang" lalu coba lagi.', 'error');
-    return;
-  }
-  AppState.editJoinDateEmployeeId = employeeId;
-  // Isi info karyawan di header modal
-  const avatarEl = document.getElementById('edit-jd-avatar');
-  const nameEl = document.getElementById('edit-jd-name');
-  const metaEl = document.getElementById('edit-jd-meta');
-  if (avatarEl) avatarEl.textContent = (it.name || '?').charAt(0).toUpperCase();
-  if (nameEl) nameEl.textContent = it.name || '-';
-  if (metaEl) {
-    metaEl.textContent = 'NIP ' + (it.nip || '-') + ' • ' + (it.type || '-') + ' • ' + (it.division || '-') +
-      ' • ' + (it.role || '-') + ' • ' + (it.outlet_name || '-');
-  }
-  // Isi input dgn join_date yang sudah ada (supaya user bisa lihat & edit)
-  const input = document.getElementById('input-edit-join-date');
-  if (input) {
-    const jd = String(it.join_date || '').trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(jd)) {
-      input.value = jd;
-    } else {
-      // Default hari ini kalau tanggal tidak valid
-      const t = new Date();
-      const yyyy = t.getFullYear();
-      const mm = String(t.getMonth() + 1).padStart(2, '0');
-      const dd = String(t.getDate()).padStart(2, '0');
-      input.value = `${yyyy}-${mm}-${dd}`;
-    }
-  }
-  const result = document.getElementById('edit-join-date-result');
-  if (result) { result.style.display = 'none'; result.innerHTML = ''; }
-  openModal('modal-edit-join-date');
-};
-
-const submitEditJoinDate = async () => {
-  if (!isFullAccess()) {
-    showToast('Hanya Super Admin (OM/PCD) yang dapat mengubah Tanggal Masuk karyawan.', 'error');
-    return;
-  }
-  const empId = AppState.editJoinDateEmployeeId;
-  if (!empId) {
-    showToast('Data karyawan tidak ditemukan. Tutup modal dan coba lagi.', 'error');
-    return;
-  }
-  const input = document.getElementById('input-edit-join-date');
-  const result = document.getElementById('edit-join-date-result');
-  const btn = document.getElementById('btn-edit-join-date-submit');
-  const jd = input ? String(input.value || '').trim() : '';
-  if (!jd) {
-    if (result) {
-      result.style.display = '';
-      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Tanggal Masuk wajib diisi.</div>';
-    }
-    return;
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(jd)) {
-    if (result) {
-      result.style.display = '';
-      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Format tanggal harus YYYY-MM-DD.</div>';
-    }
-    return;
-  }
-  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = 'Menyimpan...'; }
-  try {
-    const res = await fetch('/api/employees/' + encodeURIComponent(empId), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ join_date: jd })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const detail = (data && data.detail) ? String(data.detail) : ('HTTP ' + res.status);
-      if (result) {
-        result.style.display = '';
-        result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Gagal: ' + escapeHtml(detail) + '</div>';
-      } else {
-        showToast('Gagal: ' + detail, 'error');
-      }
-      return;
-    }
-    const empName = (data && data.employee && data.employee.name) ? data.employee.name : 'Karyawan';
-    if (result) {
-      result.style.display = '';
-      result.innerHTML = '<div style="background:#dcfce7; border:1px solid #10b981; color:#065f46; padding:10px 12px; border-radius:8px; font-size:12px;"><b>Berhasil!</b> Tanggal Masuk <b>' + escapeHtml(empName) + '</b> diupdate ke <b>' + escapeHtml(jd) + '</b>. Jatah cuti dihitung ulang.</div>';
-    }
-    showToast('Tanggal Masuk ' + empName + ' diupdate. Memuat ulang data cuti...', 'success');
-    // Update local state supaya render berikutnya menampilkan tgl baru segera
-    const it = (AppState.allLeaveBalances || []).find((x) => x.employee_id === empId);
-    if (it) it.join_date = jd;
-    // Tutup modal setelah 1.0s lalu reload data cuti
-    setTimeout(() => {
-      closeModal('modal-edit-join-date');
-      if (isFullAccess()) window.loadAllLeaveBalances && window.loadAllLeaveBalances();
-    }, 1000);
-  } catch (err) {
-    console.error('editJoinDate error:', err);
-    if (result) {
-      result.style.display = '';
-      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Gagal menghubungi server. Periksa koneksi internet, lalu coba lagi.</div>';
-    } else {
-      showToast('Gagal menghubungi server.', 'error');
-    }
-  } finally {
-    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan Tanggal Masuk'; if (window.feather) feather.replace(); }
-  }
-};
-window.openEditJoinDate = openEditJoinDate;
-window.submitEditJoinDate = submitEditJoinDate;
-
-// ============ BULK UPDATE TANGGAL MASUK KARYAWAN (SUPER ADMIN ONLY) ============
-// Membuka modal untuk perbaiki massal join_date karyawan yang keliru (mis. terisi
-// tanggal import). Setelah update, jatah cuti tahunan langsung dihitung ulang.
-const openBulkJoinDateModal = () => {
-  if (!isFullAccess()) {
-    showToast('Hanya Super Admin (OM/PCD) yang dapat mengatur Tanggal Masuk karyawan.', 'error');
-    return;
-  }
-  const input = document.getElementById('input-bulk-join-date');
-  const scope = document.getElementById('input-bulk-join-date-scope');
-  const result = document.getElementById('bulk-join-date-result');
-  if (input) {
-    // Default: hari ini (YYYY-MM-DD)
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm = String(today.getMonth() + 1).padStart(2, '0');
-    const dd = String(today.getDate()).padStart(2, '0');
-    input.value = `${yyyy}-${mm}-${dd}`;
-  }
-  if (scope) scope.value = 'all';
-  if (result) { result.style.display = 'none'; result.innerHTML = ''; }
-  openModal('modal-bulk-join-date');
-};
-
-const submitBulkJoinDate = async () => {
-  if (!isFullAccess()) {
-    showToast('Hanya Super Admin (OM/PCD) yang dapat mengatur Tanggal Masuk karyawan.', 'error');
-    return;
-  }
-  const input = document.getElementById('input-bulk-join-date');
-  const scope = document.getElementById('input-bulk-join-date-scope');
-  const result = document.getElementById('bulk-join-date-result');
-  const btn = document.getElementById('btn-bulk-join-date-submit');
-  const jd = input ? String(input.value || '').trim() : '';
-  if (!jd) {
-    if (result) {
-      result.style.display = '';
-      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Tanggal Masuk wajib diisi.</div>';
-    }
-    return;
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(jd)) {
-    if (result) {
-      result.style.display = '';
-      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Format tanggal harus YYYY-MM-DD.</div>';
-    }
-    return;
-  }
-  const scopeVal = scope ? scope.value : 'all';
-  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = 'Memproses...'; }
-  try {
-    const res = await fetch('/api/employees/bulk-join-date', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ join_date: jd, type: scopeVal })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const detail = (data && data.detail) ? String(data.detail) : ('HTTP ' + res.status);
-      if (result) {
-        result.style.display = '';
-        result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Gagal: ' + escapeHtml(detail) + '</div>';
-      } else {
-        showToast('Gagal: ' + detail, 'error');
-      }
-      return;
-    }
-    const updated = (data && typeof data.updated === 'number') ? data.updated : 0;
-    const failed = (data && Array.isArray(data.failed)) ? data.failed : [];
-    if (result) {
-      result.style.display = '';
-      const failedNote = failed.length
-        ? '<div style="margin-top:8px; font-size:11px; color:#991b1b;">' + failed.length + ' karyawan gagal diupdate.</div>'
-        : '';
-      result.innerHTML = '<div style="background:#dcfce7; border:1px solid #10b981; color:#065f46; padding:10px 12px; border-radius:8px; font-size:12px;"><b>Berhasil!</b> Tanggal Masuk <b>' + escapeHtml(jd) + '</b> diterapkan ke <b>' + updated + '</b> karyawan (scope: ' + escapeHtml(scopeVal) + '). Jatah cuti akan dihitung ulang.' + failedNote + '</div>';
-    }
-    showToast('Tanggal Masuk ' + updated + ' karyawan diupdate. Memuat ulang data cuti...', 'success');
-    // Tutup modal setelah 1.2s lalu reload data cuti
-    setTimeout(() => {
-      closeModal('modal-bulk-join-date');
-      if (isFullAccess()) window.loadAllLeaveBalances && window.loadAllLeaveBalances();
-    }, 1200);
-  } catch (err) {
-    console.error('bulkUpdateJoinDate error:', err);
-    if (result) {
-      result.style.display = '';
-      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Gagal menghubungi server. Periksa koneksi internet, lalu coba lagi.</div>';
-    } else {
-      showToast('Gagal menghubungi server.', 'error');
-    }
-  } finally {
-    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Update Tanggal Masuk'; if (window.feather) feather.replace(); }
-  }
-};
-window.openBulkJoinDateModal = openBulkJoinDateModal;
-window.submitBulkJoinDate = submitBulkJoinDate;
-
 const renderLeaveRequestsList = (requests) => {
   const tbody = document.getElementById('leaves-tbody');
   if (!tbody) return;
-  if (!requests || requests.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">Belum ada pengajuan cuti/ijin.</td></tr>';
+  if (requests) AppState.leaveRequests = requests;   // simpan cache untuk re-render saat mode berubah
+
+  // Filter global topbar: mode + outlet + periode + pencarian
+  const gf = getGlobalFilters();
+  let list = requests || AppState.leaveRequests || [];
+  list = list.filter(l => matchGlobalMode_(l.employee_type, l.division));
+  if (gf.outlet !== 'all') list = list.filter(l => l.outlet_id === gf.outlet);
+  list = list.filter(l => dateInPeriod_(l.start_date, gf.cutoff, gf.todayStr));
+  list = list.filter(l => matchGlobalSearch_(gf.search, [l.employee_name, l.division, l.type, l.reason]));
+
+  if (list.length === 0) {
+    const filtered = gf.outlet !== 'all' || gf.period !== 'all' || gf.search ||
+      gf.mode === 'Management' || gf.mode === 'Operasional';
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">${filtered
+      ? `Tidak ada pengajuan cuti/ijin untuk filter aktif (Mode: ${activeModeLabel_()}).`
+      : 'Belum ada pengajuan cuti/ijin.'}</td></tr>`;
     return;
   }
   const isApprover = isLeaveApprover();
   const me = AppState.currentUser;
 
-  tbody.innerHTML = requests.map(l => {
+  tbody.innerHTML = list.map(l => {
     let statusBadge = '';
     if (l.status === 'Pending') statusBadge = '<span class="status-badge-pill status-proses" style="background:#fef3c7; color:#92400e;">Menunggu Approval</span>';
     else if (l.status === 'Approved') statusBadge = '<span class="status-badge-pill status-selesai" style="background:#d1fae5; color:#065f46;">Disetujui</span>';
@@ -3917,10 +3677,9 @@ const submitLeaveRequest = async (e) => {
       endEl.value = '';
       reasonEl.value = '';
       if (attachmentEl) attachmentEl.value = '';
-      // Reload list & balance (+ rekap semua karyawan untuk Super Admin)
+      // Reload list & balance
       await loadLeaveRequests();
       await loadLeaveBalance();
-      if (isFullAccess()) window.loadAllLeaveBalances && window.loadAllLeaveBalances();
       // Close modal if open
       const modal = document.getElementById('modal-leave-create');
       if (modal) modal.classList.remove('active');
@@ -3951,7 +3710,6 @@ window.approveLeaveRequest = async (id) => {
       showToast(data.message || 'Pengajuan disetujui.', 'success');
       await loadLeaveRequests();
       await loadLeaveBalance();
-      if (isFullAccess()) window.loadAllLeaveBalances && window.loadAllLeaveBalances();
     } else {
       showToast(data.detail || data.message || 'Gagal approve.', 'error');
     }
@@ -3977,7 +3735,6 @@ window.rejectLeaveRequest = async (id) => {
     if (res.ok && data.status === 'success') {
       showToast(data.message || 'Pengajuan ditolak.', 'success');
       await loadLeaveRequests();
-      if (isFullAccess()) window.loadAllLeaveBalances && window.loadAllLeaveBalances();
     } else {
       showToast(data.detail || data.message || 'Gagal reject.', 'error');
     }
@@ -3998,7 +3755,6 @@ window.cancelLeaveRequest = async (id) => {
       showToast(data.message || 'Pengajuan dibatalkan.', 'success');
       await loadLeaveRequests();
       await loadLeaveBalance();
-      if (isFullAccess()) window.loadAllLeaveBalances && window.loadAllLeaveBalances();
     } else {
       showToast(data.detail || data.message || 'Gagal membatalkan.', 'error');
     }
@@ -4029,6 +3785,7 @@ const renderDataCenterEmployeeList = (filterText = '') => {
   const tbody = document.getElementById('dc-employees-tbody');
   if (!tbody) return;
   const allEmps = AppState.employees || [];
+  const gf = getGlobalFilters();
 
   // Filter by current mode (Management / Operasional)
   let modeFiltered = allEmps;
@@ -4037,10 +3794,12 @@ const renderDataCenterEmployeeList = (filterText = '') => {
   } else if (AppState.currentMode === 'Operasional') {
     modeFiltered = allEmps.filter(e => e.type === 'Operasional');
   }
+  // Filter global topbar: outlet
+  if (gf.outlet !== 'all') modeFiltered = modeFiltered.filter(e => e.outlet_id === gf.outlet);
 
   // Update badge count
   const badge = document.getElementById('dc-emp-count-badge');
-  if (badge) badge.textContent = modeFiltered.length + ' karyawan (' + (AppState.currentMode || 'Semua') + ')';
+  if (badge) badge.textContent = modeFiltered.length + ' karyawan (' + (AppState.currentMode || 'Semua') + (gf.outlet !== 'all' ? ' • outlet terpilih' : '') + ')';
 
   if (modeFiltered.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan pada tipe ini.</td></tr>';
@@ -4959,10 +4718,141 @@ const openSplModal = () => {
   }
 };
 
+// ==========================================
+// GLOBAL FILTERS (Topbar): Periode + Outlet + Search + Mode
+// Nilai dibaca dari topbar & diterapkan ke SEMUA panel:
+// dashboard (stream laporan, tabel presensi, stat cards), daily report board,
+// data center employee list, dan database karyawan.
+// ==========================================
+const fmtLocalDate_ = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+
+// Kembalikan tanggal batas awal (yyyy-MM-dd) untuk periode terpilih, atau null jika "Semua Periode"
+const periodCutoffDate_ = (period) => {
+  const today = new Date();
+  if (period === 'today') return fmtLocalDate_(today);
+  if (period === 'week') { const d = new Date(); d.setDate(d.getDate() - 6); return fmtLocalDate_(d); }
+  if (period === 'month') { const d = new Date(); d.setDate(d.getDate() - 29); return fmtLocalDate_(d); }
+  return null;
+};
+
+// Baca nilai semua filter global dari topbar
+const getGlobalFilters = () => {
+  const period = document.getElementById('filter-period-select')?.value || 'all';
+  const cutoff = periodCutoffDate_(period);
+  const todayStr = fmtLocalDate_(new Date());
+  return {
+    outlet: document.getElementById('filter-outlet-select')?.value || 'all',
+    period: period,
+    cutoff: cutoff,
+    todayStr: todayStr,
+    search: (document.getElementById('global-search-input')?.value || '').toLowerCase().trim(),
+    mode: AppState.currentMode || 'Management'
+  };
+};
+
+// Apakah tanggal (yyyy-MM-dd atau yyyy-MM-dd HH:mm:ss) masuk rentang periode terpilih?
+const dateInPeriod_ = (dateStr, cutoff, todayStr) => {
+  if (!cutoff) return true;                 // Semua Periode
+  if (!dateStr) return false;
+  const d = String(dateStr).slice(0, 10);   // ambil bagian tanggal saja
+  return d >= cutoff && d <= todayStr;
+};
+
+// Filter pencarian global: cocokkan kata kunci ke beberapa field
+const matchGlobalSearch_ = (search, fields) => {
+  if (!search) return true;
+  return fields.join('|').toLowerCase().includes(search);
+};
+
+// Apakah karyawan/baris data cocok dengan mode dashboard aktif (Management vs Tim Operasional)?
+// Prioritas: field `type` jika ada; kalau tidak ada, turunkan dari divisi (MANAGEMENT_DIVISIONS).
+const matchGlobalMode_ = (type, division) => {
+  const mode = AppState.currentMode || '';
+  if (mode !== 'Management' && mode !== 'Operasional') return true;   // mode tidak dikenal = tampilkan semua
+  if (type) return String(type) === mode;
+  const isMgmt = MANAGEMENT_DIVISIONS.indexOf(division) >= 0;
+  return mode === 'Management' ? isMgmt : !isMgmt;
+};
+
+// Label mode aktif untuk pesan/empty-state, mis. "Mode: Management"
+const activeModeLabel_ = () => {
+  const mode = AppState.currentMode || '';
+  return (mode === 'Management' || mode === 'Operasional') ? mode : 'Semua';
+};
+
+// Baca status tab aktif di stream dashboard ("All"/"Proses"/"Hold"/"Selesai")
+// supaya re-render (ganti mode / filter global) tidak me-reset pilihan user.
+const currentStreamStatus_ = () => {
+  const active = document.querySelector('.reviews-tabs-nav .tab-pill-btn.active');
+  if (!active) return 'All';
+  const m = /filterDashboardReports\('([^']+)'/ .exec(active.getAttribute('onclick') || '');
+  return m ? m[1] : 'All';
+};
+
+// Isi dropdown "Semua Outlet" di topbar dengan daftar outlet dari AppState
+const populateGlobalOutletFilter = () => {
+  const sel = document.getElementById('filter-outlet-select');
+  if (!sel) return;
+  const cur = sel.value || 'all';
+  const list = AppState.outlets || [];
+  if (list.length === 0) {
+    sel.innerHTML = '<option value="all">Semua Outlet</option>';
+    return;
+  }
+  sel.innerHTML = '<option value="all">Semua Outlet</option>' +
+    list.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`).join('');
+  // Pertahankan pilihan sebelumnya jika masih valid
+  if (Array.from(sel.options).some(op => op.value === cur)) sel.value = cur;
+};
+
+// Isi dropdown "Semua Periode" di topbar (statis — jaga-jaga bila HTML berubah)
+const populateGlobalPeriodFilter = () => {
+  const sel = document.getElementById('filter-period-select');
+  if (!sel || sel.options.length > 0) return;
+  sel.innerHTML = '<option value="all">Semua Periode</option>' +
+    '<option value="today">Hari Ini</option>' +
+    '<option value="week">7 Hari Terakhir</option>' +
+    '<option value="month">30 Hari Terakhir</option>';
+};
+window.populateGlobalOutletFilter = populateGlobalOutletFilter;
+window.populateGlobalPeriodFilter = populateGlobalPeriodFilter;
+
+// Render ulang SEMUA panel yang menampilkan data karyawan sesuai filter global aktif
+// (mode Management/Operasional + outlet + periode + pencarian).
+// Dipakai oleh switchDashboardMode & applyGlobalFilters. Setiap render aman dipanggil
+// walau panelnya tidak sedang terbuka (fungsi render punya guard tbody sendiri).
+const rerenderAllPanels_ = () => {
+  const safe = (label, fn) => {
+    try { fn(); } catch (err) { console.error(`rerenderAllPanels_ [${label}]:`, err); }
+  };
+  safe('stream', () => renderDashboardReportsStream(currentStreamStatus_()));
+  safe('daily-report', () => renderDailyReportBoard());
+  safe('attendance', () => renderAttendanceTable(AppState.attendanceLogs || []));
+  safe('data-center', () => renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || ''));
+  safe('employees', () => renderEmployeesTable(AppState.employees || []));
+  safe('sa-users', () => renderSaUsers(document.getElementById('sa-search-input')?.value || ''));
+  safe('sa-overview', () => renderSaOverviewDivisions());
+  safe('leaves', () => renderLeaveRequestsList(AppState.leaveRequests || []));
+  safe('payslips', () => renderPayslipsTable(AppState.payslips || []));
+  safe('kpi', () => renderKpiTable(AppState.kpiDivisionStats || []));
+  safe('stats', () => updateDashboardStats && updateDashboardStats());
+};
+
+// Terapkan semua filter global: render ulang semua panel yang datanya sudah ada di AppState
 const applyGlobalFilters = () => {
-  showToast('Memperbarui filter periode & outlet...', 'info');
-  loadDailyReports();
-  loadAttendanceLogs();
+  rerenderAllPanels_();
+};
+window.applyGlobalFilters = applyGlobalFilters;
+
+// Wire kolom pencarian global di topbar (debounce 250ms)
+const initGlobalSearch = () => {
+  const input = document.getElementById('global-search-input');
+  if (!input) return;
+  let t = null;
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(applyGlobalFilters, 250);
+  });
 };
 
 // ==========================================
@@ -5164,4 +5054,586 @@ const escapeHtml = (str) => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+};
+
+// ============================================================
+// PANEL SUPER ADMIN — kelola seluruh sistem aplikasi
+// Hanya tampil untuk akun role "SUPER ADMIN" (atau divisi OM/PCD).
+// Fitur: ringkasan sistem, manajemen pengguna (edit data, ubah akses,
+// reset password/PIN, aktif/nonaktif), dan pengaturan sistem.
+// ============================================================
+
+AppState.saUsers = [];
+AppState.saSettingsLoaded = false;
+
+// ---- Shortcut dari panel Cuti & Ijin: buka Panel SUPER ADMIN langsung ke tab Pengguna ----
+// Berguna agar SUPER ADMIN cepat mengatur Penyesuaian Cuti Tahunan (±hari) per-karyawan.
+window.openSaUsersPanel = () => {
+  if (!isFullAccess()) {
+    showToast('Hanya Super Admin (OM/PCD) yang dapat mengatur Penyesuaian Cuti karyawan.', 'error');
+    return;
+  }
+  if (typeof switchView === 'function') switchView('superadmin');
+  // Setelah view terbuka, aktifkan tab "users" & scroll ke tabel pengguna
+  setTimeout(() => {
+    if (typeof window.saSwitchTab === 'function') window.saSwitchTab('users');
+    const tbl = document.getElementById('sa-tab-users');
+    if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    showToast('Buka karyawan lalu klik "Edit" untuk mengatur Penyesuaian Cuti (±hari).', 'info');
+  }, 250);
+};
+
+// ---- Tab switching ----
+window.saSwitchTab = (tab) => {
+  ['overview', 'users', 'settings'].forEach(t => {
+    const panel = document.getElementById('sa-tab-' + t);
+    const btn = document.getElementById('sa-tab-btn-' + t);
+    if (panel) panel.style.display = (t === tab) ? '' : 'none';
+    if (btn) btn.classList.toggle('active', t === tab);
+  });
+  if (tab === 'overview') window.loadSaOverview && window.loadSaOverview();
+  if (tab === 'users') window.loadSaUsers && window.loadSaUsers();
+  if (tab === 'settings') window.loadSaSettings && window.loadSaSettings();
+};
+
+// ---- TAB 1: RINGKASAN SISTEM ----
+window.loadSaOverview = async () => {
+  const wrap = document.getElementById('sa-overview-stats');
+  if (!wrap) return;
+  try {
+    const res = await fetch('/api/admin/overview');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      wrap.innerHTML = `<div class="modern-card" style="padding:18px; text-align:center; color:#ef4444; grid-column:1/-1;">${escapeHtml(data.detail || 'Gagal memuat ringkasan sistem.')}</div>`;
+      return;
+    }
+    const stats = [
+      { label: 'Total Pengguna', val: data.total_users, color: '#701c34', icon: '👥' },
+      { label: 'Akun Aktif', val: data.active_users, color: '#059669', icon: '✅' },
+      { label: 'Akun Nonaktif', val: data.inactive_users, color: '#dc2626', icon: '🚫' },
+      { label: 'Super Admin', val: data.super_admins, color: '#d97706', icon: '🛡️' },
+      { label: 'Outlet Terdaftar', val: data.total_outlets, color: '#0284c7', icon: '📍' },
+      { label: 'Presensi Hari Ini', val: data.attendance_today, color: '#701c34', icon: '🕐' },
+      { label: 'Terlambat Hari Ini', val: data.late_today, color: '#ea580c', icon: '⏰' },
+      { label: 'Cuti Menunggu OK', val: data.pending_leaves, color: '#7c3aed', icon: '🌴' }
+    ];
+    wrap.innerHTML = stats.map(s => `
+      <div class="modern-card" style="padding:16px; text-align:center;">
+        <div style="font-size:22px; margin-bottom:4px;">${s.icon}</div>
+        <div style="font-size:26px; font-weight:800; color:${s.color}; line-height:1.1;">${Number(s.val || 0).toLocaleString('id-ID')}</div>
+        <div style="font-size:11px; color:#64748b; font-weight:600; margin-top:4px; text-transform:uppercase;">${s.label}</div>
+      </div>
+    `).join('');
+
+    // Presensi hari ini ringkas
+    const attBox = document.getElementById('sa-overview-attendance');
+    if (attBox) {
+      attBox.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#f8fafc; border-radius:10px;"><span>Total presensi hari ini</span><strong>${data.attendance_today}</strong></div>
+          <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#fff7ed; border-radius:10px;"><span>Terlambat</span><strong style="color:#ea580c;">${data.late_today}</strong></div>
+          <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#fef2f2; border-radius:10px;"><span>Laporan status Proses</span><strong style="color:#dc2626;">${data.pending_reports}</strong></div>
+          <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#fefce8; border-radius:10px;"><span>Laporan status Hold</span><strong style="color:#a16207;">${data.hold_reports}</strong></div>
+        </div>`;
+    }
+    // Divisi ringkas — mode-aware (Management vs Tim Operasional), di-render oleh helper
+    AppState.saOverview = data;
+    renderSaOverviewDivisions();
+  } catch (err) {
+    console.error('loadSaOverview error:', err);
+    if (wrap) wrap.innerHTML = '<div class="modern-card" style="padding:18px; text-align:center; color:#ef4444; grid-column:1/-1;">Kesalahan koneksi saat memuat ringkasan.</div>';
+  }
+};
+
+// Kotak "Distribusi Divisi" di Ringkasan Super Admin — ikut filter mode topbar
+const renderSaOverviewDivisions = () => {
+  const divBox = document.getElementById('sa-overview-divisions');
+  if (!divBox || !AppState.saOverview) return;
+  const counts = AppState.saOverview.division_counts || {};
+  let keys = Object.keys(counts);
+  const gf = getGlobalFilters();
+  if (gf.mode === 'Management') keys = keys.filter(k => MANAGEMENT_DIVISIONS.indexOf(k) >= 0);
+  else if (gf.mode === 'Operasional') keys = keys.filter(k => MANAGEMENT_DIVISIONS.indexOf(k) < 0);
+  keys.sort((a, b) => counts[b] - counts[a]);
+  divBox.innerHTML = keys.length === 0
+    ? `<span style="color:#94a3b8;">Tidak ada data divisi untuk Mode ${activeModeLabel_()}.</span>`
+    : keys.map(k => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:7px 14px; border-bottom:1px solid #f1f5f9;">
+            <span style="font-weight:600;">${escapeHtml(k)}</span>
+            <span class="card-badge-tag" style="background:#f1f5f9; color:#475569;">${counts[k]} orang</span>
+          </div>`).join('');
+};
+
+// ---- TAB 2: MANAJEMEN PENGGUNA ----
+window.loadSaUsers = async () => {
+  try {
+    const res = await fetch('/api/admin/users');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.detail || 'Gagal memuat daftar pengguna.', 'error');
+      return;
+    }
+    AppState.saUsers = Array.isArray(data) ? data : [];
+    renderSaUsers((document.getElementById('sa-search-input') || {}).value || '');
+  } catch (err) {
+    console.error('loadSaUsers error:', err);
+    showToast('Kesalahan koneksi saat memuat pengguna.', 'error');
+  }
+};
+
+const renderSaUsers = (filterText = '') => {
+  const tbody = document.getElementById('sa-users-tbody');
+  if (!tbody) return;
+  const me = AppState.currentUser;
+  let list = AppState.saUsers || [];
+
+  // Filter global topbar: mode Management / Tim Operasional (berdasarkan tipe akun)
+  const gf = getGlobalFilters();
+  if (gf.mode === 'Management' || gf.mode === 'Operasional') {
+    list = list.filter(e => (e.type || '') === gf.mode);
+  }
+
+  const q = (filterText || '').toLowerCase().trim();
+  if (q) {
+    list = list.filter(e =>
+      (e.name || '').toLowerCase().includes(q) ||
+      (e.nip || '').toLowerCase().includes(q) ||
+      (e.email || '').toLowerCase().includes(q) ||
+      (e.division || '').toLowerCase().includes(q) ||
+      (e.role || '').toLowerCase().includes(q)
+    );
+  }
+
+  // Catatan filter aktif di atas tabel (feedback visual bahwa tombol mode berfungsi)
+  const note = document.getElementById('sa-users-filter-note');
+  if (note) {
+    const parts = [];
+    parts.push(`Mode: <b>${activeModeLabel_()}</b>`);
+    if (gf.outlet !== 'all') {
+      const o = (AppState.outlets || []).find(x => x.id === gf.outlet);
+      parts.push(`Outlet: <b>${escapeHtml(o ? o.name : gf.outlet)}</b>`);
+    }
+    if (gf.search) parts.push(`Pencarian: "<b>${escapeHtml(gf.search)}</b>"`);
+    note.innerHTML = `🔍 Menampilkan <b>${list.length}</b> pengguna • ${parts.join(' • ')}`;
+  }
+
+  if (list.length === 0) {
+    const modeFiltered = gf.mode === 'Management' || gf.mode === 'Operasional';
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada pengguna${modeFiltered ? ` untuk Mode ${activeModeLabel_()}` : ' yang cocok'}.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = list.map(e => {
+    const isSA = e.is_super_admin;
+    const isMe = me && e.id === me.id;
+    const inactive = e.account_status === 'Nonaktif';
+    const roleBadge = isSA
+      ? '<span class="card-badge-tag" style="background:linear-gradient(135deg,#fef3c7,#fde68a); color:#92400e; font-weight:800;">🛡️ SUPER ADMIN</span>'
+      : `<span style="font-size:12px;">${escapeHtml(e.role || '-')}</span>`;
+    return `
+      <tr style="${inactive ? 'opacity:.6;' : ''}">
+        <td>
+          <strong>${escapeHtml(e.name)}${isMe ? ' <span style="font-size:10px; color:#94a3b8;">(Anda)</span>' : ''}</strong>
+          <div style="font-size:11px; color:#64748b;">${escapeHtml(e.nip)} • ${escapeHtml(e.email || '-')}</div>
+        </td>
+        <td>
+          <span class="card-badge-tag" style="font-size:10px; color:${e.type === 'Management' ? 'var(--burgundy-primary)' : '#0284c7'};">${escapeHtml(e.type || '-')}</span>
+          <div style="font-size:11px; color:#64748b; margin-top:2px;">${escapeHtml(e.division || '-')}</div>
+        </td>
+        <td>${roleBadge}</td>
+        <td style="font-size:12px;">${escapeHtml(e.outlet_name || '-')}</td>
+        <td style="font-size:12px; white-space:nowrap;">
+          ${(e.leave_balance && e.leave_balance.entitlement !== undefined) ? (() => {
+            const lb = e.leave_balance;
+            const a = Number(lb.adjustment) || 0;
+            const col = (lb.remaining || 0) >= 6 ? '#059669' : ((lb.remaining || 0) >= 3 ? '#d97706' : '#dc2626');
+            return `<strong style="color:${col};">${lb.remaining}</strong><span style="color:#94a3b8;"> / ${lb.entitlement} hari</span>` +
+              (a !== 0 ? `<div style="font-size:10px; font-weight:700; color:${a > 0 ? '#059669' : '#dc2626'};">penyesuaian ${a > 0 ? '+' : ''}${a}</div>` : '') +
+              ((lb.used || 0) > 0 ? `<div style="font-size:10px; color:#94a3b8;">terpakai ${lb.used}</div>` : '');
+          })() : '<span style="color:#cbd5e1;">-</span>'}
+        </td>
+        <td>
+          <span class="card-badge-tag" style="font-size:10px; background:${inactive ? '#fef2f2; color:#991b1b' : '#ecfdf5; color:#065f46'};">${inactive ? '🚫 Nonaktif' : '✅ Aktif'}</span>
+          <div style="font-size:10px; color:#94a3b8; margin-top:2px;">${escapeHtml(e.employment_status || '-')}</div>
+        </td>
+        <td>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn-primary" style="padding:5px 10px; font-size:11px;" onclick="window.openSaEditUser('${e.id}')">
+              <i data-feather="edit-2" style="width:11px; height:11px;"></i> Edit
+            </button>
+            <button class="btn-secondary" style="padding:5px 8px; font-size:11px;" title="Reset password login" onclick="window.saResetPassword('${e.id}')">🔑</button>
+            <button class="btn-secondary" style="padding:5px 8px; font-size:11px;" title="Reset PIN slip gaji" onclick="window.saResetPin('${e.id}')">🔒</button>
+            ${isMe ? '' : `<button class="btn-secondary" style="padding:5px 8px; font-size:11px; ${inactive ? 'color:#059669; border-color:#a7f3d0;' : 'color:#dc2626; border-color:#fca5a5;'}" title="${inactive ? 'Aktifkan akun' : 'Nonaktifkan akun'}" onclick="window.saToggleStatus('${e.id}')">${inactive ? '▶' : '⏸'}</button>`}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  if (window.feather) feather.replace();
+};
+window.saSearchUsers = (input) => renderSaUsers((input && input.value) || '');
+
+// ---- Dropdown helpers untuk modal user ----
+const SA_DIVISIONS_MGMT = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM", "PCD"];
+const SA_DIVISIONS_OPS = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
+window.saSyncDivisions = () => {
+  const typeSel = document.getElementById('sa-user-type');
+  const divSel = document.getElementById('sa-user-division');
+  if (!typeSel || !divSel) return;
+  const currentVal = divSel.value;
+  const list = typeSel.value === 'Management' ? SA_DIVISIONS_MGMT : SA_DIVISIONS_OPS;
+  divSel.innerHTML = list.map(d => `<option value="${d}">${d}</option>`).join('');
+  if (list.indexOf(currentVal) >= 0) divSel.value = currentVal;
+};
+window.saSyncRoleField = () => {
+  const superSel = document.getElementById('sa-user-superrole');
+  const roleInput = document.getElementById('sa-user-role');
+  if (!superSel || !roleInput) return;
+  if (superSel.value === SUPER_ADMIN_ROLE) {
+    roleInput.value = SUPER_ADMIN_ROLE;
+    roleInput.readOnly = true;
+    roleInput.style.background = '#fef3c7';
+  } else {
+    roleInput.readOnly = false;
+    roleInput.style.background = '';
+  }
+};
+const populateSaOutlets = (selectedId) => {
+  const sel = document.getElementById('sa-user-outlet');
+  if (!sel) return;
+  const outlets = AppState.outlets || [];
+  if (outlets.length === 0) {
+    sel.innerHTML = '<option value="">— Outlet belum termuat —</option>';
+    return;
+  }
+  sel.innerHTML = outlets.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`).join('');
+  if (selectedId) sel.value = selectedId;
+};
+
+// ---- Buka modal EDIT pengguna ----
+// ---- Info sisa cuti LIVE di modal user (diambil dari /api/leaves/balance) ----
+window.saLoadLeaveInfo = async (userId) => {
+  const box = document.getElementById('sa-user-leave-info');
+  if (!box || !userId) return;
+  box.style.display = 'block';
+  box.innerHTML = '<span style="color:#94a3b8;">⏳ Memuat sisa cuti...</span>';
+  try {
+    const res = await fetch(`/api/leaves/balance?employee_id=${encodeURIComponent(userId)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || typeof data.remaining !== 'number') { box.style.display = 'none'; return; }
+    const a = Number(data.adjustment) || 0;
+    box.innerHTML = `📊 <b>Sisa cuti saat ini: ${data.remaining} hari</b> dari hak ${data.entitlement} hari` +
+      (a !== 0 ? ` (termasuk penyesuaian <b>${a > 0 ? '+' : ''}${a}</b>)` : '') +
+      ` • terpakai ${data.used || 0}${(data.pending || 0) > 0 ? `, pending ${data.pending}` : ''}.` +
+      ' Ubah nilai di atas lalu Simpan untuk menyesuaikan.';
+  } catch (err) { box.style.display = 'none'; }
+};
+
+window.openSaEditUser = (userId) => {
+  const emp = (AppState.saUsers || []).find(e => e.id === userId);
+  if (!emp) { showToast('Data pengguna tidak ditemukan.', 'error'); return; }
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val !== undefined && val !== null) ? val : ''; };
+  document.getElementById('sa-user-mode').value = 'edit';
+  document.getElementById('sa-user-id').value = emp.id;
+  const titleEl = document.getElementById('sa-user-modal-title');
+  if (titleEl) titleEl.textContent = 'Edit Pengguna: ' + emp.name;
+  setVal('sa-user-name', emp.name);
+  setVal('sa-user-nip', emp.nip);
+  setVal('sa-user-email', emp.email);
+  setVal('sa-user-phone', emp.phone);
+  setVal('sa-user-type', emp.type);
+  window.saSyncDivisions && window.saSyncDivisions();
+  setVal('sa-user-division', emp.division);
+  // Kalau divisi tidak ada di daftar (mis. divisi kustom), tambahkan manual
+  const divSel = document.getElementById('sa-user-division');
+  if (divSel && emp.division) {
+    let exists = false;
+    for (let i = 0; i < divSel.options.length; i++) if (divSel.options[i].value === emp.division) { exists = true; break; }
+    if (!exists) { const opt = document.createElement('option'); opt.value = emp.division; opt.textContent = emp.division; divSel.appendChild(opt); }
+    divSel.value = emp.division;
+  }
+  const superSel = document.getElementById('sa-user-superrole');
+  if (superSel) superSel.value = emp.is_super_admin ? SUPER_ADMIN_ROLE : '';
+  setVal('sa-user-role', emp.role);
+  window.saSyncRoleField && window.saSyncRoleField();
+  populateSaOutlets(emp.outlet_id);
+  setVal('sa-user-account-status', emp.account_status || 'Aktif');
+  setVal('sa-user-employment-status', emp.employment_status || 'Tetap');
+  setVal('sa-user-base-salary', emp.base_salary);
+  setVal('sa-user-daily-allowance', emp.daily_allowance);
+  setVal('sa-user-meal-allowance', emp.meal_allowance || 0);
+  setVal('sa-user-transport-allowance', emp.transport_allowance || 0);
+  setVal('sa-user-rating', emp.rating);
+  setVal('sa-user-kpi-score', emp.kpi_score);
+  setVal('sa-user-leave-adjustment', Number(emp.leave_adjustment) || 0);
+  // Password/PIN awal hanya untuk mode TAMBAH
+  const pwGroup = document.getElementById('sa-user-password-group');
+  const pinGroup = document.getElementById('sa-user-pin-group');
+  if (pwGroup) pwGroup.style.display = 'none';
+  if (pinGroup) pinGroup.style.display = 'none';
+  const pwInput = document.getElementById('sa-user-password'); if (pwInput) pwInput.value = '';
+  const pinInput = document.getElementById('sa-user-pin'); if (pinInput) pinInput.value = '';
+  // Perlindungan diri sendiri: tidak bisa ubah role khusus / status akun sendiri
+  const me = AppState.currentUser;
+  const isSelf = me && emp.id === me.id;
+  if (superSel) superSel.disabled = isSelf;
+  const statusSel = document.getElementById('sa-user-account-status');
+  if (statusSel) statusSel.disabled = isSelf;
+  openModal('modal-sa-user');
+  if (window.feather) feather.replace();
+  // Tampilkan sisa cuti karyawan ini secara live di dalam modal
+  window.saLoadLeaveInfo(userId);
+};
+
+// ---- Buka modal TAMBAH pengguna ----
+window.openSaAddUser = () => {
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val !== undefined && val !== null) ? val : ''; };
+  document.getElementById('sa-user-mode').value = 'create';
+  document.getElementById('sa-user-id').value = '';
+  const titleEl = document.getElementById('sa-user-modal-title');
+  if (titleEl) titleEl.textContent = 'Tambah Pengguna Baru';
+  ['sa-user-name', 'sa-user-nip', 'sa-user-email', 'sa-user-phone', 'sa-user-password', 'sa-user-pin',
+   'sa-user-base-salary', 'sa-user-daily-allowance', 'sa-user-meal-allowance', 'sa-user-transport-allowance',
+   'sa-user-rating', 'sa-user-kpi-score', 'sa-user-leave-adjustment'].forEach(id => setVal(id, ''));
+  const leaveInfo = document.getElementById('sa-user-leave-info');
+  if (leaveInfo) { leaveInfo.style.display = 'none'; leaveInfo.innerHTML = ''; }
+  setVal('sa-user-type', 'Operasional');
+  window.saSyncDivisions && window.saSyncDivisions();
+  setVal('sa-user-division', 'Server');
+  const superSel = document.getElementById('sa-user-superrole');
+  if (superSel) { superSel.value = ''; superSel.disabled = false; }
+  setVal('sa-user-role', '');
+  window.saSyncRoleField && window.saSyncRoleField();
+  populateSaOutlets('');
+  setVal('sa-user-account-status', 'Aktif');
+  setVal('sa-user-employment-status', 'Tetap');
+  const statusSel = document.getElementById('sa-user-account-status');
+  if (statusSel) statusSel.disabled = false;
+  const pwGroup = document.getElementById('sa-user-password-group');
+  const pinGroup = document.getElementById('sa-user-pin-group');
+  if (pwGroup) pwGroup.style.display = '';
+  if (pinGroup) pinGroup.style.display = '';
+  openModal('modal-sa-user');
+  if (window.feather) feather.replace();
+};
+
+// ---- Simpan (create/edit) pengguna ----
+window.submitSaUser = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const mode = getVal('sa-user-mode');
+  const userId = getVal('sa-user-id');
+  const btn = document.getElementById('btn-sa-user-save');
+  const roleVal = getVal('sa-user-superrole') === SUPER_ADMIN_ROLE ? SUPER_ADMIN_ROLE : getVal('sa-user-role');
+
+  const body = {
+    name: getVal('sa-user-name'),
+    nip: getVal('sa-user-nip'),
+    email: getVal('sa-user-email'),
+    phone: getVal('sa-user-phone'),
+    type: getVal('sa-user-type'),
+    division: getVal('sa-user-division'),
+    role: roleVal,
+    outlet_id: getVal('sa-user-outlet'),
+    employment_status: getVal('sa-user-employment-status'),
+    account_status: getVal('sa-user-account-status'),
+    base_salary: getVal('sa-user-base-salary') === '' ? undefined : Number(getVal('sa-user-base-salary')),
+    daily_allowance: getVal('sa-user-daily-allowance') === '' ? undefined : Number(getVal('sa-user-daily-allowance')),
+    meal_allowance: getVal('sa-user-meal-allowance') === '' ? 0 : Number(getVal('sa-user-meal-allowance')),
+    transport_allowance: getVal('sa-user-transport-allowance') === '' ? 0 : Number(getVal('sa-user-transport-allowance')),
+    rating: getVal('sa-user-rating') === '' ? undefined : Number(getVal('sa-user-rating')),
+    kpi_score: getVal('sa-user-kpi-score') === '' ? undefined : Number(getVal('sa-user-kpi-score')),
+    leave_adjustment: getVal('sa-user-leave-adjustment') === '' ? 0 : Number(getVal('sa-user-leave-adjustment'))
+  };
+  if (mode === 'create') {
+    body.password = getVal('sa-user-password') || '';
+    body.pin_code = getVal('sa-user-pin') || '';
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+  try {
+    const res = await fetch(mode === 'create' ? '/api/admin/users' : `/api/admin/users/${userId}`, {
+      method: mode === 'create' ? 'POST' : 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success') {
+      // Mode edit: tunjukkan dampak langsung ke sisa cuti (feedback "pengaturan berjalan")
+      let extraMsg = '';
+      if (mode !== 'create' && userId) {
+        try {
+          const br = await fetch(`/api/leaves/balance?employee_id=${encodeURIComponent(userId)}`);
+          if (br.ok) {
+            const bal = await br.json();
+            if (typeof bal.remaining === 'number') {
+              const a = Number(bal.adjustment) || 0;
+              extraMsg = ` Sisa cuti ${data.user && data.user.name ? data.user.name : 'karyawan'}: ${bal.remaining} hari (hak ${bal.entitlement}${a !== 0 ? `, penyesuaian ${a > 0 ? '+' : ''}${a}` : ''}).`;
+            }
+          }
+        } catch (e) { /* abaikan */ }
+      }
+      showToast((data.message || 'Pengguna berhasil disimpan.') + extraMsg, 'success');
+      closeModal('modal-sa-user');
+      if (mode === 'create' && data.credentials) {
+        showSaCredential('Akun Berhasil Dibuat', [
+          ['Nama', body.name],
+          ['NIP (login)', data.credentials.nip],
+          ['Email', data.credentials.email],
+          ['Password', data.credentials.password],
+          ['PIN Slip Gaji', data.credentials.pin]
+        ], 'Bagikan kredensial di atas ke pengguna, lalu minta dia ganti password via menu Profil Saya.');
+      }
+      await window.loadSaUsers();
+    } else {
+      showToast(data.detail || data.message || 'Gagal menyimpan pengguna.', 'error');
+    }
+  } catch (err) {
+    console.error('submitSaUser error:', err);
+    showToast('Kesalahan koneksi saat menyimpan pengguna.', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan Pengguna';
+      if (window.feather) feather.replace();
+    }
+  }
+};
+
+// ---- Reset password / PIN ----
+window.saResetPassword = async (userId) => {
+  const emp = (AppState.saUsers || []).find(e => e.id === userId);
+  if (!emp) return;
+  if (!confirm(`Reset password login untuk ${emp.name} (${emp.nip})?\n\nPassword baru akan dibuat otomatis dan yang lama tidak berlaku lagi.`)) return;
+  try {
+    const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success' && data.credentials) {
+      showSaCredential('Password Berhasil Direset', [
+        ['Nama', emp.name], ['NIP (login)', data.credentials.nip || emp.nip], ['Password Baru', data.credentials.password]
+      ], 'Segera bagikan password baru ini ke pengguna bersangkutan.');
+    } else {
+      showToast(data.detail || 'Gagal reset password.', 'error');
+    }
+  } catch (err) { showToast('Kesalahan koneksi saat reset password.', 'error'); }
+};
+
+window.saResetPin = async (userId) => {
+  const emp = (AppState.saUsers || []).find(e => e.id === userId);
+  if (!emp) return;
+  if (!confirm(`Reset PIN slip gaji untuk ${emp.name} (${emp.nip})?\n\nPIN baru 6 digit akan dibuat otomatis.`)) return;
+  try {
+    const res = await fetch(`/api/admin/users/${userId}/reset-pin`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success' && data.credentials) {
+      showSaCredential('PIN Berhasil Direset', [
+        ['Nama', emp.name], ['NIP (login)', data.credentials.nip || emp.nip], ['PIN Baru', data.credentials.pin]
+      ], 'PIN dipakai untuk membuka slip gaji di panel Payroll.');
+    } else {
+      showToast(data.detail || 'Gagal reset PIN.', 'error');
+    }
+  } catch (err) { showToast('Kesalahan koneksi saat reset PIN.', 'error'); }
+};
+
+// ---- Aktifkan / Nonaktifkan akun ----
+window.saToggleStatus = async (userId) => {
+  const emp = (AppState.saUsers || []).find(e => e.id === userId);
+  if (!emp) return;
+  const inactive = emp.account_status === 'Nonaktif';
+  const newStatus = inactive ? 'Aktif' : 'Nonaktif';
+  if (!inactive && emp.is_super_admin && !confirm(
+    `PERHATIAN: ${emp.name} ber-role SUPER ADMIN.\n\nJika ini SUPER ADMIN terakhir yang aktif, sistem akan menolak. Nonaktifkan akun ini?`
+  )) return;
+  if (!inactive && !emp.is_super_admin && !confirm(`Nonaktifkan akun ${emp.name} (${emp.nip})?\n\nAkun nonaktif tidak bisa login sama sekali.`)) return;
+  try {
+    const res = await fetch(`/api/admin/users/${userId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_status: newStatus })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || ('Akun ' + newStatus.toLowerCase() + 'kan.'), 'success');
+      await window.loadSaUsers();
+    } else {
+      showToast(data.detail || 'Gagal mengubah status akun.', 'error');
+    }
+  } catch (err) { showToast('Kesalahan koneksi saat mengubah status akun.', 'error'); }
+};
+
+// ---- Modal kredensial ----
+const showSaCredential = (title, rows, note) => {
+  const tEl = document.getElementById('sa-credential-title');
+  const bEl = document.getElementById('sa-credential-body');
+  if (!tEl || !bEl) { alert(rows.map(r => r.join(': ')).join('\n')); return; }
+  tEl.textContent = title;
+  bEl.innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px;">
+      ${rows.map(r => `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; background:#f8fafc; padding:10px 14px; border-radius:10px;">
+          <span style="font-size:12px; color:#64748b; font-weight:600;">${escapeHtml(r[0])}</span>
+          <strong style="font-size:14px; color:var(--text-dark); user-select:all;">${escapeHtml(r[1] || '-')}</strong>
+        </div>`).join('')}
+    </div>
+    ${note ? `<p style="font-size:12px; color:#b45309; background:#fef3c7; padding:10px 12px; border-radius:10px; margin:0;">⚠️ ${escapeHtml(note)}</p>` : ''}
+  `;
+  openModal('modal-sa-credential');
+};
+
+// ---- TAB 3: PENGATURAN SISTEM ----
+const SA_SETTING_KEYS = ['geofence_tolerance_m', 'default_radius_m', 'gps_max_accuracy_m', 'late_grace_min', 'late_deduction_per_min', 'late_deduction_cap', 'annual_leave_days', 'allow_self_registration', 'app_name', 'app_tagline'];
+
+window.loadSaSettings = async () => {
+  try {
+    const res = await fetch('/api/admin/settings');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data.detail || 'Gagal memuat pengaturan sistem.', 'error');
+      return;
+    }
+    const s = (data && data.settings) || {};
+    SA_SETTING_KEYS.forEach(k => {
+      const el = document.getElementById('sa-set-' + k);
+      if (el && s[k] !== undefined && s[k] !== null) el.value = String(s[k]);
+    });
+    AppState.saSettingsLoaded = true;
+  } catch (err) {
+    console.error('loadSaSettings error:', err);
+    showToast('Kesalahan koneksi saat memuat pengaturan.', 'error');
+  }
+};
+
+window.submitSaSettings = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const btn = document.getElementById('btn-sa-save-settings');
+  const patch = {};
+  SA_SETTING_KEYS.forEach(k => {
+    const el = document.getElementById('sa-set-' + k);
+    if (el) patch[k] = el.value;
+  });
+  if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
+  try {
+    const res = await fetch('/api/admin/settings', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings: patch })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Pengaturan sistem berhasil disimpan.', 'success');
+      window.loadSaSettings && window.loadSaSettings();
+    } else {
+      showToast(data.detail || data.message || 'Gagal menyimpan pengaturan.', 'error');
+    }
+  } catch (err) {
+    console.error('submitSaSettings error:', err);
+    showToast('Kesalahan koneksi saat menyimpan pengaturan.', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan Pengaturan Sistem';
+      if (window.feather) feather.replace();
+    }
+  }
 };
