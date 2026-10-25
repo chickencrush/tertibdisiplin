@@ -200,12 +200,10 @@ const VIEW_ACCESS = {
   'employees': ['OM', 'PCD', 'HRD', 'Finance', 'HRGA'],
   // KPI: semua bisa buka panel — TAPI non-Super-Admin hanya lihat data PRIBADI (dipisah di backend h_kpi_)
   'kpi': 'all',
-  // Input Data Center: HANYA Super Admin (OM + PCD)
+  // Panel Super Admin (Input Data Center): HANYA Super Admin (OM + PCD)
   'data-center': ['OM', 'PCD'],
   // Titik Lokasi Outlet: hanya Super Admin
-  'outlets': ['OM', 'PCD'],
-  // Database & Backup: hanya Super Admin
-  'database': ['OM', 'PCD']
+  'outlets': ['OM', 'PCD']
 };
 const CHAT_CHANNEL_RULES = {
   '#general': null,
@@ -265,6 +263,7 @@ const applyAccessControl = () => {
 
   document.body.dataset.access = isFullAccess(user) ? 'full' : (canAccessView('employees', user) ? 'manager' : 'staff');
 };
+window.applyAccessControl = applyAccessControl; // expose untuk testing & debugging
 
 // ==========================================
 // Sidebar (menu geser) untuk layar HP
@@ -772,9 +771,8 @@ const switchView = (viewName) => {
     'calendar': ['Kalender & Agenda Meeting', 'Jadwal Briefing, Audit QC, dan Agenda Operasional'],
     'leaves': ['Cuti & Ijin Karyawan', 'Pengajuan cuti, Ijin, dan Sisa Cuti Tahunan'],
     'profile': ['Profil Saya', 'Edit data diri, foto profil, password, dan PIN slip gaji'],
-    'data-center': ['Input Data Center', 'Edit data karyawan, gaji, dan KPI — Khusus Super Admin'],
-    'outlets': ['Pengaturan Titik Outlet', 'Konfigurasi Titik Koordinat GPS dan Toleransi Radius Geofencing'],
-    'database': ['Pusat Kontrol Database & Backup', 'Kelola Penyimpanan SQLite, Unduh Cadangan .db, Ekspor CSV & Live Inspector']
+    'data-center': ['Panel Super Admin', 'Pusat kendali Super Admin — kelola karyawan, gaji, KPI, dan akses cepat fitur lain'],
+    'outlets': ['Pengaturan Titik Outlet', 'Konfigurasi Titik Koordinat GPS dan Toleransi Radius Geofencing']
   };
 
   const titleEl = document.getElementById('page-title');
@@ -829,7 +827,7 @@ const switchView = (viewName) => {
     // Mulai polling real-time
     window.startChatPolling && window.startChatPolling();
   } else if (viewName === 'data-center') {
-    // Input Data Center — load employees & outlets
+    // Panel Super Admin — load employees & outlets
     stopCamera();
     // Stop chat polling kalau keluar dari view chat (hemat network)
     window.stopChatPolling && window.stopChatPolling();
@@ -841,11 +839,6 @@ const switchView = (viewName) => {
     stopCamera();
     window.stopChatPolling && window.stopChatPolling();
     renderProfileView && renderProfileView();
-  } else if (viewName === 'database') {
-    stopCamera();
-    window.stopChatPolling && window.stopChatPolling();
-    loadDatabaseOverview();
-    loadDatabaseTableData();
   } else {
     stopCamera();
     // Stop chat polling kalau keluar dari view chat (hemat network)

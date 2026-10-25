@@ -254,20 +254,14 @@
       </li>
       <li>
         <a class="nav-item" data-view="data-center">
-          <i data-feather="edit-3"></i>
-          <span>Input Data Center</span>
+          <i data-feather="shield"></i>
+          <span>SUPER ADMIN</span>
         </a>
       </li>
       <li>
         <a class="nav-item" data-view="profile">
           <i data-feather="user"></i>
           <span>Profil Saya</span>
-        </a>
-      </li>
-      <li>
-        <a class="nav-item" data-view="database">
-          <i data-feather="database"></i>
-          <span>Database & Backup</span>
         </a>
       </li>
     </ul>
@@ -1189,7 +1183,7 @@
         </div>
       </section>
 
-      <!-- VIEW 9.5: INPUT DATA CENTER (Khusus Super Admin OM) -->
+      <!-- VIEW 9.5: PANEL SUPER ADMIN (Khusus Super Admin OM + PCD) -->
       <section class="view-panel" id="view-data-center">
 
         <!-- Header Card -->
@@ -1198,9 +1192,9 @@
             <div>
               <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
                 <span class="card-badge-tag" style="background:#fef2f2; color:#991b1b; font-size:12px; font-weight:700;">👑 Khusus Super Admin (OM + PCD)</span>
-                <span style="font-size:12px; color:#64748b;">Edit data karyawan, gaji, dan KPI langsung terhubung ke akun masing-masing</span>
+                <span style="font-size:12px; color:#64748b;">Pusat kendali penuh sistem &mdash; kelola karyawan, cuti, dan konfigurasi outlet</span>
               </div>
-              <h3 style="font-size:18px; color:var(--text-dark); margin:0 0 4px 0;">Pusat Input Data Karyawan</h3>
+              <h3 style="font-size:20px; color:var(--burgundy-dark); margin:0 0 4px 0;">👑 Panel Super Admin</h3>
               <p style="font-size:13px; color:#64748b; margin:0;">Semua perubahan di sini langsung tersimpan ke database karyawan dan terhubung ke akun yang bersangkutan.</p>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
@@ -1209,6 +1203,46 @@
                 <input type="text" id="dc-search-input" placeholder="Cari nama, NIP, jabatan, divisi..." oninput="window.dcSearchEmployees && window.dcSearchEmployees(this)">
               </div>
             </div>
+          </div>
+
+          <!-- Quick Access: SUPER ADMIN Tools -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:18px;">
+            <a href="#" onclick="event.preventDefault(); window.switchView && window.switchView('leaves');" style="display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid #e2e8f0; border-radius:10px; background:#fafbff; text-decoration:none; color:inherit;">
+              <div style="width:36px; height:36px; background:#ede9fe; color:#5b21b6; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <i data-feather="briefcase" style="width:18px; height:18px;"></i>
+              </div>
+              <div>
+                <div style="font-size:13px; font-weight:700; color:var(--text-dark);">Data Cuti Semua Karyawan</div>
+                <div style="font-size:11px; color:#64748b;">Rekap sisa cuti + Atur Tanggal Masuk massal</div>
+              </div>
+            </a>
+            <a href="#" onclick="event.preventDefault(); window.switchView && window.switchView('outlets');" style="display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid #e2e8f0; border-radius:10px; background:#fafbff; text-decoration:none; color:inherit;">
+              <div style="width:36px; height:36px; background:#dbeafe; color:#1e40af; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <i data-feather="map-pin" style="width:18px; height:18px;"></i>
+              </div>
+              <div>
+                <div style="font-size:13px; font-weight:700; color:var(--text-dark);">Titik Lokasi Outlet (GPS)</div>
+                <div style="font-size:11px; color:#64748b;">Koordinat & radius geofencing presensi</div>
+              </div>
+            </a>
+            <a href="#" onclick="event.preventDefault(); window.switchView && window.switchView('employees');" style="display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid #e2e8f0; border-radius:10px; background:#fafbff; text-decoration:none; color:inherit;">
+              <div style="width:36px; height:36px; background:#fef3c7; color:#92400e; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <i data-feather="users" style="width:18px; height:18px;"></i>
+              </div>
+              <div>
+                <div style="font-size:13px; font-weight:700; color:var(--text-dark);">Database Karyawan</div>
+                <div style="font-size:11px; color:#64748b;">Kelola data karyawan, skala upah</div>
+              </div>
+            </a>
+            <a href="#" onclick="event.preventDefault(); window.switchView && window.switchView('payroll');" style="display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid #e2e8f0; border-radius:10px; background:#fafbff; text-decoration:none; color:inherit;">
+              <div style="width:36px; height:36px; background:#dcfce7; color:#065f46; border-radius:8px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <i data-feather="dollar-sign" style="width:18px; height:18px;"></i>
+              </div>
+              <div>
+                <div style="font-size:13px; font-weight:700; color:var(--text-dark);">Payroll &amp; E-Payslip</div>
+                <div style="font-size:11px; color:#64748b;">Generate slip gaji bulanan</div>
+              </div>
+            </a>
           </div>
         </div>
 
@@ -1438,169 +1472,6 @@
         </div>
       </section>
 
-      <!-- VIEW 10: MANAJEMEN DATABASE & BACKUP -->
-      <section class="view-panel" id="view-database">
-        
-        <!-- System Health & Status Banner -->
-        <div class="modern-card" style="margin-bottom:20px; border-left:4px solid var(--burgundy-primary);">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
-            <div>
-              <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-                <span class="card-badge-tag" style="background:#ecfdf5; color:#065f46; font-size:12px; font-weight:700;">🟢 SQLite 3 Active & Online</span>
-                <span style="font-size:12px; color:#64748b;">Single-File Relational Database</span>
-              </div>
-              <h3 style="font-size:18px; color:var(--text-dark); margin:0 0 4px 0;">Pusat Kontrol Database & Backup Perusahaan</h3>
-              <p style="font-size:13px; color:#64748b; margin:0;" id="db-path-display">Lokasi File: <code>enterprise_ops.db</code></p>
-            </div>
-
-            <!-- Quick Action Buttons -->
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-              <a href="#" onclick="openDatabaseSheet(event)" class="btn-primary" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; padding:10px 16px;">
-                <i data-feather="download"></i> Buka Spreadsheet (Backup)
-              </a>
-              <button class="btn-secondary" onclick="exportCurrentTableCsv()" style="display:inline-flex; align-items:center; gap:6px;">
-                <i data-feather="file-text"></i> Ekspor CSV / Excel
-              </button>
-              <button class="btn-secondary" onclick="confirmResetDatabase()" style="display:inline-flex; align-items:center; gap:6px; color:#dc2626; border-color:#fca5a5;">
-                <i data-feather="rotate-ccw"></i> Reset Database
-              </button>
-            </div>
-          </div>
-
-          <!-- Metadata Stat Cards -->
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-top:20px;">
-            <div style="background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
-              <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Ukuran Database</span>
-              <h4 style="font-size:18px; color:var(--text-dark); margin:4px 0 0 0;" id="db-file-size">-</h4>
-            </div>
-            <div style="background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
-              <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Total Tabel Aktif</span>
-              <h4 style="font-size:18px; color:var(--text-dark); margin:4px 0 0 0;" id="db-table-count">7 Tabel</h4>
-            </div>
-            <div style="background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
-              <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Total Record / Baris</span>
-              <h4 style="font-size:18px; color:var(--burgundy-primary); margin:4px 0 0 0;" id="db-record-count">-</h4>
-            </div>
-            <div style="background:#f8fafc; padding:14px; border-radius:12px; border:1px solid #e2e8f0;">
-              <span style="font-size:11px; text-transform:uppercase; color:#64748b; font-weight:700;">Terakhir Diperbarui</span>
-              <h4 style="font-size:13px; color:#334155; margin:6px 0 0 0;" id="db-last-modified">-</h4>
-            </div>
-          </div>
-        </div>
-
-        <!-- Panduan & Cara Kontrol Database -->
-        <div class="modern-card" style="margin-bottom:20px;">
-          <div class="card-title-row">
-            <div>
-              <h3>3 Cara Mengontrol & Mengelola Database Ini</h3>
-              <p style="font-size:12px; color:#64748b;">Panduan mudah mengontrol, mengedit data massal, dan mem-backup basis data sistem</p>
-            </div>
-            <span class="card-badge-tag" style="background:#f1f5f9; color:#475569;">💡 Panduan Admin</span>
-          </div>
-
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:10px;">
-            <!-- Cara 1 -->
-            <div style="border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#ffffff;">
-              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                <span style="background:var(--burgundy-light); color:var(--burgundy-primary); width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-weight:700;">1</span>
-                <strong style="color:var(--text-dark); font-size:14px;">Melalui Tampilan Web App</strong>
-              </div>
-              <p style="font-size:12px; color:#64748b; line-height:1.5;">
-                Gunakan menu di navigasi sebelah kiri:
-                <br>• <strong>Database Karyawan</strong>: Tambah / edit karyawan, mutasi outlet, skala upah.
-                <br>• <strong>Titik Lokasi Outlet</strong>: Ubah koordinat GPS & radius geofencing presensi.
-                <br>• <strong>Payroll Autopilot</strong>: Generate slip gaji bulanan 1-klik.
-                <br>• <strong>Live Inspector di Bawah</strong>: Telusuri seluruh tabel database langsung di browser!
-              </p>
-            </div>
-
-            <!-- Cara 2 -->
-            <div style="border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#ffffff;">
-              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                <span style="background:#dbeafe; color:#1e40af; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-weight:700;">2</span>
-                <strong style="color:var(--text-dark); font-size:14px;">Aplikasi GUI: DB Browser for SQLite</strong>
-              </div>
-              <p style="font-size:12px; color:#64748b; line-height:1.5;">
-                Ingin tampilan spreadsheet mirip Excel?
-                <br>1. Download software gratis <strong>DB Browser for SQLite</strong> (<a href="https://sqlitebrowser.org/" target="_blank" style="color:#2563eb; font-weight:600;">sqlitebrowser.org</a>).
-                <br>2. Buka berkas <code>enterprise_ops.db</code> di folder aplikasi ini.
-                <br>3. Klik tab <strong>"Browse Data"</strong>: Anda bisa edit cell apapun langsung, tambah baris, atau import/export ratusan data dari Excel (.xlsx / .csv).
-              </p>
-            </div>
-
-            <!-- Cara 3 -->
-            <div style="border:1px solid #e2e8f0; border-radius:14px; padding:16px; background:#ffffff;">
-              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
-                <span style="background:#fef3c7; color:#92400e; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:8px; font-weight:700;">3</span>
-                <strong style="color:var(--text-dark); font-size:14px;">Backup & Restore Mandiri</strong>
-              </div>
-              <p style="font-size:12px; color:#64748b; line-height:1.5;">
-                Karena database SQLite berbentuk file tunggal:
-                <br>• <strong>Backup</strong>: Cukup klik tombol <em>"Unduh Backup (.db)"</em> di atas, atau copy file <code>enterprise_ops.db</code> ke Google Drive / flashdisk.
-                <br>• <strong>Restore</strong>: Cukup timpa file <code>enterprise_ops.db</code> dengan file cadangan Anda jika sewaktu-waktu ingin mengembalikan data.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Live Table Explorer / Inspector -->
-        <div class="modern-card">
-          <div class="card-title-row">
-            <div>
-              <h3>Live Table Inspector & Data Browser</h3>
-              <p style="font-size:12px; color:#64748b;">Lihat dan telusuri isi tabel database langsung secara real-time</p>
-            </div>
-            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-              <!-- Select Table -->
-              <select id="db-select-table" class="form-control" style="width:180px; padding:8px 12px; font-weight:600;" onchange="changeDatabaseTable(this.value)">
-                <option value="employees">Tabel: employees (Karyawan)</option>
-                <option value="outlets">Tabel: outlets (Lokasi GPS)</option>
-                <option value="attendance">Tabel: attendance (Presensi)</option>
-                <option value="daily_reports">Tabel: daily_reports (Laporan)</option>
-                <option value="payslips">Tabel: payslips (Payroll)</option>
-                <option value="calendar_events">Tabel: calendar_events (Agenda)</option>
-                <option value="chat_messages">Tabel: chat_messages (Chat)</option>
-              </select>
-
-              <!-- Search -->
-              <input type="text" id="db-table-search" class="form-control" placeholder="Cari dalam tabel..." style="width:200px; padding:8px 12px;" oninput="debounceDatabaseSearch()">
-
-              <!-- Download CSV -->
-              <button class="btn-primary" onclick="exportCurrentTableCsv()" style="display:inline-flex; align-items:center; gap:6px;">
-                <i data-feather="download"></i> Ekspor CSV Tabel Ini
-              </button>
-            </div>
-          </div>
-
-          <!-- Table Container -->
-          <div style="overflow-x:auto; margin-top:16px; border:1px solid #e2e8f0; border-radius:12px;">
-            <table class="payslip-table" id="db-inspector-table" style="font-size:12px;">
-              <thead id="db-inspector-thead">
-                <!-- Dynamically populated -->
-              </thead>
-              <tbody id="db-inspector-tbody">
-                <!-- Dynamically populated -->
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Pagination Bar -->
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:14px; flex-wrap:wrap; gap:10px;">
-            <div style="font-size:12px; color:#64748b;" id="db-inspector-count-label">
-              Menampilkan 0 dari 0 data
-            </div>
-            <div style="display:flex; gap:6px;">
-              <button class="btn-secondary" id="db-btn-prev" onclick="prevDatabasePage()" style="padding:6px 12px; font-size:12px;">
-                ◀ Halaman Sebelumnya
-              </button>
-              <button class="btn-secondary" id="db-btn-next" onclick="nextDatabasePage()" style="padding:6px 12px; font-size:12px;">
-                Halaman Berikutnya ▶
-              </button>
-            </div>
-          </div>
-        </div>
-
-      </section>
 
     </main>
   </div>
