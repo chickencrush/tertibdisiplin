@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v52';  // Fix topbar: filter outlet/periode/pencarian berfungsi di semua panel, toggle mode lengkap, avatar buka profil
+const CACHE_NAME = 'tertib-disiplin-v49';  // data cuti semua karyawan (khusus Super Admin) di panel Cuti & Ijin
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
