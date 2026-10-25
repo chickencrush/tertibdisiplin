@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v52';  // panel SUPER ADMIN diperkuat (rename Input Data Center) + hapus panel Database & Backup
+const CACHE_NAME = 'tertib-disiplin-v53';  // edit Tanggal Masuk per-karyawan (kolom Aksi + modal edit individual)
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

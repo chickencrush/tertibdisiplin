@@ -3465,7 +3465,7 @@ const loadAllLeaveBalances = async () => {
     AppState.allLeaveBalances = [];
     const summaryEl = document.getElementById('leaves-all-summary');
     if (summaryEl) summaryEl.innerHTML = '';
-    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#b91c1c; padding:20px; font-size:13px;">' + html + '</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#b91c1c; padding:20px; font-size:13px;">' + html + '</td></tr>';
   };
   try {
     const res = await fetch('/api/leaves/all-balances');
@@ -3528,22 +3528,37 @@ const renderAllLeaveBalances = (errorMsg) => {
   }
 
   if (errorMsg) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#b91c1c; padding:20px; font-size:13px;">' + errorMsg + '</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#b91c1c; padding:20px; font-size:13px;">' + errorMsg + '</td></tr>';
     return;
   }
   if (!all.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Belum ada data karyawan. Klik "Muat Ulang" untuk mencoba lagi.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">Belum ada data karyawan. Klik "Muat Ulang" untuk mencoba lagi.</td></tr>';
     return;
   }
   if (!items.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan dengan tipe "' + escapeHtml(f) + '".<br><span style="font-size:11px;">Jika kolom Tipe karyawan belum terisi, perbarui lewat Database Karyawan (Tipe: Management / Operasional). Data gabungan tetap bisa dilihat dengan pilihan "Semua".</span></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan dengan tipe "' + escapeHtml(f) + '".<br><span style="font-size:11px;">Jika kolom Tipe karyawan belum terisi, perbarui lewat Database Karyawan (Tipe: Management / Operasional). Data gabungan tetap bisa dilihat dengan pilihan "Semua".</span></td></tr>';
     return;
   }
+  // Format tanggal masuk YYYY-MM-DD -> DD MMM YYYY (mis. 2024-03-15 -> 15 Mar 2024)
+  const fmtDate = (d) => {
+    const s = String(d || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s || '-';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return s;
+    return m[3] + ' ' + months[Number(m[2]) - 1] + ' ' + m[1];
+  };
   tbody.innerHTML = items.map((it) => {
     const rem = Math.round((Number(it.remaining) || 0) * 10) / 10;
     const remColor = rem >= 6 ? '#10b981' : (rem >= 3 ? '#f59e0b' : '#ef4444');
     const isMg = it.type === 'Management';
     const typeBadge = `<span class="status-badge-pill" style="background:${isMg ? '#ede9fe' : '#e0f2fe'}; color:${isMg ? '#5b21b6' : '#075985'};">${escapeHtml(it.type) || '-'}</span>`;
+    // Indikator warna tgl masuk: hijau jika tahun lalu/lebih lama (jatah 12), kuning jika tahun ini (prorata)
+    const jd = String(it.join_date || '');
+    const jdYear = jd.match(/^\d{4}/);
+    const thisYear = new Date().getFullYear();
+    const isProrata = jdYear && Number(jdYear[0]) === thisYear;
+    const jdColor = isProrata ? '#f59e0b' : '#10b981';
     return `
       <tr>
         <td>
@@ -3558,15 +3573,146 @@ const renderAllLeaveBalances = (errorMsg) => {
           <div style="font-size:13px; color:#0f172a;">${escapeHtml(it.role) || '-'}</div>
           <div style="font-size:11px; color:#64748b;">${escapeHtml(it.outlet_name) || '-'}</div>
         </td>
+        <td style="font-weight:600; color:${jdColor}; font-size:12px;">${escapeHtml(fmtDate(it.join_date))}${isProrata ? '<br><span style="font-size:10px; color:#94a3b8;">prorata</span>' : ''}</td>
         <td style="font-weight:700; color:#0f172a;">${fmt1(it.entitlement)}</td>
         <td style="font-weight:700; color:#ef4444;">${fmt1(it.used)}</td>
         <td style="font-weight:700; color:#f59e0b;">${fmt1(it.pending)}</td>
         <td style="font-weight:800; font-size:15px; color:${remColor};">${fmt1(rem)}</td>
+        <td>
+          <button class="btn-secondary" onclick="window.openEditJoinDate && window.openEditJoinDate('${it.employee_id}')" title="Edit Tanggal Masuk karyawan ini" style="padding:5px 10px; font-size:11px;">
+            <i data-feather="edit-3" style="width:11px; height:11px;"></i> Edit Tgl Masuk
+          </button>
+        </td>
       </tr>`;
   }).join('');
+  // Re-render feather icons yang baru ditambahkan
+  if (window.feather) feather.replace();
 };
 window.renderAllLeaveBalances = renderAllLeaveBalances;
 window.loadAllLeaveBalances = loadAllLeaveBalances;
+
+// ============ EDIT TANGGAL MASUK PER KARYAWAN (SUPER ADMIN ONLY) ============
+// Buka modal edit utk satu karyawan tertentu. Setelah update, jatah cuti langsung
+// dihitung ulang (prorata bulanan). Pakai PUT /api/employees/{id} yang sudah
+// menerima patch join_date sejak v51.
+AppState.editJoinDateEmployeeId = null;
+
+const openEditJoinDate = (employeeId) => {
+  if (!isFullAccess()) {
+    showToast('Hanya Super Admin (OM/PCD) yang dapat mengubah Tanggal Masuk karyawan.', 'error');
+    return;
+  }
+  // Cari data karyawan dari AppState.allLeaveBalances (sudah termuat)
+  const it = (AppState.allLeaveBalances || []).find((x) => x.employee_id === employeeId);
+  if (!it) {
+    showToast('Data karyawan tidak ditemukan. Klik "Muat Ulang" lalu coba lagi.', 'error');
+    return;
+  }
+  AppState.editJoinDateEmployeeId = employeeId;
+  // Isi info karyawan di header modal
+  const avatarEl = document.getElementById('edit-jd-avatar');
+  const nameEl = document.getElementById('edit-jd-name');
+  const metaEl = document.getElementById('edit-jd-meta');
+  if (avatarEl) avatarEl.textContent = (it.name || '?').charAt(0).toUpperCase();
+  if (nameEl) nameEl.textContent = it.name || '-';
+  if (metaEl) {
+    metaEl.textContent = 'NIP ' + (it.nip || '-') + ' • ' + (it.type || '-') + ' • ' + (it.division || '-') +
+      ' • ' + (it.role || '-') + ' • ' + (it.outlet_name || '-');
+  }
+  // Isi input dgn join_date yang sudah ada (supaya user bisa lihat & edit)
+  const input = document.getElementById('input-edit-join-date');
+  if (input) {
+    const jd = String(it.join_date || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(jd)) {
+      input.value = jd;
+    } else {
+      // Default hari ini kalau tanggal tidak valid
+      const t = new Date();
+      const yyyy = t.getFullYear();
+      const mm = String(t.getMonth() + 1).padStart(2, '0');
+      const dd = String(t.getDate()).padStart(2, '0');
+      input.value = `${yyyy}-${mm}-${dd}`;
+    }
+  }
+  const result = document.getElementById('edit-join-date-result');
+  if (result) { result.style.display = 'none'; result.innerHTML = ''; }
+  openModal('modal-edit-join-date');
+};
+
+const submitEditJoinDate = async () => {
+  if (!isFullAccess()) {
+    showToast('Hanya Super Admin (OM/PCD) yang dapat mengubah Tanggal Masuk karyawan.', 'error');
+    return;
+  }
+  const empId = AppState.editJoinDateEmployeeId;
+  if (!empId) {
+    showToast('Data karyawan tidak ditemukan. Tutup modal dan coba lagi.', 'error');
+    return;
+  }
+  const input = document.getElementById('input-edit-join-date');
+  const result = document.getElementById('edit-join-date-result');
+  const btn = document.getElementById('btn-edit-join-date-submit');
+  const jd = input ? String(input.value || '').trim() : '';
+  if (!jd) {
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Tanggal Masuk wajib diisi.</div>';
+    }
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(jd)) {
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Format tanggal harus YYYY-MM-DD.</div>';
+    }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = 'Menyimpan...'; }
+  try {
+    const res = await fetch('/api/employees/' + encodeURIComponent(empId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ join_date: jd })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = (data && data.detail) ? String(data.detail) : ('HTTP ' + res.status);
+      if (result) {
+        result.style.display = '';
+        result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Gagal: ' + escapeHtml(detail) + '</div>';
+      } else {
+        showToast('Gagal: ' + detail, 'error');
+      }
+      return;
+    }
+    const empName = (data && data.employee && data.employee.name) ? data.employee.name : 'Karyawan';
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = '<div style="background:#dcfce7; border:1px solid #10b981; color:#065f46; padding:10px 12px; border-radius:8px; font-size:12px;"><b>Berhasil!</b> Tanggal Masuk <b>' + escapeHtml(empName) + '</b> diupdate ke <b>' + escapeHtml(jd) + '</b>. Jatah cuti dihitung ulang.</div>';
+    }
+    showToast('Tanggal Masuk ' + empName + ' diupdate. Memuat ulang data cuti...', 'success');
+    // Update local state supaya render berikutnya menampilkan tgl baru segera
+    const it = (AppState.allLeaveBalances || []).find((x) => x.employee_id === empId);
+    if (it) it.join_date = jd;
+    // Tutup modal setelah 1.0s lalu reload data cuti
+    setTimeout(() => {
+      closeModal('modal-edit-join-date');
+      if (isFullAccess()) window.loadAllLeaveBalances && window.loadAllLeaveBalances();
+    }, 1000);
+  } catch (err) {
+    console.error('editJoinDate error:', err);
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Gagal menghubungi server. Periksa koneksi internet, lalu coba lagi.</div>';
+    } else {
+      showToast('Gagal menghubungi server.', 'error');
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan Tanggal Masuk'; if (window.feather) feather.replace(); }
+  }
+};
+window.openEditJoinDate = openEditJoinDate;
+window.submitEditJoinDate = submitEditJoinDate;
 
 // ============ BULK UPDATE TANGGAL MASUK KARYAWAN (SUPER ADMIN ONLY) ============
 // Membuka modal untuk perbaiki massal join_date karyawan yang keliru (mis. terisi
