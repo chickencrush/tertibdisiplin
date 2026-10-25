@@ -304,7 +304,11 @@ const CHAT_CHANNEL_RULES = {
   '#logistik': { divisions: ['Logistik', 'Driver', 'Produksi', 'Security', 'HRGA', 'Finance'] }
 };
 
-const isPayrollAdmin = (user = AppState.currentUser) => !!user && PAYROLL_DIVISIONS.includes(user.division);
+// v63: isPayrollAdmin strict — hanya SUPER ADMIN (role === 'SUPER ADMIN') yg
+// dapat akses payroll admin (lihat semua payslips, autopilot payroll, metrics).
+// Sebelumnya: PAYROLL_DIVISIONS = ['OM','PCD','HRD','Finance'] — Finance/HRGA/OM
+// masih bisa lihat daftar E-Payslip semua karyawan. Sekarang samakan dgn karyawan biasa.
+const isPayrollAdmin = (user = AppState.currentUser) => isSuperAdminUser(user);
 const canAccessView = (view, user = AppState.currentUser) => {
   if (!user) return false;
   const rule = VIEW_ACCESS[view];
@@ -3031,13 +3035,23 @@ const renderPayslipsTable = (slips) => {
   if (!tbody) return;
   if (slips) AppState.payslips = slips;   // simpan cache untuk re-render saat mode berubah
 
+  // v63: Defensive frontend filter — kalau bukan SUPER ADMIN, hanya tampilkan
+  // slip sendiri (employee_id === currentUser.id). Backend h_slipsList_ sudah
+  // filter utk non-PAYROLL_DIVISIONS, tapi Finance/HRGA/OM masih PAYROLL_DIVISIONS
+  // di backend, jadi kita filter lagi di sini sbg lapis keamanan tambahan.
+  const u = AppState.currentUser;
+  let allSlips = (slips || AppState.payslips || []);
+  if (u && !isSuperAdminUser(u)) {
+    allSlips = allSlips.filter(s => s.employee_id === u.id);
+  }
+
   // Filter global topbar: mode Management / Tim Operasional (berdasarkan divisi)
   // Catatan: data slip tidak punya outlet_id, jadi filter outlet topbar tidak diterapkan di sini
   const gf = getGlobalFilters();
-  const list = (slips || AppState.payslips || []).filter(s => matchGlobalMode_(s.type, s.division));
+  const list = allSlips.filter(s => matchGlobalMode_(s.type, s.division));
 
   if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada slip gaji untuk Mode ${activeModeLabel_()}.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada slip gaji untuk Anda pada Mode ${activeModeLabel_()}.</td></tr>`;
     return;
   }
 

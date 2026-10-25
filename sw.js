@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v62';  // initAuthSession re-fetch /api/auth/me supaya role/divisi selalu sync dgn Spreadsheet (fix: role SUPER ADMIN di sheet tidak langsung efek)
+const CACHE_NAME = 'tertib-disiplin-v63';  // isPayrollAdmin strict (only SUPER ADMIN) + filter renderPayslipsTable ke own utk non-super-admin — fix: HRGA/Finance/OM masih bisa lihat daftar E-Payslip semua karyawan
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
