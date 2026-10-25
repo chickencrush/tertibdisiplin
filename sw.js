@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v50';  // fix data cuti semua karyawan: error jelas + tipe dari divisi + tombol Muat Ulang
+const CACHE_NAME = 'tertib-disiplin-v51';  // fix angka cuti kacau: prorata bulanan + bulk-update join_date + format 1 desimal
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

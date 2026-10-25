@@ -1126,6 +1126,9 @@
               <button class="btn-secondary" id="btn-leaves-all-reload" onclick="window.loadAllLeaveBalances && window.loadAllLeaveBalances()" title="Muat ulang data cuti semua karyawan">
                 <i data-feather="refresh-cw" style="width:13px; height:13px;"></i> Muat Ulang
               </button>
+              <button class="btn-primary" id="btn-leaves-all-joindate" onclick="window.openBulkJoinDateModal && window.openBulkJoinDateModal()" title="Perbaiki massal Tanggal Masuk karyawan (hanya Super Admin)" style="background:var(--burgundy-primary);">
+                <i data-feather="calendar" style="width:13px; height:13px;"></i> Atur Tanggal Masuk
+              </button>
             </div>
           </div>
 
@@ -2051,6 +2054,42 @@
 
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
+
+<!-- Modal: Bulk Update Tanggal Masuk Karyawan (SUPER ADMIN only) -->
+<div class="modal-overlay" id="modal-bulk-join-date">
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>Atur Tanggal Masuk Karyawan</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-bulk-join-date')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; padding:12px 14px; margin-bottom:14px; font-size:12px; color:#92400e; line-height:1.5;">
+        <strong>Kenapa ini penting?</strong> Jatah cuti tahunan dihitung berdasarkan Tanggal Masuk. Karyawan yang Tanggal Masuk-nya tahun lalu atau lebih lama mendapat jatah <strong>12 hari</strong>/tahun. Karyawan baru tahun ini mendapat prorata bulanan (mis. masuk bulan Mei = 8 hari, bulan Okt = 3 hari). Jika Tanggal Masuk keliru (mis. terisi tanggal import data), jatah cuti akan terlihat kecil &mdash; gunakan tombol ini untuk memperbaiki massal.
+      </div>
+      <div class="form-group">
+        <label style="font-size:12px; font-weight:600; color:#374151;">Tanggal Masuk Baru <span style="color:#ef4444;">*</span></label>
+        <input type="date" class="form-control" id="input-bulk-join-date" style="margin-top:4px;">
+        <p style="font-size:11px; color:#64748b; margin-top:4px;">Format otomatis YYYY-MM-DD. Pilih tanggal masuk yang sebenarnya.</p>
+      </div>
+      <div class="form-group" style="margin-top:12px;">
+        <label style="font-size:12px; font-weight:600; color:#374151;">Terapkan ke</label>
+        <select class="select-filter" id="input-bulk-join-date-scope" style="margin-top:4px; width:100%;">
+          <option value="all">Semua Karyawan (Management &amp; Operasional)</option>
+          <option value="Management">Hanya Karyawan Management</option>
+          <option value="Operasional">Hanya Karyawan Operasional</option>
+        </select>
+        <p style="font-size:11px; color:#64748b; margin-top:4px;">Hanya karyawan dengan tipe sesuai pilihan yang akan diupdate Tanggal Masuk-nya.</p>
+      </div>
+      <div id="bulk-join-date-result" style="margin-top:12px; display:none;"></div>
+    </div>
+    <div class="modal-footer" style="justify-content:flex-end; gap:8px;">
+      <button type="button" class="btn-secondary" onclick="closeModal('modal-bulk-join-date')">Batal</button>
+      <button type="button" class="btn-primary" id="btn-bulk-join-date-submit" onclick="window.submitBulkJoinDate && window.submitBulkJoinDate()" style="background:var(--burgundy-primary);">
+        <i data-feather="save" style="width:13px; height:13px;"></i> Update Tanggal Masuk
+      </button>
+    </div>
+  </div>
+</div>
 
 <script src="./config.js"></script>
 <script src="./api-client.js"></script>

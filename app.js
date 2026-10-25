@@ -3506,6 +3506,14 @@ const renderAllLeaveBalances = (errorMsg) => {
   const all = AppState.allLeaveBalances || [];
   const items = all.filter((it) => f === 'all' || String(it.type || '').trim() === f);
 
+  // Format angka 1 desimal tanpa floating-point noise (mis. 2.3000000000000003 -> "2.3", 12 -> "12", 57.49999999999998 -> "57.5")
+  const fmt1 = (n) => {
+    const v = Math.round((Number(n) || 0) * 10) / 10;
+    return Number.isInteger(v) ? String(v) : v.toFixed(1);
+  };
+  // Penjumlahan aman (bulatkan tiap item dulu, lalu total)
+  const sum1 = (arr, key) => fmt1(arr.reduce((s, it) => s + (Math.round((Number(it[key]) || 0) * 10) / 10), 0));
+
   // Ringkasan total per filter
   const summaryEl = document.getElementById('leaves-all-summary');
   if (summaryEl) {
@@ -3519,10 +3527,10 @@ const renderAllLeaveBalances = (errorMsg) => {
         </div>`;
       summaryEl.innerHTML =
         chip('Karyawan', items.length, '#0f172a') +
-        chip('Total Hak', items.reduce((s, it) => s + (Number(it.entitlement) || 0), 0), 'var(--burgundy-primary)') +
-        chip('Terpakai', items.reduce((s, it) => s + (Number(it.used) || 0), 0), '#ef4444') +
-        chip('Pending', items.reduce((s, it) => s + (Number(it.pending) || 0), 0), '#f59e0b') +
-        chip('Total Sisa', items.reduce((s, it) => s + (Number(it.remaining) || 0), 0), '#10b981');
+        chip('Total Hak', sum1(items, 'entitlement'), 'var(--burgundy-primary)') +
+        chip('Terpakai', sum1(items, 'used'), '#ef4444') +
+        chip('Pending', sum1(items, 'pending'), '#f59e0b') +
+        chip('Total Sisa', sum1(items, 'remaining'), '#10b981');
     }
   }
 
@@ -3539,7 +3547,7 @@ const renderAllLeaveBalances = (errorMsg) => {
     return;
   }
   tbody.innerHTML = items.map((it) => {
-    const rem = Number(it.remaining) || 0;
+    const rem = Math.round((Number(it.remaining) || 0) * 10) / 10;
     const remColor = rem >= 6 ? '#10b981' : (rem >= 3 ? '#f59e0b' : '#ef4444');
     const isMg = it.type === 'Management';
     const typeBadge = `<span class="status-badge-pill" style="background:${isMg ? '#ede9fe' : '#e0f2fe'}; color:${isMg ? '#5b21b6' : '#075985'};">${escapeHtml(it.type) || '-'}</span>`;
@@ -3557,15 +3565,112 @@ const renderAllLeaveBalances = (errorMsg) => {
           <div style="font-size:13px; color:#0f172a;">${escapeHtml(it.role) || '-'}</div>
           <div style="font-size:11px; color:#64748b;">${escapeHtml(it.outlet_name) || '-'}</div>
         </td>
-        <td style="font-weight:700; color:#0f172a;">${it.entitlement || 0}</td>
-        <td style="font-weight:700; color:#ef4444;">${it.used || 0}</td>
-        <td style="font-weight:700; color:#f59e0b;">${it.pending || 0}</td>
-        <td style="font-weight:800; font-size:15px; color:${remColor};">${rem}</td>
+        <td style="font-weight:700; color:#0f172a;">${fmt1(it.entitlement)}</td>
+        <td style="font-weight:700; color:#ef4444;">${fmt1(it.used)}</td>
+        <td style="font-weight:700; color:#f59e0b;">${fmt1(it.pending)}</td>
+        <td style="font-weight:800; font-size:15px; color:${remColor};">${fmt1(rem)}</td>
       </tr>`;
   }).join('');
 };
 window.renderAllLeaveBalances = renderAllLeaveBalances;
 window.loadAllLeaveBalances = loadAllLeaveBalances;
+
+// ============ BULK UPDATE TANGGAL MASUK KARYAWAN (SUPER ADMIN ONLY) ============
+// Membuka modal untuk perbaiki massal join_date karyawan yang keliru (mis. terisi
+// tanggal import). Setelah update, jatah cuti tahunan langsung dihitung ulang.
+const openBulkJoinDateModal = () => {
+  if (!isFullAccess()) {
+    showToast('Hanya Super Admin (OM/PCD) yang dapat mengatur Tanggal Masuk karyawan.', 'error');
+    return;
+  }
+  const input = document.getElementById('input-bulk-join-date');
+  const scope = document.getElementById('input-bulk-join-date-scope');
+  const result = document.getElementById('bulk-join-date-result');
+  if (input) {
+    // Default: hari ini (YYYY-MM-DD)
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    input.value = `${yyyy}-${mm}-${dd}`;
+  }
+  if (scope) scope.value = 'all';
+  if (result) { result.style.display = 'none'; result.innerHTML = ''; }
+  openModal('modal-bulk-join-date');
+};
+
+const submitBulkJoinDate = async () => {
+  if (!isFullAccess()) {
+    showToast('Hanya Super Admin (OM/PCD) yang dapat mengatur Tanggal Masuk karyawan.', 'error');
+    return;
+  }
+  const input = document.getElementById('input-bulk-join-date');
+  const scope = document.getElementById('input-bulk-join-date-scope');
+  const result = document.getElementById('bulk-join-date-result');
+  const btn = document.getElementById('btn-bulk-join-date-submit');
+  const jd = input ? String(input.value || '').trim() : '';
+  if (!jd) {
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Tanggal Masuk wajib diisi.</div>';
+    }
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(jd)) {
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Format tanggal harus YYYY-MM-DD.</div>';
+    }
+    return;
+  }
+  const scopeVal = scope ? scope.value : 'all';
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.textContent = 'Memproses...'; }
+  try {
+    const res = await fetch('/api/employees/bulk-join-date', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ join_date: jd, type: scopeVal })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const detail = (data && data.detail) ? String(data.detail) : ('HTTP ' + res.status);
+      if (result) {
+        result.style.display = '';
+        result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Gagal: ' + escapeHtml(detail) + '</div>';
+      } else {
+        showToast('Gagal: ' + detail, 'error');
+      }
+      return;
+    }
+    const updated = (data && typeof data.updated === 'number') ? data.updated : 0;
+    const failed = (data && Array.isArray(data.failed)) ? data.failed : [];
+    if (result) {
+      result.style.display = '';
+      const failedNote = failed.length
+        ? '<div style="margin-top:8px; font-size:11px; color:#991b1b;">' + failed.length + ' karyawan gagal diupdate.</div>'
+        : '';
+      result.innerHTML = '<div style="background:#dcfce7; border:1px solid #10b981; color:#065f46; padding:10px 12px; border-radius:8px; font-size:12px;"><b>Berhasil!</b> Tanggal Masuk <b>' + escapeHtml(jd) + '</b> diterapkan ke <b>' + updated + '</b> karyawan (scope: ' + escapeHtml(scopeVal) + '). Jatah cuti akan dihitung ulang.' + failedNote + '</div>';
+    }
+    showToast('Tanggal Masuk ' + updated + ' karyawan diupdate. Memuat ulang data cuti...', 'success');
+    // Tutup modal setelah 1.2s lalu reload data cuti
+    setTimeout(() => {
+      closeModal('modal-bulk-join-date');
+      if (isFullAccess()) window.loadAllLeaveBalances && window.loadAllLeaveBalances();
+    }, 1200);
+  } catch (err) {
+    console.error('bulkUpdateJoinDate error:', err);
+    if (result) {
+      result.style.display = '';
+      result.innerHTML = '<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:10px 12px; border-radius:8px; font-size:12px;">Gagal menghubungi server. Periksa koneksi internet, lalu coba lagi.</div>';
+    } else {
+      showToast('Gagal menghubungi server.', 'error');
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Update Tanggal Masuk'; if (window.feather) feather.replace(); }
+  }
+};
+window.openBulkJoinDateModal = openBulkJoinDateModal;
+window.submitBulkJoinDate = submitBulkJoinDate;
 
 const renderLeaveRequestsList = (requests) => {
   const tbody = document.getElementById('leaves-tbody');
