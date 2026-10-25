@@ -474,6 +474,8 @@ const handleAuthLogin = async (e) => {
       document.getElementById('auth-gate-screen').classList.add('hidden');
       showToast(data.message, 'success');
       await loadAllAppData();
+      // Cek versi backend — tampilkan banner peringatan jika outdated
+      window.checkBackendVersion && window.checkBackendVersion();
     } else {
       const msg = data.detail || 'Login gagal. Periksa kembali NIP/Email dan password Anda.';
       showLoginError(msg);
@@ -540,6 +542,8 @@ const handleAuthRegister = async (e) => {
       setCurrentUser(data.user);
       document.getElementById('auth-gate-screen').classList.add('hidden');
       showToast(data.message || `Pendaftaran berhasil! Selamat datang, ${name}.`, 'success');
+      // Cek versi backend — tampilkan banner peringatan jika outdated
+      window.checkBackendVersion && window.checkBackendVersion();
 
       if (data.user.type === 'Management') {
         AppState.currentMode = 'Management';
@@ -685,6 +689,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (isLoggedIn) {
     // Load data critical dulu, jangan tunggu chart init
     await loadAllAppData();
+    // Cek versi backend — tampilkan banner peringatan jika outdated
+    window.checkBackendVersion && window.checkBackendVersion();
   }
 
   // Initialize mockup charts (di background, tidak block UI)
@@ -931,6 +937,66 @@ const setCurrentUser = (user) => {
   if (sRole) sRole.textContent = `${user.role} (${user.division})`;
   if (sAv) sAv.src = user.avatar_url || LOGO_URI;
   localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(user));
+};
+
+// ============ BACKEND VERSION CHECK (warn user jika backend outdated) ============
+// Memanggil endpoint root /exec (doGet) utk dapat version. Kalau versi < v45-leave-fix,
+// tampilkan banner peringatan di top supaya user tahu harus deploy ulang Code.gs.
+AppState.backendVersion = null;
+AppState.backendVersionChecked = false;
+
+const MIN_BACKEND_VERSION = 'v45-leave-fix'; // versi minimum yang support /api/admin/*
+
+const compareVersion_ = (a, b) => {
+  // Simplisitan: split by '-', compare first segment as version (v44 < v45)
+  // Return true jika a >= b
+  if (!a || !b) return false;
+  const am = String(a).match(/v(\d+)/i);
+  const bm = String(b).match(/v(\d+)/i);
+  if (!am || !bm) return false;
+  return Number(am[1]) >= Number(bm[1]);
+};
+
+window.checkBackendVersion = async () => {
+  if (AppState.backendVersionChecked) return AppState.backendVersion;
+  AppState.backendVersionChecked = true;
+  try {
+    // Fetch root doGet — response: { ok:true, app:..., version:..., time:... }
+    // Pakai URL relatif → api-client akan resolve ke API_URL/exec
+    const res = await fetch('/');
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    const ver = (data && data.body && data.body.version) || data.version || null;
+    AppState.backendVersion = ver;
+    if (ver && !compareVersion_(ver, MIN_BACKEND_VERSION)) {
+      // Backend outdated — tampilkan banner peringatan
+      console.warn('Backend outdated:', ver, '< minimum', MIN_BACKEND_VERSION);
+      showBackendOutdatedBanner(ver);
+    }
+    return ver;
+  } catch (err) {
+    console.warn('checkBackendVersion gagal:', err);
+    return null;
+  }
+};
+
+const showBackendOutdatedBanner = (currentVer) => {
+  // Ciptakan banner sekali saja
+  if (document.getElementById('backend-outdated-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'backend-outdated-banner';
+  banner.style.cssText = 'position:fixed; top:0; left:0; right:0; z-index:9999; background:linear-gradient(90deg,#dc2626,#991b1b); color:#fff; padding:10px 16px; font-size:12px; display:flex; align-items:center; gap:10px; box-shadow:0 2px 8px rgba(0,0,0,0.2); flex-wrap:wrap;';
+  banner.innerHTML = `
+    <i data-feather="alert-triangle" style="width:16px; height:16px; flex-shrink:0;"></i>
+    <strong>⚠️ Backend Apps Script perlu diperbarui.</strong>
+    <span style="opacity:0.95;">Versi terpasang: <code style="background:rgba(255,255,255,0.2); padding:1px 6px; border-radius:4px;">${escapeHtml(currentVer || '?')}</code>. Minimum: <code style="background:rgba(255,255,255,0.2); padding:1px 6px; border-radius:4px;">${MIN_BACKEND_VERSION}</code>.</span>
+    <span style="opacity:0.95;">Beberapa fitur (Panel SUPER ADMIN, Penyesuaian Cuti) tidak akan berfungsi sampai Anda deploy ulang Code.gs.</span>
+    <button onclick="this.parentElement.style.display='none'" style="margin-left:auto; background:rgba(255,255,255,0.2); border:none; color:#fff; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:700;">Tutup</button>
+  `;
+  document.body.appendChild(banner);
+  if (window.feather) feather.replace();
+  // Auto-hide setelah 30 detik (user bisa tutup manual)
+  setTimeout(() => { if (banner && banner.parentElement) banner.style.display = 'none'; }, 30000);
 };
 
 // Load Outlets from API
@@ -5104,7 +5170,34 @@ window.loadSaOverview = async () => {
     const res = await fetch('/api/admin/overview');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      wrap.innerHTML = `<div class="modern-card" style="padding:18px; text-align:center; color:#ef4444; grid-column:1/-1;">${escapeHtml(data.detail || 'Gagal memuat ringkasan sistem.')}</div>`;
+      // 404 = backend belum di-deploy ulang. Tampilkan panduan jelas (bukan pesan redup).
+      if (res.status === 404) {
+        wrap.innerHTML = `<div class="modern-card" style="padding:20px; text-align:left; color:#991b1b; grid-column:1/-1; background:#fef2f2; border:1px solid #fecaca;">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+            <i data-feather="alert-triangle" style="width:20px; height:20px; color:#dc2626;"></i>
+            <strong style="font-size:14px;">Backend Apps Script belum diperbarui (HTTP 404)</strong>
+          </div>
+          <p style="font-size:12px; color:#7f1d1d; margin:0 0 10px 0; line-height:1.5;">
+            Endpoint <code style="background:#fee2e2; padding:1px 6px; border-radius:4px;">/api/admin/overview</code> tidak ditemukan di server.
+            Backend Code.gs versi lama masih dipakai di Apps Script. Anda WAJIB deploy ulang Code.gs supaya fitur Panel SUPER ADMIN berfungsi.
+          </p>
+          <ol style="font-size:12px; color:#7f1d1d; margin:8px 0 12px 18px; line-height:1.7;">
+            <li>Buka <a href="https://script.google.com" target="_blank" style="color:#dc2626; font-weight:700;">script.google.com</a> &rarr; pilih project TERTIB DISIPLIN</li>
+            <li>Buka file <code style="background:#fee2e2; padding:1px 6px; border-radius:4px;">Code.gs</code> di sidebar kiri</li>
+            <li>Hapus seluruh isi, lalu paste isi <code style="background:#fee2e2; padding:1px 6px; border-radius:4px;">Code.gs</code> baru dari paket update</li>
+            <li>Klik <strong>Deploy &rarr; Manage deployments</strong></li>
+            <li>Pilih deployment aktif &rarr; klik <strong>Edit</strong> (ikon pensil)</li>
+            <li>Set <strong>"Version"</strong> ke <strong>New version</strong> &rarr; klik <strong>Deploy</strong></li>
+            <li>Tunggu 30 detik, lalu refresh PWA. Cek versi harus <code style="background:#fee2e2; padding:1px 6px; border-radius:4px;">v45-leave-fix</code> atau lebih baru.</li>
+          </ol>
+          <p style="font-size:11px; color:#7f1d1d; margin:8px 0 0 0; padding-top:8px; border-top:1px solid #fecaca;">
+            Cek versi backend: buka link <code style="background:#fee2e2; padding:1px 6px; border-radius:4px;">/exec</code> di browser (URL Apps Script Anda). Harus muncul <code>"version":"v45-leave-fix"</code> atau lebih baru.
+          </p>
+        </div>`;
+        if (window.feather) feather.replace();
+        return;
+      }
+      wrap.innerHTML = `<div class="modern-card" style="padding:18px; text-align:center; color:#ef4444; grid-column:1/-1;">${escapeHtml(data.detail || ('Gagal memuat ringkasan sistem (HTTP ' + res.status + ').'))}</div>`;
       return;
     }
     const stats = [
@@ -5170,6 +5263,25 @@ window.loadSaUsers = async () => {
     const res = await fetch('/api/admin/users');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (res.status === 404) {
+        // Backend belum di-deploy ulang — tampilkan panduan deploy di tabel
+        const tbody = document.getElementById('sa-users-tbody');
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="8" style="padding:24px; text-align:left; background:#fef2f2; color:#991b1b;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+              <i data-feather="alert-triangle" style="width:18px; height:18px; color:#dc2626;"></i>
+              <strong>Backend Apps Script belum diperbarui (HTTP 404)</strong>
+            </div>
+            <p style="font-size:12px; margin:0 0 10px 0; line-height:1.5;">
+              Endpoint <code style="background:#fee2e2; padding:1px 6px; border-radius:4px;">/api/admin/users</code> tidak ditemukan.
+              Deploy ulang Code.gs (versi v45-leave-fix atau lebih baru) supaya Panel SUPER ADMIN berfungsi.
+              Lihat panduan lengkap di tab <strong>Ringkasan</strong>.
+            </p>
+          </td></tr>`;
+          if (window.feather) feather.replace();
+        }
+        return;
+      }
       showToast(data.detail || 'Gagal memuat daftar pengguna.', 'error');
       return;
     }
@@ -5590,6 +5702,10 @@ window.loadSaSettings = async () => {
     const res = await fetch('/api/admin/settings');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (res.status === 404) {
+        showToast('Backend belum di-deploy ulang (HTTP 404). Deploy Code.gs v45-leave-fix atau lebih baru. Lihat panduan di tab Ringkasan.', 'error');
+        return;
+      }
       showToast(data.detail || 'Gagal memuat pengaturan sistem.', 'error');
       return;
     }
