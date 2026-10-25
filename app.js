@@ -151,10 +151,10 @@ const staggerViewCards = (view) => {
 // Hak akses panel per divisi
 // ==========================================
 // Super Admin (full akses semua panel): OM + PCD
-const FULL_ACCESS_DIVISIONS = ['PCD'];
-const PAYROLL_DIVISIONS = ['PCD'];
+const FULL_ACCESS_DIVISIONS = ['OM', 'PCD'];
+const PAYROLL_DIVISIONS = ['OM', 'PCD', 'HRD', 'Finance'];
 // Divisi yang bisa approve/reject pengajuan cuti
-const LEAVE_APPROVER_DIVISIONS = ['PCD'];
+const LEAVE_APPROVER_DIVISIONS = ['OM', 'PCD', 'HRD', 'BM', 'HRGA'];
 
 // ==========================================
 // ROLE SUPER ADMIN
@@ -292,7 +292,8 @@ const VIEW_ACCESS = {
   // === PANEL ADMIN: HANYA SUPER ADMIN (role === 'SUPER ADMIN') ===
   // 'superadmin' = sentinel value, dicek oleh canAccessView via isSuperAdminUser
   'employees': 'superadmin',     // Database Karyawan
-  'data-center': 'superadmin',   // Input Data Center
+  // v64: Input Data Center — SUPER ADMIN (any division) ATAU division PCD (any role)
+  'data-center': ['PCD'],
   'outlets': 'superadmin',       // Titik Lokasi Outlet
   'superadmin': 'superadmin'     // Panel Super Admin
 };
@@ -311,11 +312,13 @@ const CHAT_CHANNEL_RULES = {
 const isPayrollAdmin = (user = AppState.currentUser) => isSuperAdminUser(user);
 const canAccessView = (view, user = AppState.currentUser) => {
   if (!user) return false;
+  // SUPER ADMIN selalu dapat akses semua panel (regardless rule)
+  if (isSuperAdminUser(user)) return true;
   const rule = VIEW_ACCESS[view];
   if (!rule) return false;
   if (rule === 'all') return true;             // 9 panel umum
-  if (rule === 'superadmin') return isSuperAdminUser(user);  // panel admin: strict role check
-  // Legacy: array of divisions (untuk backward compat jika ada rule lama)
+  if (rule === 'superadmin') return false;     // panel admin-only (Super Admin sudah dicek di atas)
+  // Array division whitelist: cek apakah division user ada di array
   return Array.isArray(rule) && rule.includes(user.division);
 };
 const canAccessChannel = (channel, user = AppState.currentUser) => {
