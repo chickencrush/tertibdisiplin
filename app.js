@@ -151,10 +151,10 @@ const staggerViewCards = (view) => {
 // Hak akses panel per divisi
 // ==========================================
 // Super Admin (full akses semua panel): OM + PCD
-const FULL_ACCESS_DIVISIONS = ['OM', 'PCD'];
-const PAYROLL_DIVISIONS = ['OM', 'PCD', 'HRD', 'Finance'];
+const FULL_ACCESS_DIVISIONS = ['PCD'];
+const PAYROLL_DIVISIONS = ['PCD'];
 // Divisi yang bisa approve/reject pengajuan cuti
-const LEAVE_APPROVER_DIVISIONS = ['OM', 'PCD', 'HRD', 'BM', 'HRGA'];
+const LEAVE_APPROVER_DIVISIONS = ['PCD'];
 
 // ==========================================
 // ROLE SUPER ADMIN
