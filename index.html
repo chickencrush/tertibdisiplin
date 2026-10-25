@@ -1701,8 +1701,21 @@
 
           <div class="form-group">
             <label class="form-label required" style="color:#991b1b;">Upload Bukti Foto / Dokumen Fisik</label>
-            <input type="file" class="form-control" id="rep-form-file" accept="image/*,application/pdf" onchange="previewReportFile(this)">
+            <!-- Dua CTA: Ambil Foto (langsung kamera di iPhone) & Pilih File (galeri/PDF) -->
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+              <button type="button" class="btn-primary" style="flex:1 1 160px; justify-content:center; background:#0e7490;" onclick="document.getElementById('rep-form-file-camera').click()">
+                <i data-feather="camera"></i> Ambil Foto
+              </button>
+              <button type="button" class="btn-secondary" style="flex:1 1 160px; justify-content:center;" onclick="document.getElementById('rep-form-file').click()">
+                <i data-feather="image"></i> Pilih File
+              </button>
+            </div>
+            <!-- Camera input: capture=environment utk langsung buka kamera belakang iPhone -->
+            <input type="file" id="rep-form-file-camera" accept="image/*" capture="environment" style="display:none;" onchange="previewReportFile(this)">
+            <!-- File input: galeri / PDF -->
+            <input type="file" class="form-control" id="rep-form-file" accept="image/*,application/pdf" style="display:none;" onchange="previewReportFile(this)">
             <input type="hidden" id="rep-form-proof-url">
+            <p style="font-size:11px; color:#64748b; margin-top:6px;">Format: JPG/PNG/PDF. Maks 5 MB.</p>
           </div>
 
           <div class="form-group">
@@ -1722,6 +1735,58 @@
         <button type="submit" class="btn-primary" id="btn-save-report">Simpan Laporan</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- 1b. Modal: Quick Proof untuk Hold/Selesai dari Kanban (ambil foto / pilih file) -->
+<div class="modal-overlay" id="modal-quick-proof">
+  <div class="modal-card" style="max-width:520px;">
+    <div class="modal-header">
+      <h3 id="quick-proof-title">Unggah Bukti</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-quick-proof')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <!-- Info laporan -->
+      <div id="quick-proof-info" style="background:#f8fafc; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#475569;"></div>
+
+      <!-- Hold reason (only if Hold) -->
+      <div class="form-group" id="quick-proof-hold-group" style="display:none;">
+        <label class="form-label required" style="color:#991b1b;">Alasan Kendala / Hold Reason</label>
+        <input type="text" class="form-control" id="quick-proof-hold-reason" placeholder="Contoh: Menunggu sparepart distributor / Kurir terhambat hujan..." style="width:100%; max-width:100%; box-sizing:border-box;">
+      </div>
+
+      <!-- File picker — 2 CTA: Ambil Foto + Pilih File -->
+      <div class="form-group">
+        <label class="form-label required" id="quick-proof-file-label" style="color:#991b1b;">Bukti Foto / Dokumen</label>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+          <button type="button" class="btn-primary" style="flex:1 1 160px; justify-content:center; background:#0e7490;" onclick="document.getElementById('quick-proof-file-camera').click()">
+            <i data-feather="camera"></i> Ambil Foto
+          </button>
+          <button type="button" class="btn-secondary" style="flex:1 1 160px; justify-content:center;" onclick="document.getElementById('quick-proof-file').click()">
+            <i data-feather="image"></i> Pilih File
+          </button>
+        </div>
+        <input type="file" id="quick-proof-file-camera" accept="image/*" capture="environment" style="display:none;" onchange="previewQuickProofFile(this)">
+        <input type="file" id="quick-proof-file" accept="image/*,application/pdf" style="display:none;" onchange="previewQuickProofFile(this)">
+        <input type="hidden" id="quick-proof-url">
+        <p style="font-size:11px; color:#64748b; margin-top:6px;">Format: JPG/PNG/PDF. Maks 5 MB.</p>
+      </div>
+
+      <!-- Catatan -->
+      <div class="form-group">
+        <label class="form-label" style="color:#475569;">Catatan Bukti (opsional)</label>
+        <input type="text" class="form-control" id="quick-proof-notes" placeholder="Contoh: Foto sparepart sebelum dipasang / Nota service" style="width:100%; max-width:100%; box-sizing:border-box;">
+      </div>
+
+      <!-- Preview -->
+      <div id="quick-proof-preview-container" style="display:none; margin-top:10px; text-align:center;">
+        <img id="quick-proof-preview-img" src="" alt="Bukti" style="max-height:180px; border-radius:10px; box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+      </div>
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap;">
+      <button type="button" class="btn-secondary" style="flex:1 1 100%; width:100%;" onclick="closeModal('modal-quick-proof')">Batal</button>
+      <button type="button" class="btn-primary" id="btn-quick-proof-submit" style="flex:1 1 100%; width:100%; justify-content:center;" onclick="submitQuickProof()">Kirim &amp; Ubah Status</button>
+    </div>
   </div>
 </div>
 

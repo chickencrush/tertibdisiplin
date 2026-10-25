@@ -1833,6 +1833,9 @@ const openCreateReportModal = () => {
   document.getElementById('rep-form-status').value = 'Proses';
   document.getElementById('rep-form-hold-reason').value = '';
   document.getElementById('rep-form-proof-url').value = '';
+  // Reset juga input file (kamera + reguler) supaya tidak tersisa file lama
+  const f1 = document.getElementById('rep-form-file'); if (f1) f1.value = '';
+  const f2 = document.getElementById('rep-form-file-camera'); if (f2) f2.value = '';
   document.getElementById('proof-preview-container').style.display = 'none';
   handleReportStatusChange('Proses');
   openModal('modal-report');
@@ -1860,6 +1863,12 @@ const handleReportStatusChange = (status) => {
 const previewReportFile = async (input) => {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
+  // Validasi size (max 5MB) — konsisten dgn quick-proof modal
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Ukuran file melebihi 5 MB. Pilih file lebih kecil.', 'error');
+    input.value = '';
+    return;
+  }
   const formData = new FormData();
   formData.append('file', file);
 
@@ -1870,11 +1879,18 @@ const previewReportFile = async (input) => {
       body: formData
     });
     const data = await res.json();
-    if (data.status === 'success') {
-      document.getElementById('rep-form-proof-url').value = data.url;
-      const previewImg = document.getElementById('proof-preview-img');
-      previewImg.src = data.url;
-      document.getElementById('proof-preview-container').style.display = 'block';
+    if (res.ok && (data.status === 'success' || data.url)) {
+      const url = data.url;
+      document.getElementById('rep-form-proof-url').value = url;
+      // Preview hanya jika image (bukan PDF)
+      if (file.type.startsWith('image/')) {
+        const previewImg = document.getElementById('proof-preview-img');
+        previewImg.src = url;
+        document.getElementById('proof-preview-container').style.display = 'block';
+      } else {
+        document.getElementById('proof-preview-container').style.display = 'none';
+        showToast('PDF terunggah. Preview tidak tersedia utk PDF.', 'info');
+      }
       showToast('Bukti berhasil diunggah!', 'success');
     } else {
       showToast(data.detail || 'Gagal mengunggah file bukti', 'error');
@@ -1883,6 +1899,7 @@ const previewReportFile = async (input) => {
     showToast('Gagal mengunggah file bukti', 'error');
   }
 };
+window.previewReportFile = previewReportFile;
 
 // Submit Daily Report with MANDATORY proof check
 const submitDailyReportForm = async (e) => {
@@ -1937,26 +1954,145 @@ const submitDailyReportForm = async (e) => {
   }
 };
 
-const promptHoldWithProof = (reportId) => {
-  const reason = prompt('Masukkan alasan penundaan/kendala (Hold Reason):');
-  if (!reason) return;
-  // Use pre-seeded image or trigger upload modal
-  const proofUrl = prompt('Masukkan link bukti foto kendala / tekan OK untuk menggunakan simulasi bukti audit:', 'https://images.unsplash.com/photo-1588854337236-6889d631faa8?w=600&auto=format&fit=crop&q=80');
-  if (!proofUrl) {
-    alert('Status Hold wajib menyertakan bukti foto!');
+// ================= QUICK PROOF MODAL (Hold/Selesai dari Kanban) =================
+// Sebelumnya pakai prompt() — UX buruk di iPhone. Sekarang pakai modal dgn:
+// - Ambil Foto (capture=environment, langsung kamera iPhone)
+// - Pilih File (galeri/PDF)
+// - Hold reason wajib utk Hold
+// - Submit -> PUT /api/daily-reports/:id/status
+AppState.__quickProof = { reportId: null, status: null };
+
+const openQuickProofModal = (reportId, status) => {
+  const r = (AppState.dailyReports || []).find(x => x.id === reportId);
+  if (!r) { showToast('Laporan tidak ditemukan.', 'error'); return; }
+  AppState.__quickProof = { reportId: reportId, status: status };
+
+  // Reset form
+  document.getElementById('quick-proof-url').value = '';
+  document.getElementById('quick-proof-hold-reason').value = '';
+  document.getElementById('quick-proof-notes').value = '';
+  document.getElementById('quick-proof-file').value = '';
+  document.getElementById('quick-proof-file-camera').value = '';
+  document.getElementById('quick-proof-preview-container').style.display = 'none';
+  document.getElementById('quick-proof-preview-img').src = '';
+
+  // Set judul & info
+  document.getElementById('quick-proof-title').textContent =
+    status === 'Hold' ? 'Tandai Hold (Wajib Bukti)' : 'Tandai Selesai (Wajib Bukti)';
+  document.getElementById('quick-proof-info').innerHTML =
+    '<strong>Laporan:</strong> ' + (r.title || '(tanpa judul)') +
+    '<br><strong>No:</strong> ' + (r.report_number || r.id) +
+    '<br><strong>Pelapor:</strong> ' + (r.reporter_name || '-') +
+    '<br><strong>Status saat ini:</strong> ' + (r.status || '-');
+
+  // Tampilkan/sembunyikan group hold reason
+  const holdGroup = document.getElementById('quick-proof-hold-group');
+  const fileLabel = document.getElementById('quick-proof-file-label');
+  if (status === 'Hold') {
+    holdGroup.style.display = 'block';
+    fileLabel.textContent = 'Bukti Foto Kendala / Dokumen Penundaan';
+  } else {
+    holdGroup.style.display = 'none';
+    fileLabel.textContent = 'Bukti Foto Hasil Pekerjaan';
+  }
+
+  // Tombol submit warna mengikuti status
+  const submitBtn = document.getElementById('btn-quick-proof-submit');
+  if (status === 'Hold') {
+    submitBtn.style.background = '#b45309';
+    submitBtn.textContent = 'Kirim & Tandai Hold';
+  } else {
+    submitBtn.style.background = '#10b981';
+    submitBtn.textContent = 'Kirim & Tandai Selesai';
+  }
+
+  openModal('modal-quick-proof');
+  if (window.feather) setTimeout(() => feather.replace(), 50);
+};
+window.openQuickProofModal = openQuickProofModal;
+
+const previewQuickProofFile = async (input) => {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  // Validasi size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Ukuran file melebihi 5 MB. Pilih file lebih kecil.', 'error');
+    input.value = '';
     return;
   }
-  updateReportStatusDirect(reportId, 'Hold', proofUrl, 'Menunggu penanganan teknisi/bahan baku', reason);
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    showToast('Mengunggah bukti...', 'info');
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (res.ok && (data.status === 'success' || data.url)) {
+      const url = data.url;
+      document.getElementById('quick-proof-url').value = url;
+      // Preview hanya jika image (bukan PDF)
+      if (file.type.startsWith('image/')) {
+        const previewImg = document.getElementById('quick-proof-preview-img');
+        previewImg.src = url;
+        document.getElementById('quick-proof-preview-container').style.display = 'block';
+      } else {
+        document.getElementById('quick-proof-preview-container').style.display = 'none';
+        showToast('PDF terunggah. Preview tidak tersedia utk PDF.', 'info');
+      }
+      showToast('Bukti berhasil diunggah!', 'success');
+    } else {
+      showToast(data.detail || 'Gagal mengunggah bukti', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal mengunggah bukti: koneksi terputus', 'error');
+  }
 };
+window.previewQuickProofFile = previewQuickProofFile;
+
+const submitQuickProof = async () => {
+  const { reportId, status } = AppState.__quickProof;
+  if (!reportId || !status) { showToast('Sesi bukti tidak valid. Tutup & coba lagi.', 'error'); return; }
+
+  const proofUrl = document.getElementById('quick-proof-url').value;
+  const holdReason = document.getElementById('quick-proof-hold-reason').value.trim();
+  const notes = document.getElementById('quick-proof-notes').value.trim();
+
+  if (!proofUrl) {
+    showToast('Bukti wajib diunggah. Ambil foto atau pilih file dulu.', 'warning');
+    return;
+  }
+  if (status === 'Hold' && !holdReason) {
+    showToast('Status Hold wajib mencantumkan alasan kendala.', 'warning');
+    return;
+  }
+
+  const submitBtn = document.getElementById('btn-quick-proof-submit');
+  const origText = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Mengirim...';
+
+  try {
+    await updateReportStatusDirect(reportId, status, proofUrl, notes || null, status === 'Hold' ? holdReason : null);
+    closeModal('modal-quick-proof');
+  } catch (err) {
+    showToast('Gagal mengubah status: ' + (err.message || 'kesalahan server'), 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = origText;
+  }
+};
+window.submitQuickProof = submitQuickProof;
+
+// ============ Tombol quick-action Hold/Selesai di Kanban card ============
+// Sebelumnya pakai prompt() — sekarang buka modal quick-proof dgn file picker.
+const promptHoldWithProof = (reportId) => {
+  openQuickProofModal(reportId, 'Hold');
+};
+window.promptHoldWithProof = promptHoldWithProof;
 
 const promptSelesaiWithProof = (reportId) => {
-  const proofUrl = prompt('Wajib melampirkan bukti foto penyelesaian. Masukkan URL foto / tekan OK untuk simulasi bukti pekerjaan selesai:', 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&auto=format&fit=crop&q=80');
-  if (!proofUrl) {
-    alert('Status Selesai wajib menyertakan bukti foto hasil pekerjaan!');
-    return;
-  }
-  updateReportStatusDirect(reportId, 'Selesai', proofUrl, 'Pekerjaan tuntas dan divalidasi', null);
+  openQuickProofModal(reportId, 'Selesai');
 };
+window.promptSelesaiWithProof = promptSelesaiWithProof;
 
 const quickUpdateReportStatus = (reportId, newStatus) => {
   updateReportStatusDirect(reportId, newStatus, null, null, null);
