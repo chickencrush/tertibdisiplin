@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v61';  // Hapus App Lock + Session Timeout + Hardening (v59 rollback) — RBAC strict v60 tetap aktif
+const CACHE_NAME = 'tertib-disiplin-v62';  // initAuthSession re-fetch /api/auth/me supaya role/divisi selalu sync dgn Spreadsheet (fix: role SUPER ADMIN di sheet tidak langsung efek)
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

@@ -453,6 +453,27 @@ const initAuthSession = () => {
       AppState.currentUser = user;
       setCurrentUser(user);
       if (authScreen) authScreen.classList.add('hidden');
+      // v62: Re-fetch user fresh dari backend (/api/auth/me) supaya role/divisi
+      // selalu sync dgn Spreadsheet. Kalau admin ubah role di sheet (misal jadi
+      // 'SUPER ADMIN'), perubahan langsung efek setelah reload tanpa perlu logout.
+      // Re-fetch dilakukan async (tidak block UI), dan hanya update kalau berhasil.
+      if (user && user.id) {
+        fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(freshUser => {
+          if (freshUser && freshUser.id) {
+            // Hapus field sensitif yg tidak dikembalikan oleh auth_
+            AppState.currentUser = freshUser;
+            try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(freshUser)); } catch (e) { /* abaikan */ }
+            // Re-apply access control dgn data fresh
+            if (typeof applyAccessControl === 'function') applyAccessControl();
+            // Refresh nama user di topbar
+            const nameEl = document.getElementById('current-user-name');
+            if (nameEl) nameEl.textContent = freshUser.name;
+          }
+        }).catch(err => {
+          // Gagal re-fetch (offline / backend error) — abaikan, lanjut dgn cached user
+          console.warn('Re-fetch /api/auth/me gagal:', err);
+        });
+      }
       return true;
     } catch (e) {
       localStorage.removeItem('tertib_disiplin_auth_user');
