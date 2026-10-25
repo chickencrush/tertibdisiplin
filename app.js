@@ -183,21 +183,90 @@ const SHIFT_OPTIONS_OPERASIONAL = [
   { value: 'Shift Malam', label: 'Shift Malam (00:00 - 08:00)' }
 ];
 
+// === Shift khusus outlet SCH ===
+// Definisi jam sesuai permintaan admin SCH:
+//   - Reguler A (09:00-17:00) utk Senin/Rabu/Kamis/Sabtu/Minggu
+//   - Reguler B (08:00-16:00) utk Selasa/Jumat
+//   - Middle (13:00-21:00) utk semua hari
+//   - 2 Tetap (14:30-22:30) utk semua hari
+// Hanya muncul di dropdown karyawan yg outlet code-nya 'SCH'.
+const SHIFT_OPTIONS_SCH = [
+  { value: 'Shift SCH Reguler A', label: 'SCH Reguler A (09:00 - 17:00) — Senin/Rabu/Kamis/Sabtu/Minggu' },
+  { value: 'Shift SCH Reguler B', label: 'SCH Reguler B (08:00 - 16:00) — Selasa/Jumat' },
+  { value: 'Shift SCH Middle',    label: 'SCH Middle (13:00 - 21:00)' },
+  { value: 'Shift SCH 2 Tetap',   label: 'SCH 2 Tetap (14:30 - 22:30)' }
+];
+
+// Hari kerja utk auto-pick SCH Reguler (1=Senin ... 0=Minggu, format getDay() JS).
+// Reguler A: Senin(1), Rabu(3), Kamis(4), Sabtu(6), Minggu(0)
+// Reguler B: Selasa(2), Jumat(5)
+const SCH_REGULER_A_DAYS = [1, 3, 4, 6, 0];
+const SCH_REGULER_B_DAYS = [2, 5];
+
+// Deteksi apakah akun yg login berada di outlet SCH.
+// Match berdasarkan outlet code (paling akurat) atau nama outlet (fallback).
+const isSchOutletUser_ = () => {
+  const u = AppState.currentUser;
+  if (!u) return false;
+  const outlets = AppState.outlets || [];
+  const o = outlets.find(x => x.id === u.outlet_id);
+  if (o && o.code) {
+    const c = String(o.code).toUpperCase().trim();
+    if (c === 'SCH' || c.indexOf('SCH') === 0) return true; // 'SCH', 'SCH-01', dst
+  }
+  if (o && o.name) {
+    // Fallback: nama outlet diawali 'SCH' atau mengandung token 'SCH' (word boundary)
+    const n = String(o.name).toUpperCase().trim();
+    if (n.indexOf('SCH') === 0) return true;
+    if (/(^|\s|_|-|\.)(SCH)(\s|$|_|-|\.)/.test(n)) return true;
+  }
+  // Fallback terakhir: cek outlet_name langsung dari user (tanpa lookup)
+  if (u.outlet_name) {
+    const un = String(u.outlet_name).toUpperCase().trim();
+    if (un.indexOf('SCH') === 0) return true;
+    if (/(^|\s|_|-|\.)(SCH)(\s|$|_|-|\.)/.test(un)) return true;
+  }
+  return false;
+};
+
+// Pilih default shift SCH utk hari ini:
+// - Senin/Rabu/Kamis/Sabtu/Minggu → Reguler A
+// - Selasa/Jumat → Reguler B
+const pickDefaultSchShift_ = () => {
+  const today = new Date().getDay(); // 0=Minggu, 1=Senin, ..., 6=Sabtu
+  if (SCH_REGULER_A_DAYS.indexOf(today) >= 0) return 'Shift SCH Reguler A';
+  if (SCH_REGULER_B_DAYS.indexOf(today) >= 0) return 'Shift SCH Reguler B';
+  return 'Shift SCH Reguler A'; // fallback aman
+};
+
 // Isi dropdown shift sesuai divisi user yang login.
 // Management -> Shift Management + Shift Security; Operasional -> Shift Pagi/Middle/Sore/Malam.
 // Divisi tak dikenal: tampilkan semua shift (fallback aman).
+//
+// Khusus karyawan outlet SCH: 4 shift SCH ditambahkan di atas daftar standar,
+// dan shift SCH Reguler A/B (sesuai hari) dijadikan pilihan default otomatis.
 window.populateShiftOptions = () => {
   const shiftSelect = document.getElementById('presensi-shift-select');
   if (!shiftSelect) return;
   const div = AppState.currentUser ? AppState.currentUser.division : '';
   let opts;
-  if (MANAGEMENT_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_MANAGEMENT;
-  else if (OPERASIONAL_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_OPERASIONAL;
+  if (MANAGEMENT_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_MANAGEMENT.slice();
+  else if (OPERASIONAL_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_OPERASIONAL.slice();
   else opts = SHIFT_OPTIONS_MANAGEMENT.concat(SHIFT_OPTIONS_OPERASIONAL);
+
+  // Sisipkan shift SCH di atas daftar standar jika user berada di outlet SCH.
+  const isSch = isSchOutletUser_();
+  if (isSch) opts = SHIFT_OPTIONS_SCH.concat(opts);
+
   const prev = shiftSelect.value;
   shiftSelect.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
   // Pertahankan pilihan sebelumnya kalau masih tersedia di daftar baru
-  if (prev && opts.some(o => o.value === prev)) shiftSelect.value = prev;
+  if (prev && opts.some(o => o.value === prev)) {
+    shiftSelect.value = prev;
+  } else if (isSch) {
+    // Auto-pick SCH Reguler A/B sesuai hari ini
+    shiftSelect.value = pickDefaultSchShift_();
+  }
 };
 const populateShiftOptions = window.populateShiftOptions;
 
@@ -1040,6 +1109,11 @@ const loadOutlets = async () => {
 
     // Isi dropdown filter "Semua Outlet" di topbar dengan daftar outlet
     window.populateGlobalOutletFilter && window.populateGlobalOutletFilter();
+
+    // Segarkan dropdown shift kerja — sekarang AppState.outlets sudah terisi,
+    // sehingga isSchOutletUser_() bisa menentukan apakah user berada di outlet SCH
+    // (shift SCH baru bisa muncul setelah outlet list tersedia).
+    window.populateShiftOptions && window.populateShiftOptions();
 
     // Populate presensi outlet select
     const pSelect = document.getElementById('presensi-outlet-select');
