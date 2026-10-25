@@ -3463,31 +3463,48 @@ const loadAllLeaveBalances = async () => {
   if (!isFullAccess()) { hideAllLeavesCard(); return; }
   const card = document.getElementById('leaves-all-card');
   if (card) card.style.display = '';
+  const tbody = document.getElementById('leaves-all-tbody');
   if (AppState.allLeaveBalancesLoading) return;
   AppState.allLeaveBalancesLoading = true;
+  // Tampilkan pesan error yang jelas di tabel (jangan diam saja — supaya jelas kalau
+  // backend belum dideploy / koneksi gagal, bukan dianggap "tidak ada data")
+  const setErr = (html) => {
+    AppState.allLeaveBalances = [];
+    const summaryEl = document.getElementById('leaves-all-summary');
+    if (summaryEl) summaryEl.innerHTML = '';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#b91c1c; padding:20px; font-size:13px;">' + html + '</td></tr>';
+  };
   try {
     const res = await fetch('/api/leaves/all-balances');
     if (res.status === 403) { hideAllLeavesCard(); return; }
-    if (!res.ok) return;
+    if (!res.ok) {
+      let detail = '';
+      try { const j = await res.json(); detail = (j && j.detail) ? String(j.detail) : ''; } catch (e) { /* abaikan */ }
+      if (res.status === 404) {
+        setErr('<b>Endpoint data cuti belum ada di server (HTTP 404).</b><br><span style="color:#64748b; font-size:12px;">Backend Code.gs belum diperbarui: buka Apps Script &rarr; ganti seluruh isi Code.gs dengan file terbaru &rarr; Deploy &rarr; Manage deployments &rarr; Edit &rarr; New version &rarr; Deploy. Setelah itu klik "Muat Ulang".</span>');
+      } else {
+        setErr('Gagal memuat data cuti (HTTP ' + res.status + '). ' + escapeHtml(detail) + '<br><span style="color:#64748b; font-size:12px;">Coba klik "Muat Ulang".</span>');
+      }
+      return;
+    }
     const data = await res.json();
     AppState.allLeaveBalances = (data && data.items) ? data.items : [];
     renderAllLeaveBalances();
   } catch (err) {
     console.error('Failed loading all leave balances:', err);
-    const tbody = document.getElementById('leaves-all-tbody');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#ef4444; padding:24px;">Gagal memuat data cuti karyawan. Buka ulang panel ini untuk mencoba lagi.</td></tr>';
+    setErr('Gagal menghubungi server. Periksa koneksi internet, lalu klik "Muat Ulang".');
   } finally {
     AppState.allLeaveBalancesLoading = false;
   }
 };
 
-const renderAllLeaveBalances = () => {
+const renderAllLeaveBalances = (errorMsg) => {
   const tbody = document.getElementById('leaves-all-tbody');
   if (!tbody) return;
   const sel = document.getElementById('leaves-all-type-filter');
   const f = sel ? sel.value : 'all';
   const all = AppState.allLeaveBalances || [];
-  const items = all.filter((it) => f === 'all' || it.type === f);
+  const items = all.filter((it) => f === 'all' || String(it.type || '').trim() === f);
 
   // Ringkasan total per filter
   const summaryEl = document.getElementById('leaves-all-summary');
@@ -3509,8 +3526,16 @@ const renderAllLeaveBalances = () => {
     }
   }
 
+  if (errorMsg) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#b91c1c; padding:20px; font-size:13px;">' + errorMsg + '</td></tr>';
+    return;
+  }
+  if (!all.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Belum ada data karyawan. Klik "Muat Ulang" untuk mencoba lagi.</td></tr>';
+    return;
+  }
   if (!items.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada data karyawan${f !== 'all' ? ' untuk filter ini' : ''}.</td></tr>`;
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan dengan tipe "' + escapeHtml(f) + '".<br><span style="font-size:11px;">Jika kolom Tipe karyawan belum terisi, perbarui lewat Database Karyawan (Tipe: Management / Operasional). Data gabungan tetap bisa dilihat dengan pilihan "Semua".</span></td></tr>';
     return;
   }
   tbody.innerHTML = items.map((it) => {

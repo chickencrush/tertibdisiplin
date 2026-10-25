@@ -1117,11 +1117,16 @@
               <h3>Data Cuti Semua Karyawan</h3>
               <p style="font-size:12px; color:#64748b;">Rekap sisa cuti tahunan seluruh karyawan Management &amp; Operasional &mdash; hanya tampil untuk akun Super Admin.</p>
             </div>
-            <select class="select-filter" id="leaves-all-type-filter" onchange="window.renderAllLeaveBalances && window.renderAllLeaveBalances()">
-              <option value="all">Semua (Management &amp; Operasional)</option>
-              <option value="Management">Management</option>
-              <option value="Operasional">Tim Operasional</option>
-            </select>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <select class="select-filter" id="leaves-all-type-filter" onchange="window.renderAllLeaveBalances && window.renderAllLeaveBalances()">
+                <option value="all">Semua (Management &amp; Operasional)</option>
+                <option value="Management">Management</option>
+                <option value="Operasional">Tim Operasional</option>
+              </select>
+              <button class="btn-secondary" id="btn-leaves-all-reload" onclick="window.loadAllLeaveBalances && window.loadAllLeaveBalances()" title="Muat ulang data cuti semua karyawan">
+                <i data-feather="refresh-cw" style="width:13px; height:13px;"></i> Muat Ulang
+              </button>
+            </div>
           </div>
 
           <div id="leaves-all-summary" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;"></div>
