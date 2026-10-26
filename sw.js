@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v72';  // PWA Install v2: tombol install topbar selalu visible di semua device (Android/iOS/desktop) + auto-hide saat standalone + auto-open modal di mobile first visit (sekali per sesi) + pulse dot indikator + style.css topbar-install-btn gradient hijau
+const CACHE_NAME = 'tertib-disiplin-v74';  // Geofence bypass: Management division auto-bypass + per-user flag geofence_exempt utk Operasional (mis. Syandi) — presensi IN/OUT bebas dari lokasi manapun; backend h_checkIn_ + h_checkOut_ skip radius check utk bypass user; frontend checkGpsDistance tampilkan "Mode Presensi Fleksibel" + skip check-out same-outlet guard; Panel SA: checkbox "Bebas Geofence" (disabled utk Management krn auto)
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

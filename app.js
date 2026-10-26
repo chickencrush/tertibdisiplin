@@ -182,6 +182,18 @@ const isFullAccess = (user = AppState.currentUser) => isSuperAdminUser(user);
 // ==========================================
 const MANAGEMENT_DIVISIONS = ['HRD', 'BM', 'Finance', 'QC', 'Creative', 'DOS', 'Logistik', 'Produksi', 'Driver', 'HRGA', 'Security', 'OM', 'PCD'];
 const OPERASIONAL_DIVISIONS = ['SPV', 'Head Kitchen', 'Head Bar', 'Kasir', 'Server', 'Kitchen', 'Bar', 'PA', 'CS'];
+
+// v74: Deteksi apakah user boleh presensi fleksibel (bypass geofence).
+// Management division → auto-bypass. Operasional dgn flag geofence_exempt=1 → juga bypass.
+// Dipakai di checkGpsDistance (skip validation) & submitAttendanceCheckOut (skip same-outlet check).
+const isGeofenceExemptUser_ = () => {
+  const u = AppState.currentUser;
+  if (!u) return false;
+  if (MANAGEMENT_DIVISIONS.indexOf(u.division) >= 0) return true;
+  if (Number(u.geofence_exempt) === 1) return true;
+  return false;
+};
+window.isGeofenceExemptUser_ = isGeofenceExemptUser_;
 const SHIFT_OPTIONS_MANAGEMENT = [
   { value: 'Shift Management', label: 'Shift Management (08:30 - 16:30)' },
   { value: 'Shift Security', label: 'Shift Security (07:00 - 19:00)' }
@@ -2714,6 +2726,14 @@ const setPresensiButtonsEnabled = window.setPresensiButtonsEnabled;
 // atau { ok: false, reason, outlet, dist, radius, nearestOutlet } ketika tidak.
 // reason: 'no_outlet' | 'gps_not_ready' | 'outlet_no_coords' | 'out_of_radius'
 window.getPresensiLocationState = () => {
+  // v74: Bypass geofence utk Management & geofence_exempt users.
+  // Mereka boleh presensi dari lokasi manapun — return ok=true tanpa cek outlet/GPS.
+  if (isGeofenceExemptUser_()) {
+    const outletSelect = document.getElementById('presensi-outlet-select');
+    const outletId = outletSelect ? outletSelect.value : '';
+    const outlet = (AppState.outlets || []).find(o => String(o.id) === String(outletId));
+    return { ok: true, outlet: outlet || null, dist: 0, radius: 0, effectiveLimit: 0, bypass: true };
+  }
   const outletSelect = document.getElementById('presensi-outlet-select');
   const outletId = outletSelect ? outletSelect.value : '';
   const outlet = (AppState.outlets || []).find(o => String(o.id) === String(outletId));
@@ -2748,6 +2768,23 @@ window.checkGpsDistance = () => {
   if (!outletSelect || !banner || !text) return;
   // DEFAULT: tombol presensi di-disable sampai dibuktikan user berada di dalam radius.
   setPresensiButtonsEnabled(false);
+
+  // v74: Bypass geofence utk Management & geofence_exempt users.
+  // Mereka boleh presensi dari lokasi manapun (kantor pusat, outlet manapun, dll).
+  // Tombol presensi langsung aktif tanpa cek GPS ke outlet.
+  if (isGeofenceExemptUser_()) {
+    banner.className = 'geofence-alert geofence-valid';
+    const u = AppState.currentUser || {};
+    const reason = MANAGEMENT_DIVISIONS.indexOf(u.division) >= 0
+      ? 'Akun Management — bebas presensi dari kantor/outlet manapun'
+      : 'Akun dikecualikan (presensi fleksibel)';
+    text.innerHTML = `<strong>✅ Mode Presensi Fleksibel</strong>
+      <br><span style="font-size:12px; opacity:0.9;">${reason}. Jam presensi mengikuti shift terpilih.
+      <br>Pilih outlet terdekat dgn lokasi Anda (opsional — hanya utk informasi record).</span>`;
+    setPresensiButtonsEnabled(true);
+    if (window.feather) feather.replace();
+    return;
+  }
 
   // === STATE: Outlet gagal dimuat — tampilkan error + tombol retry + diagnosa ===
   if (AppState.outletsLoadError) {
@@ -3140,15 +3177,18 @@ window.submitAttendanceCheckOut = async () => {
   // === GEOFENCING KETAT: Client-side guard untuk check-out ===
   // Validasi jarak ke outlet tempat user check-in (myCheckInToday.outlet_id).
   // Backend juga akan menolak, tapi guard ini menghemat upload selfie.
-  const checkInOutlet = (AppState.outlets || []).find(o => String(o.id) === String(myCheckInToday.outlet_id));
-  if (checkInOutlet) {
-    const coLat = parseFloat(checkInOutlet.lat), coLon = parseFloat(checkInOutlet.lon);
-    const coRadius = Number(checkInOutlet.radius_meters) || 100;
-    if (!isNaN(coLat) && !isNaN(coLon)) {
-      const coDist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, coLat, coLon);
-      if (coDist > (coRadius + GEOFENCE_TOLERANCE_METERS)) {
-        showToast(`Presensi pulang DITOLAK. Anda berada ${coDist}m dari ${checkInOutlet.name} (batas radius: ${coRadius}m). Mendekatlah ke outlet tempat Anda presensi masuk lalu coba lagi.`, 'error');
-        return;
+  // v74: Skip utk Management & geofence_exempt users (presensi pulang fleksibel).
+  if (!isGeofenceExemptUser_()) {
+    const checkInOutlet = (AppState.outlets || []).find(o => String(o.id) === String(myCheckInToday.outlet_id));
+    if (checkInOutlet) {
+      const coLat = parseFloat(checkInOutlet.lat), coLon = parseFloat(checkInOutlet.lon);
+      const coRadius = Number(checkInOutlet.radius_meters) || 100;
+      if (!isNaN(coLat) && !isNaN(coLon)) {
+        const coDist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, coLat, coLon);
+        if (coDist > (coRadius + GEOFENCE_TOLERANCE_METERS)) {
+          showToast(`Presensi pulang DITOLAK. Anda berada ${coDist}m dari ${checkInOutlet.name} (batas radius: ${coRadius}m). Mendekatlah ke outlet tempat Anda presensi masuk lalu coba lagi.`, 'error');
+          return;
+        }
       }
     }
   }
@@ -3548,6 +3588,12 @@ const showPayslipContent = (slipId) => {
             <td>Tunjangan Bonus (KPI ${(slip.bonus_kpi / 10000) || 0}%)</td>
             <td class="amount">${formatRupiah(slip.bonus_kpi)}</td>
           </tr>
+          ${(slip.tunjangan_bonus && slip.tunjangan_bonus > 0) ? `
+          <tr>
+            <td>Tunjangan Bonus Tambahan</td>
+            <td class="amount">${formatRupiah(slip.tunjangan_bonus)}</td>
+          </tr>
+          ` : ''}
           <tr>
             <td>Tunjangan Kehadiran (${slip.attendance_days || 0} Hari Hadir)</td>
             <td class="amount">${formatRupiah(slip.daily_allowance_total)}</td>
@@ -4714,6 +4760,21 @@ const renderProfileView = () => {
   // NIP display (read-only, ditampilkan di form utk reminder)
   const nipDisp = document.getElementById('profile-nip-display');
   if (nipDisp) nipDisp.textContent = u.nip || '-';
+  // v73: Kontrak kerja — tampilkan link kalau sudah upload, kalau kosong tampilkan pesan default
+  const contractEmpty = document.getElementById('profile-contract-empty');
+  const contractLinkWrap = document.getElementById('profile-contract-link-wrap');
+  const contractLink = document.getElementById('profile-contract-link');
+  if (contractEmpty && contractLinkWrap && contractLink) {
+    if (u.contract_url) {
+      contractEmpty.style.display = 'none';
+      contractLinkWrap.style.display = 'block';
+      contractLink.href = u.contract_url;
+    } else {
+      contractEmpty.style.display = 'block';
+      contractLinkWrap.style.display = 'none';
+      contractLink.href = '#';
+    }
+  }
 
   // Top bar avatar also update
   const topAvatar = document.getElementById('current-user-avatar');
@@ -4809,6 +4870,72 @@ window.uploadProfileAvatar = async (inputEl) => {
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.innerHTML = '<i data-feather="camera" style="width:13px; height:13px;"></i> Ganti Foto';
+      if (window.feather) feather.replace();
+    }
+    inputEl.value = '';
+  }
+};
+
+// v73: Upload kontrak kerja PDF di Profile panel
+window.uploadProfileContract = async (inputEl) => {
+  if (!inputEl || !inputEl.files || !inputEl.files[0]) return;
+  const file = inputEl.files[0];
+  // Validate file type — harus PDF
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if (!isPdf) {
+    showToast('File kontrak harus berupa PDF.', 'warning');
+    inputEl.value = '';
+    return;
+  }
+  // Validate file size (max 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Ukuran file kontrak maksimal 5MB.', 'warning');
+    inputEl.value = '';
+    return;
+  }
+  const submitBtn = document.getElementById('btn-upload-contract');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengupload...'; }
+
+  try {
+    // Read file as base64
+    const base64Data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const commaIdx = result.indexOf(',');
+        resolve(commaIdx >= 0 ? result.substring(commaIdx + 1) : result);
+      };
+      reader.onerror = () => reject(new Error('Gagal membaca file'));
+      reader.readAsDataURL(file);
+    });
+
+    // Upload to API
+    const res = await fetch('/api/profile/contract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: base64Data })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Kontrak kerja berhasil diupload.', 'success');
+      // Update current user state
+      if (AppState.currentUser) {
+        AppState.currentUser.contract_url = data.url;
+        try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(AppState.currentUser)); } catch (e) { /* ignore */ }
+      }
+      // Re-render profile view supaya link kontrak muncul
+      try { renderProfileView && renderProfileView(); } catch (e) { /* ignore */ }
+      if (window.feather) feather.replace();
+    } else {
+      showToast(data.detail || data.message || 'Gagal upload kontrak kerja.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat upload kontrak.', 'error');
+    console.error('Contract upload error:', err);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-feather="upload" style="width:13px; height:13px;"></i> Upload Kontrak (PDF)';
       if (window.feather) feather.replace();
     }
     inputEl.value = '';
@@ -6225,6 +6352,37 @@ window.openSaEditUser = (userId) => {
   setVal('sa-user-leave-adjustment', Number(emp.leave_adjustment) || 0);
   // v67: populate join_date (Tanggal Bergabung)
   setVal('sa-user-join-date', emp.join_date || '');
+  // v73: populate tunjangan_jabatan & tunjangan_bonus
+  setVal('sa-user-tunjangan-jabatan', Number(emp.tunjangan_jabatan) || 0);
+  setVal('sa-user-tunjangan-bonus', Number(emp.tunjangan_bonus) || 0);
+  // v73: tampilkan link kontrak kalau ada
+  const saContractLink = document.getElementById('sa-user-contract-link');
+  const saContractStatus = document.getElementById('sa-user-contract-status');
+  if (saContractLink && saContractStatus) {
+    if (emp.contract_url) {
+      saContractLink.href = emp.contract_url;
+      saContractLink.style.display = 'inline-flex';
+      saContractStatus.textContent = 'Kontrak sudah di-upload. Klik link untuk lihat.';
+    } else {
+      saContractLink.href = '#';
+      saContractLink.style.display = 'none';
+      saContractStatus.textContent = 'Belum ada file kontrak';
+    }
+  }
+  // v74: set checkbox geofence_exempt (utk Operasional dgn pengecualian; Management auto-bypass jadi checkbox disabled)
+  const geoExemptChk = document.getElementById('sa-user-geofence-exempt');
+  if (geoExemptChk) {
+    geoExemptChk.checked = Number(emp.geofence_exempt) === 1;
+    const isMgmt = MANAGEMENT_DIVISIONS.indexOf(emp.division) >= 0;
+    if (isMgmt) {
+      geoExemptChk.checked = true; // auto-bypass
+      geoExemptChk.disabled = true; // tidak bisa diubah (memang sudah auto)
+    } else {
+      geoExemptChk.disabled = false;
+    }
+  }
+  // Simpan employee ID yg sedang diedit utk upload kontrak
+  AppState.__saEditingUserId = emp.id;
   // Password/PIN awal hanya untuk mode TAMBAH
   const pwGroup = document.getElementById('sa-user-password-group');
   const pinGroup = document.getElementById('sa-user-pin-group');
@@ -6253,7 +6411,17 @@ window.openSaAddUser = () => {
   if (titleEl) titleEl.textContent = 'Tambah Pengguna Baru';
   ['sa-user-name', 'sa-user-nip', 'sa-user-email', 'sa-user-phone', 'sa-user-password', 'sa-user-pin',
    'sa-user-base-salary', 'sa-user-daily-allowance', 'sa-user-meal-allowance', 'sa-user-transport-allowance',
-   'sa-user-rating', 'sa-user-kpi-score', 'sa-user-leave-adjustment', 'sa-user-join-date'].forEach(id => setVal(id, ''));
+   'sa-user-rating', 'sa-user-kpi-score', 'sa-user-leave-adjustment', 'sa-user-join-date',
+   'sa-user-tunjangan-jabatan', 'sa-user-tunjangan-bonus'].forEach(id => setVal(id, ''));
+  // v73: reset contract display
+  const saContractLink = document.getElementById('sa-user-contract-link');
+  const saContractStatus = document.getElementById('sa-user-contract-status');
+  if (saContractLink) { saContractLink.href = '#'; saContractLink.style.display = 'none'; }
+  if (saContractStatus) saContractStatus.textContent = 'Belum ada file kontrak (akun baru)';
+  // v74: reset geofence_exempt checkbox
+  const geoExemptChk = document.getElementById('sa-user-geofence-exempt');
+  if (geoExemptChk) { geoExemptChk.checked = false; geoExemptChk.disabled = false; }
+  AppState.__saEditingUserId = null;
   const leaveInfo = document.getElementById('sa-user-leave-info');
   if (leaveInfo) { leaveInfo.style.display = 'none'; leaveInfo.innerHTML = ''; }
   setVal('sa-user-type', 'Operasional');
@@ -6304,7 +6472,15 @@ window.submitSaUser = async (e) => {
     kpi_score: getVal('sa-user-kpi-score') === '' ? undefined : Number(getVal('sa-user-kpi-score')),
     leave_adjustment: getVal('sa-user-leave-adjustment') === '' ? 0 : Number(getVal('sa-user-leave-adjustment')),
     // v67: kirim join_date utk integrasi cuti prorata
-    join_date: getVal('sa-user-join-date') || ''
+    join_date: getVal('sa-user-join-date') || '',
+    // v73: kirim tunjangan_jabatan & tunjangan_bonus
+    tunjangan_jabatan: getVal('sa-user-tunjangan-jabatan') === '' ? 0 : Number(getVal('sa-user-tunjangan-jabatan')),
+    tunjangan_bonus: getVal('sa-user-tunjangan-bonus') === '' ? 0 : Number(getVal('sa-user-tunjangan-bonus')),
+    // v74: kirim geofence_exempt (checkbox state)
+    geofence_exempt: (() => {
+      const chk = document.getElementById('sa-user-geofence-exempt');
+      return chk && chk.checked ? 1 : 0;
+    })()
   };
   if (mode === 'create') {
     body.password = getVal('sa-user-password') || '';
@@ -6358,6 +6534,73 @@ window.submitSaUser = async (e) => {
       btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan Pengguna';
       if (window.feather) feather.replace();
     }
+  }
+};
+
+// v73: Upload kontrak kerja per karyawan dari Panel SUPER ADMIN (admin upload untuk karyawan lain)
+window.uploadSaUserContract = async (inputEl) => {
+  if (!inputEl || !inputEl.files || !inputEl.files[0]) return;
+  const userId = AppState.__saEditingUserId;
+  if (!userId) {
+    showToast('Pilih karyawan dulu (mode Edit). Upload kontrak tidak tersedia saat tambah akun baru.', 'warning');
+    inputEl.value = '';
+    return;
+  }
+  const file = inputEl.files[0];
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  if (!isPdf) {
+    showToast('File kontrak harus berupa PDF.', 'warning');
+    inputEl.value = '';
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Ukuran file kontrak maksimal 5MB.', 'warning');
+    inputEl.value = '';
+    return;
+  }
+
+  // Tampilkan status loading
+  const statusEl = document.getElementById('sa-user-contract-status');
+  if (statusEl) statusEl.textContent = 'Mengupload...';
+
+  try {
+    const base64Data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const commaIdx = result.indexOf(',');
+        resolve(commaIdx >= 0 ? result.substring(commaIdx + 1) : result);
+      };
+      reader.onerror = () => reject(new Error('Gagal membaca file'));
+      reader.readAsDataURL(file);
+    });
+
+    const res = await fetch(`/api/employees/${userId}/contract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: base64Data })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Kontrak kerja berhasil diupload.', 'success');
+      // Update link display
+      const linkEl = document.getElementById('sa-user-contract-link');
+      if (linkEl) {
+        linkEl.href = data.url;
+        linkEl.style.display = 'inline-flex';
+      }
+      if (statusEl) statusEl.textContent = 'Kontrak berhasil di-upload. Klik link untuk lihat.';
+      if (window.feather) feather.replace();
+    } else {
+      showToast(data.detail || data.message || 'Gagal upload kontrak.', 'error');
+      if (statusEl) statusEl.textContent = 'Gagal upload. Coba lagi.';
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat upload kontrak.', 'error');
+    console.error('SA contract upload error:', err);
+    if (statusEl) statusEl.textContent = 'Gagal upload. Cek koneksi.';
+  } finally {
+    inputEl.value = '';
   }
 };
 

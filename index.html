@@ -1366,6 +1366,38 @@
               </form>
             </div>
 
+            <!-- Form 1b: Kontrak Kerja (v73) -->
+            <div class="modern-card">
+              <div class="card-title-row">
+                <div>
+                  <h3>Kontrak Kerja</h3>
+                  <p style="font-size:12px; color:#64748b;">Upload file kontrak kerja Anda (PDF, maksimal 5MB)</p>
+                </div>
+                <span class="card-badge-tag" style="background:#eff6ff; color:#1e40af;">Dokumen</span>
+              </div>
+              <div style="margin-top:14px;">
+                <input type="file" id="profile-contract-input" accept="application/pdf,.pdf" style="display:none;" onchange="window.uploadProfileContract && window.uploadProfileContract(this)">
+                <div id="profile-contract-status" style="padding:12px; border:1px dashed #cbd5e1; border-radius:10px; background:#f8fafc; text-align:center;">
+                  <p id="profile-contract-empty" style="margin:0; color:#64748b; font-size:13px;">
+                    <i data-feather="file-text" style="width:18px; height:18px; vertical-align:middle; color:#94a3b8;"></i>
+                    Belum ada file kontrak. Klik tombol di bawah untuk upload.
+                  </p>
+                  <div id="profile-contract-link-wrap" style="display:none;">
+                    <a id="profile-contract-link" href="#" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px; color:var(--burgundy-primary); font-weight:700; text-decoration:none; font-size:13px;">
+                      <i data-feather="file-text" style="width:16px; height:16px;"></i>
+                      <span id="profile-contract-name">Lihat Kontrak Kerja</span>
+                    </a>
+                  </div>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+                  <button type="button" class="btn-primary" id="btn-upload-contract" style="padding:8px 14px; font-size:12px;" onclick="document.getElementById('profile-contract-input').click()">
+                    <i data-feather="upload" style="width:13px; height:13px;"></i> Upload Kontrak (PDF)
+                  </button>
+                </div>
+                <p style="font-size:10px; color:#94a3b8; margin:8px 0 0 0;">File kontrak hanya bisa dilihat oleh Anda sendiri, Super Admin, dan PCD. Format: PDF, maksimal 5MB.</p>
+              </div>
+            </div>
+
             <!-- Form 2: Ganti Password -->
             <div class="modern-card">
               <div class="card-title-row">
@@ -2368,6 +2400,56 @@
               Karyawan baru yg bergabung pertengahan tahun otomatis dapat cuti proporsional.
             </p>
           </div>
+        </div>
+
+        <!-- v73: Tunjangan Jabatan & Tunjangan Bonus -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+          <div class="form-group">
+            <label class="form-label">Tunjangan Jabatan (per bulan)</label>
+            <input type="number" class="form-control" id="sa-user-tunjangan-jabatan" min="0" max="50000000" step="50000" placeholder="0 = otomatis dari grade">
+            <p style="font-size:10px; color:#94a3b8; margin:4px 0 0 0;">
+              Isi 0 utk pakai default grade (G5-7: 600k, G3-4: 250k, lainnya: 150k). Override kalau ada penyesuaian khusus.
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tunjangan Bonus Tambahan (per bulan)</label>
+            <input type="number" class="form-control" id="sa-user-tunjangan-bonus" min="0" max="50000000" step="50000" placeholder="0 = tidak ada">
+            <p style="font-size:10px; color:#94a3b8; margin:4px 0 0 0;">
+              Tunjangan bonus tetap per bulan, terpisah dari bonus KPI. Mis. bonus loyalitas, bonus khusus, dll.
+            </p>
+          </div>
+        </div>
+
+        <!-- v73: Upload Kontrak Kerja per karyawan (admin) -->
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px; margin-bottom:14px;">
+          <label class="form-label" style="margin-bottom:8px;">Kontrak Kerja (PDF, maks 5MB)</label>
+          <input type="file" id="sa-user-contract-input" accept="application/pdf,.pdf" style="display:none;" onchange="window.uploadSaUserContract && window.uploadSaUserContract(this)">
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button type="button" class="btn-secondary" style="padding:6px 12px; font-size:12px;" onclick="document.getElementById('sa-user-contract-input').click()">
+              <i data-feather="upload" style="width:13px; height:13px;"></i> Upload Kontrak
+            </button>
+            <a id="sa-user-contract-link" href="#" target="_blank" rel="noopener" style="display:none; color:var(--burgundy-primary); font-size:12px; font-weight:700; text-decoration:none;">
+              <i data-feather="file-text" style="width:13px; height:13px; vertical-align:middle;"></i> Lihat Kontrak Sa Ini
+            </a>
+            <span id="sa-user-contract-status" style="font-size:11px; color:#64748b;">Belum ada file kontrak</span>
+          </div>
+          <p style="font-size:10px; color:#94a3b8; margin:8px 0 0 0;">
+            Kontrak kerja di-upload ke Google Drive & otomatis di-link ke profil karyawan. Hanya SA, PCD, dan karyawan sendiri yg bisa lihat.
+          </p>
+        </div>
+
+        <!-- v74: Toggle Bebas Geofence (presensi fleksibel) — utk kasus khusus mis. Syandi -->
+        <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:12px; margin-bottom:14px;">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+            <input type="checkbox" id="sa-user-geofence-exempt" style="width:18px; height:18px; cursor:pointer;">
+            <div>
+              <strong style="color:#065f46; font-size:13px;">Bebas Geofence (Presensi Fleksibel)</strong>
+              <p style="font-size:10px; color:#065f46; margin:4px 0 0 0;">
+                Centang utk mengizinkan karyawan presensi dari lokasi manapun (kantor pusat, outlet manapun, dll) tanpa cek radius GPS.
+                Management division otomatis bebas geofence (tidak perlu centang). Centang hanya utk kasus khusus Operasional (mis. area luas, tugas lapangan).
+              </p>
+            </div>
+          </label>
         </div>
 
       </div>
