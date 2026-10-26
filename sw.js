@@ -1,12 +1,14 @@
 // TERTIB DISIPLIN - Service Worker
-// v81: FLICKER FIX di Daily Report panel
-const CACHE_NAME = 'tertib-disiplin-v81';
+// Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
+const CACHE_NAME = 'tertib-disiplin-v81';  // v81: (1) Anti-flicker defense-in-depth Daily Report — per-column no-op diff, stable sort, badge write-on-change, debounce search box, stream active-guard, session-expired tanpa reload; (2) RBAC ketat — akun selain SUPER ADMIN & PCD = akses karyawan biasa (attendance list/approve, reports canSeeAll, KPI admin, database view/download/reset)
+// Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
   './manifest.json', './icons/logo.png'
 ];
 
 self.addEventListener('install', (event) => {
+  // Skip waiting agar SW baru langsung aktif
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => Promise.allSettled(SHELL.map((u) => cache.add(u))))
   );
@@ -14,6 +16,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  // Hapus cache lama + klaim client langsung
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
   );
@@ -23,8 +26,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
+  // Hanya cache GET request dari same-origin
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
+  // Strategy: Network-first untuk HTML/JS/CSS (selalu ambil versi terbaru)
+  // Cache-first untuk gambar & font
   if (req.destination === 'document' || req.destination === 'script' || req.destination === 'style') {
     event.respondWith(
       fetch(req, { cache: 'no-cache' })
@@ -40,6 +46,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Cache-first untuk gambar/icon/font
   event.respondWith(
     caches.match(req).then((cached) => {
       const fetchPromise = fetch(req).then((response) => {
