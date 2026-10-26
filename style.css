@@ -349,6 +349,11 @@ body {
   top: 0;
   z-index: 30;
   gap: 16px;
+  /* v82.2: CSS containment — isolate topbar dari content area.
+     Super Admin punya outlet filter + period filter + search pill di topbar;
+     tanpa contain, perubahan di content area (Daily Report re-render) bisa
+     memicu topbar repaint yg terlihat sbg flicker. */
+  contain: layout style paint;
 }
 
 .topbar-left {
@@ -388,7 +393,9 @@ body {
   font-weight: 700;
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.25s ease;
+  /* v82.2: Ganti transition: all (anti-pattern — transitions EVERY prop including
+     display/visibility, can cause ghost animations). Specific props only. */
+  transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -565,6 +572,11 @@ body {
 /* Section Views */
 .view-panel {
   display: none;
+  /* v82.2: CSS containment — isolate rendering panel dari rest of page.
+     Changes di luar panel (topbar, sidebar, mode-switcher) tidak memicu repaint panel.
+     Changes di dalam panel (kanban re-render) tidak memicu repaint outside.
+     Terutama penting utk Super Admin yg punya mode-switcher + topbar filter visible. */
+  contain: layout style paint;
   /* v76: HAPUS animation: fadeIn — re-trigger setiap switchView menyebabkan flicker.
      staggerViewCards (app.js) sudah handle card animations dgn cache flag.
      Panel muncul instant (no animation) — lebih clean, no flicker. */
@@ -572,6 +584,16 @@ body {
 
 .view-panel.active {
   display: block;
+}
+
+/* v82.2: Suppress ALL transitions saat body.no-transition aktif.
+   Dipakai oleh switchDashboardMode untuk mencegah "ghost animation"
+   pada kanban cards & mode-btn saat rerenderAllPanels_ mengganti innerHTML. */
+body.no-transition *,
+body.no-transition *::before,
+body.no-transition *::after {
+  transition: none !important;
+  animation: none !important;
 }
 
 @keyframes fadeIn {
@@ -2192,13 +2214,17 @@ body { overflow: hidden; }
 
 /* === MODE SWITCHER MODERN === */
 .mode-switcher-container {
-  background: rgba(241, 245, 249, 0.7);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(226, 232, 240, 0.8);
+  /* v82.2: HAPUS backdrop-filter — repaint mahal, bisa cause flicker saat content
+     di belakang (kanban Daily Report) berubah. Pakai solid background. */
+  background: #f1f3f7;
+  border: 1px solid #e2e8f0;
   box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+  /* v82.2: CSS containment — isolate mode switcher rendering */
+  contain: layout style paint;
 }
 .mode-btn {
-  transition: all var(--t-base);
+  /* v82.2: Ganti transition: all dgn specific props (sama kayak rule di line 393) */
+  transition: background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
   position: relative;
 }
 .mode-btn.active {
@@ -2788,9 +2814,15 @@ select.form-control {
 /* === KANBAN CARDS (modern shadow) === */
 .kanban-col-body > div {
   transition: transform var(--t-base), box-shadow var(--t-base);
+  /* v82.2: GPU compositing — force element ke layer terpisah.
+     Mencegah repaint propagasi saat sibling cards di-add/remove.
+     Terutama penting utk Super Admin yg punya banyak cards di kanban. */
+  transform: translateZ(0);
+  will-change: transform;
 }
 .kanban-col-body > div:hover {
-  transform: translateY(-2px);
+  /* v82.2: Pertahankan translateZ(0) utk GPU compositing saat hover */
+  transform: translateY(-2px) translateZ(0);
   box-shadow: var(--shadow-md);
 }
 

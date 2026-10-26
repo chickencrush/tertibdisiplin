@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v82';  // v82: Pengaturan Shift dinamis (sheet `shifts` + CRUD di Panel Super Admin) + kolom `default_shift` di Database Karyawan + populateShiftOptions pakai dynamic shifts
+const CACHE_NAME = 'tertib-disiplin-v82.2';  // v82.2: Anti-flicker Super Admin Daily Report — CSS containment (view-panel, topbar, mode-switcher, kanban cards), GPU compositing (translateZ), ganti transition:all ke specific props, hapus backdrop-filter dari mode-switcher
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

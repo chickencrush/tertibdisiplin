@@ -1372,6 +1372,7 @@ const switchView = (viewName) => {
 // data center, database karyawan, Panel Super Admin, cuti & ijin, payroll, KPI).
 window.switchDashboardMode = (mode) => {
   if (mode !== 'Management' && mode !== 'Operasional') return;
+  if (AppState.currentMode === mode) return; // v82.2: skip jika mode tidak berubah
   AppState.currentMode = mode;
   const bm = document.getElementById('btn-mode-management');
   const bo = document.getElementById('btn-mode-operasional');
@@ -1384,8 +1385,17 @@ window.switchDashboardMode = (mode) => {
     showToast('Beralih ke Tampilan Tim Operasional — semua panel kini menampilkan data karyawan Operasional', 'info');
   }
 
+  // v82.2: Suppress CSS transitions sebentar saat re-render semua panel.
+  // Tanpa ini, kanban cards & mode-btn bisa "ghost animate" saat rerenderAllPanels_
+  // mengganti innerHTML. Class 'no-transition' di-set di <body>, lalu dihapus di next frame.
+  document.body.classList.add('no-transition');
   rerenderAllPanels_();
   if (window.feather) feather.replace();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.body.classList.remove('no-transition');
+    });
+  });
 };
 const switchDashboardMode = window.switchDashboardMode;
 
