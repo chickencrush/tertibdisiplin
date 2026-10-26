@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v81';  // v81: (1) Anti-flicker defense-in-depth Daily Report — per-column no-op diff, stable sort, badge write-on-change, debounce search box, stream active-guard, session-expired tanpa reload; (2) RBAC ketat — akun selain SUPER ADMIN & PCD = akses karyawan biasa (attendance list/approve, reports canSeeAll, KPI admin, database view/download/reset)
+const CACHE_NAME = 'tertib-disiplin-v82';  // v82: Pengaturan Shift dinamis (sheet `shifts` + CRUD di Panel Super Admin) + kolom `default_shift` di Database Karyawan + populateShiftOptions pakai dynamic shifts
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

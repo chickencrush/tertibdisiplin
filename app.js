@@ -313,41 +313,135 @@ const pickDefaultSchShift_ = () => {
 };
 
 // Isi dropdown shift sesuai divisi user yang login.
-// Management -> Shift Management + Shift Security; Operasional -> Shift Pagi/Middle/Sore/Malam.
-// Divisi tak dikenal: tampilkan semua shift (fallback aman).
+// v82: Sekarang memakai daftar shift DARI BACKEND (sheet `shifts` — bisa diedit admin
+// lewat Panel Super Admin atau langsung Google Sheet). Fallback ke SHIFT_OPTIONS_*
+// hardcoded hanya kalau AppState.shifts belum ter-load (mis. backend belum update v82).
 //
-// Khusus karyawan outlet SCH: 4 shift SCH ditambahkan di atas daftar standar,
-// dan shift SCH Reguler A/B (sesuai hari) dijadikan pilihan default otomatis.
-// Khusus karyawan outlet UII: 3 shift UII ditambahkan di atas daftar standar (v69).
+// Logika filter:
+//   1. Shift dengan category='Management' → tampil utk user divisi Management
+//   2. Shift dengan category='Operasional' → tampil utk user divisi Operasional
+//   3. Shift dengan category='Special' + outlet_code='SCH'/'UII' → tampil utk user di
+//      outlet tsb (sama kayak v69 behavior)
+//   4. Shift dengan outlet_code kosong + category Special → tampil utk semua user
+//      (mis. shift khusus proyek)
+//
+// Urutan tampil mengikuti sort_order di sheet shifts.
+// Default selection: pakai emp.default_shift kalau ada; kalau tidak, logika lama (SCH
+// auto-pick per hari, UII default Shift 1).
 window.populateShiftOptions = () => {
   const shiftSelect = document.getElementById('presensi-shift-select');
   if (!shiftSelect) return;
-  const div = AppState.currentUser ? AppState.currentUser.division : '';
-  let opts;
-  if (MANAGEMENT_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_MANAGEMENT.slice();
-  else if (OPERASIONAL_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_OPERASIONAL.slice();
-  else opts = SHIFT_OPTIONS_MANAGEMENT.concat(SHIFT_OPTIONS_OPERASIONAL);
-
-  // Sisipkan shift SCH/UII di atas daftar standar jika user berada di outlet tsb.
+  const u = AppState.currentUser || {};
+  const div = u.division || '';
+  const isMgmt = MANAGEMENT_DIVISIONS.indexOf(div) >= 0;
+  const isOps = OPERASIONAL_DIVISIONS.indexOf(div) >= 0;
   const isSch = isSchOutletUser_();
   const isUii = isUiiOutletUser_();
-  if (isSch) opts = SHIFT_OPTIONS_SCH.concat(opts);
-  if (isUii) opts = SHIFT_OPTIONS_UII.concat(opts);
+  // Outlet code user (untuk filter shift Special)
+  const userOutletCode = (() => {
+    const o = (AppState.outlets || []).find(x => x.id === u.outlet_id);
+    return o && o.code ? String(o.code).toUpperCase() : '';
+  })();
+
+  // Susun daftar pilihan dari AppState.shifts (dynamic) atau fallback ke hardcoded.
+  let opts = [];
+  const dynShifts = Array.isArray(AppState.shifts) ? AppState.shifts : [];
+  if (dynShifts.length > 0) {
+    // v82 dynamic — filter by category & outlet_code, urut sort_order
+    const visible = dynShifts.filter(s => {
+      if (!s || Number(s.active) === 0) return false;
+      const cat = s.category || 'Operasional';
+      const oc = String(s.outlet_code || '').toUpperCase();
+      if (cat === 'Management') return isMgmt || (!isOps && !isSch && !isUii); // fallback aman
+      if (cat === 'Operasional') return isOps || (!isMgmt && !isSch && !isUii);
+      if (cat === 'Special') {
+        if (!oc) return true; // shift special umum
+        return oc === userOutletCode || oc === 'SCH' && isSch || oc === 'UII' && isUii;
+      }
+      return true; // kategori tidak dikenal → tampilkan saja
+    }).sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+    opts = visible.map(s => ({
+      value: s.name,
+      label: s.name + (s.time_label ? ' (' + s.time_label + ')' : '') + (s.outlet_code ? ' — ' + s.outlet_code : '')
+    }));
+  } else {
+    // Fallback hardcoded (v69 logic) — dipakai saat backend belum update v82
+    if (isMgmt) opts = SHIFT_OPTIONS_MANAGEMENT.slice();
+    else if (isOps) opts = SHIFT_OPTIONS_OPERASIONAL.slice();
+    else opts = SHIFT_OPTIONS_MANAGEMENT.concat(SHIFT_OPTIONS_OPERASIONAL);
+    if (isSch) opts = SHIFT_OPTIONS_SCH.concat(opts);
+    if (isUii) opts = SHIFT_OPTIONS_UII.concat(opts);
+  }
 
   const prev = shiftSelect.value;
   shiftSelect.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
-  // Pertahankan pilihan sebelumnya kalau masih tersedia di daftar baru
-  if (prev && opts.some(o => o.value === prev)) {
+  // v82: Prioritas default selection:
+  //   1. default_shift karyawan (dari Database Karyawan) — paling tinggi prioritas
+  //   2. Pilihan sebelumnya (kalau masih ada di daftar)
+  //   3. Auto-pick SCH Reguler A/B sesuai hari (kalau user di outlet SCH)
+  //   4. UII default Shift 1
+  //   5. Opsi pertama dalam daftar
+  const userDefaultShift = (u.default_shift || '').trim();
+  if (userDefaultShift && opts.some(o => o.value === userDefaultShift)) {
+    shiftSelect.value = userDefaultShift;
+  } else if (prev && opts.some(o => o.value === prev)) {
     shiftSelect.value = prev;
   } else if (isSch) {
-    // Auto-pick SCH Reguler A/B sesuai hari ini
     shiftSelect.value = pickDefaultSchShift_();
   } else if (isUii) {
-    // Default UII: Shift 1 (pagi)
     shiftSelect.value = 'Shift UII 1';
+  } else if (opts.length > 0) {
+    shiftSelect.value = opts[0].value;
   }
 };
 const populateShiftOptions = window.populateShiftOptions;
+
+// v82: Populate dropdown "Shift Default" di modal edit karyawan (Database Karyawan).
+// Tampilkan daftar shift aktif dari AppState.shifts (dynamic). Filter: shift yang
+// relevan utk divisi/outlet karyawan (sesuai aturan sama kayak dropdown presensi).
+// selectedValue: nama shift yang sedang disimpan karyawan (untuk retain selection).
+window.populateDcEditShiftOptions = (selectedValue) => {
+  const sel = document.getElementById('dc-edit-default-shift');
+  if (!sel) return;
+  const empId = document.getElementById('dc-edit-id')?.value;
+  const emp = (AppState.employees || []).find(e => e.id === empId) || {};
+  const dynShifts = Array.isArray(AppState.shifts) ? AppState.shifts : [];
+  let opts = '<option value="">— Ikuti default per divisi/outlet —</option>';
+  if (dynShifts.length > 0) {
+    const isMgmt = MANAGEMENT_DIVISIONS.indexOf(emp.division) >= 0;
+    const isOps = OPERASIONAL_DIVISIONS.indexOf(emp.division) >= 0;
+    const userOutletCode = (() => {
+      const o = (AppState.outlets || []).find(x => x.id === emp.outlet_id);
+      return o && o.code ? String(o.code).toUpperCase() : '';
+    })();
+    const visible = dynShifts.filter(s => {
+      if (!s || Number(s.active) === 0) return false;
+      const cat = s.category || 'Operasional';
+      const oc = String(s.outlet_code || '').toUpperCase();
+      if (cat === 'Management') return isMgmt || (!isOps);
+      if (cat === 'Operasional') return isOps || (!isMgmt);
+      if (cat === 'Special') {
+        if (!oc) return true;
+        return oc === userOutletCode;
+      }
+      return true;
+    }).sort((a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+    opts += visible.map(s => {
+      const sel = (selectedValue && s.name === selectedValue) ? 'selected' : '';
+      const lbl = s.name + (s.time_label ? ' (' + s.time_label + ')' : '');
+      return `<option value="${s.name}" ${sel}>${lbl}</option>`;
+    }).join('');
+  } else {
+    // Fallback: pakai SHIFT_OPTIONS_* hardcoded
+    const all = SHIFT_OPTIONS_MANAGEMENT.concat(SHIFT_OPTIONS_OPERASIONAL).concat(SHIFT_OPTIONS_SCH).concat(SHIFT_OPTIONS_UII);
+    opts += all.map(o => {
+      const sel = (selectedValue && o.value === selectedValue) ? 'selected' : '';
+      return `<option value="${o.value}" ${sel}>${o.label}</option>`;
+    }).join('');
+  }
+  sel.innerHTML = opts;
+  if (selectedValue) sel.value = selectedValue;
+};
 
 const VIEW_ACCESS = {
   // === 9 PANEL YANG BISA DIAKSES SEMUA KARYAWAN (data terfilter ke akun sendiri di backend) ===
@@ -499,7 +593,7 @@ const loadAllAppData = async () => {
     loadAttendanceLogs()
   ];
   // Load payslips & calendar in background (tidak block dashboard)
-  const backgroundJobs = [loadPayslips(), loadCalendarEvents()];
+  const backgroundJobs = [loadPayslips(), loadCalendarEvents(), loadShifts()]; // v82: load shifts (untuk dropdown presensi dinamis)
   if (canAccessView('employees')) criticalJobs.push(loadEmployees());
   if (canAccessView('kpi')) backgroundJobs.push(loadKpiSummary());
   backgroundJobs.push(loadLeaveBalance());
@@ -1321,7 +1415,7 @@ const setCurrentUser = (user) => {
 AppState.backendVersion = null;
 AppState.backendVersionChecked = false;
 
-const MIN_BACKEND_VERSION = 'v45-leave-fix'; // versi minimum yang support /api/admin/*
+const MIN_BACKEND_VERSION = 'v82-shift-editor'; // v82: shift editor + default_shift per karyawan
 
 const compareVersion_ = (a, b) => {
   // Simplisitan: split by '-', compare first segment as version (v44 < v45)
@@ -1461,6 +1555,25 @@ const loadOutlets = async () => {
     window.checkGpsDistance && window.checkGpsDistance();
   }
 };
+
+// v82: Load shift definitions dari backend (sheet `shifts`).
+// Dipakai populateShiftOptions utk render dropdown shift di panel Presensi.
+// Jika gagal/load belum pernah, populateShiftOptions fallback ke hardcoded SHIFT_OPTIONS_*.
+const loadShifts = async () => {
+  try {
+    const res = await fetch('/api/shifts');
+    if (!res.ok) { console.warn('loadShifts: HTTP', res.status); return; }
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      AppState.shifts = data;
+      // Refresh dropdown presensi kalau user sudah login
+      if (AppState.currentUser) window.populateShiftOptions && window.populateShiftOptions();
+    }
+  } catch (err) {
+    console.warn('Failed loading shifts (akan pakai default hardcoded):', err && err.message);
+  }
+};
+window.loadShifts = loadShifts;
 
 // === DIAGNOSTIC TOOL: Cek koneksi API & outlet ===
 // Bisa dipanggil dari tombol di halaman presensi atau dari console browser
@@ -4790,6 +4903,8 @@ window.openEditEmployeeModal = (employeeId) => {
   setVal('dc-edit-role', emp.role);
   setVal('dc-edit-outlet', emp.outlet_id);
   setVal('dc-edit-status', emp.employment_status || 'Tetap');
+  // v82: Populate dropdown shift default lalu set nilai karyawan
+  window.populateDcEditShiftOptions && window.populateDcEditShiftOptions(emp.default_shift || '');
   setVal('dc-edit-base-salary', emp.base_salary);
   setVal('dc-edit-daily-allowance', emp.daily_allowance);
   setVal('dc-edit-meal-allowance', emp.meal_allowance || 0);
@@ -4827,6 +4942,7 @@ window.submitEditEmployee = async (e) => {
     role: getVal('dc-edit-role'),
     outlet_id: getVal('dc-edit-outlet'),
     employment_status: getVal('dc-edit-status'),
+    default_shift: getVal('dc-edit-default-shift'), // v82: shift default karyawan
     base_salary: Number(getVal('dc-edit-base-salary')) || 0,
     daily_allowance: Number(getVal('dc-edit-daily-allowance')) || 0,
     meal_allowance: Number(getVal('dc-edit-meal-allowance')) || 0,
@@ -6192,7 +6308,7 @@ window.saveJoinDate = async () => {
 
 // ---- Tab switching ----
 window.saSwitchTab = (tab) => {
-  ['overview', 'users', 'settings'].forEach(t => {
+  ['overview', 'users', 'shifts', 'settings'].forEach(t => {
     const panel = document.getElementById('sa-tab-' + t);
     const btn = document.getElementById('sa-tab-btn-' + t);
     if (panel) panel.style.display = (t === tab) ? '' : 'none';
@@ -6200,7 +6316,138 @@ window.saSwitchTab = (tab) => {
   });
   if (tab === 'overview') window.loadSaOverview && window.loadSaOverview();
   if (tab === 'users') window.loadSaUsers && window.loadSaUsers();
+  if (tab === 'shifts') window.loadSaShifts && window.loadSaShifts();
   if (tab === 'settings') window.loadSaSettings && window.loadSaSettings();
+};
+
+// ---- TAB 3: PENGATURAN SHIFT (v82) ----
+// Load daftar shift dari backend & render tabel.
+window.loadSaShifts = async () => {
+  const tbody = document.getElementById('sa-shifts-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:18px;">Memuat daftar shift…</td></tr>';
+  try {
+    const res = await fetch('/api/shifts');
+    if (!res.ok) { tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#dc2626; padding:18px;">Gagal memuat shift (HTTP ${res.status}). Pastikan backend Code.gs sudah di-deploy ulang (v82+).</td></tr>`; return; }
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:18px;">Belum ada shift. Klik "Tambah Shift Baru" untuk membuat.</td></tr>';
+      return;
+    }
+    // Sort: active dulu (urut sort_order), lalu nonaktif
+    data.sort((a, b) => {
+      const aA = Number(a.active) === 1 ? 0 : 1;
+      const bA = Number(b.active) === 1 ? 0 : 1;
+      if (aA !== bA) return aA - bA;
+      return (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0);
+    });
+    tbody.innerHTML = data.map(s => {
+      const active = Number(s.active) === 1;
+      const startStr = String(String(s.start_hour).padStart(2, '0')) + ':' + String(String(s.start_minute).padStart(2, '0'));
+      return `
+        <tr style="${active ? '' : 'opacity:0.5;'}">
+          <td><strong>${escapeHtml(s.name)}</strong></td>
+          <td><code>${startStr}</code></td>
+          <td>${escapeHtml(s.time_label || '-')}</td>
+          <td>${s.duration_hours} jam</td>
+          <td><span class="card-badge-tag" style="background:${s.category === 'Management' ? '#fef3c7' : s.category === 'Special' ? '#ede9fe' : '#dbeafe'}; color:${s.category === 'Management' ? '#92400e' : s.category === 'Special' ? '#5b21b6' : '#1e40af'};">${escapeHtml(s.category)}</span></td>
+          <td>${escapeHtml(s.outlet_code || '-')}</td>
+          <td>${s.sort_order}</td>
+          <td>${active ? '<span style="color:#10b981; font-weight:700;">Aktif</span>' : '<span style="color:#94a3b8;">Nonaktif</span>'}</td>
+          <td>
+            <button class="btn-primary" style="padding:5px 10px; font-size:11px; margin-right:4px;" onclick="window.openShiftEditModal('${s.id}')"><i data-feather="edit-2" style="width:11px; height:11px;"></i> Edit</button>
+            ${active ? `<button class="btn-secondary" style="padding:5px 10px; font-size:11px; color:#dc2626;" onclick="window.deleteShift('${s.id}', '${escapeHtml(s.name).replace(/'/g, "\\'")}')"><i data-feather="trash-2" style="width:11px; height:11px;"></i> Nonaktifkan</button>` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
+    if (window.feather) feather.replace();
+    // Cache utk lookup saat edit
+    AppState.__saShifts = data;
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#dc2626; padding:18px;">Error: ${escapeHtml(err && err.message ? err.message : String(err))}</td></tr>`;
+  }
+};
+
+// Buka modal edit shift (atau tambah baru kalau id kosong)
+window.openShiftEditModal = (shiftId) => {
+  const isEdit = !!shiftId;
+  const sh = isEdit ? ((AppState.__saShifts || []).find(s => s.id === shiftId) || null) : null;
+  if (isEdit && !sh) { showToast('Data shift tidak ditemukan. Muat ulang halaman.', 'error'); return; }
+  document.getElementById('sa-shift-mode').value = isEdit ? 'edit' : 'create';
+  document.getElementById('sa-shift-id').value = isEdit ? sh.id : '';
+  document.getElementById('sa-shift-modal-title').textContent = isEdit ? ('Edit Shift: ' + sh.name) : 'Tambah Shift Baru';
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val !== undefined && val !== null ? val : ''; };
+  setVal('sa-shift-name', isEdit ? sh.name : '');
+  setVal('sa-shift-start-hour', isEdit ? sh.start_hour : 7);
+  setVal('sa-shift-start-minute', isEdit ? sh.start_minute : 0);
+  setVal('sa-shift-time-label', isEdit ? sh.time_label : '');
+  setVal('sa-shift-duration', isEdit ? sh.duration_hours : 8);
+  setVal('sa-shift-category', isEdit ? sh.category : 'Operasional');
+  setVal('sa-shift-outlet-code', isEdit ? sh.outlet_code : '');
+  setVal('sa-shift-sort-order', isEdit ? sh.sort_order : 50);
+  const activeCb = document.getElementById('sa-shift-active');
+  if (activeCb) activeCb.checked = isEdit ? (Number(sh.active) === 1) : true;
+  openModal('modal-sa-shift');
+};
+
+// Submit form shift (create atau update)
+window.submitShiftForm = async (e) => {
+  if (e && e.preventDefault) e.preventDefault();
+  const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const mode = getVal('sa-shift-mode');
+  const id = getVal('sa-shift-id');
+  const body = {
+    name: getVal('sa-shift-name'),
+    start_hour: Number(getVal('sa-shift-start-hour')) || 0,
+    start_minute: Number(getVal('sa-shift-start-minute')) || 0,
+    time_label: getVal('sa-shift-time-label'),
+    duration_hours: Number(getVal('sa-shift-duration')) || 8,
+    category: getVal('sa-shift-category'),
+    outlet_code: getVal('sa-shift-outlet-code'),
+    sort_order: Number(getVal('sa-shift-sort-order')) || 0,
+    active: document.getElementById('sa-shift-active').checked ? 1 : 0
+  };
+  const submitBtn = document.getElementById('btn-sa-shift-save');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Menyimpan...'; }
+  try {
+    const url = mode === 'edit' ? `/api/shifts/${id}` : '/api/shifts';
+    const method = mode === 'edit' ? 'PUT' : 'POST';
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Shift berhasil disimpan.', 'success');
+      closeModal('modal-sa-shift');
+      await window.loadSaShifts();
+      // Refresh cache shifts global (supaya dropdown presensi pakai data baru)
+      await loadShifts();
+    } else {
+      showToast(data.detail || data.message || 'Gagal menyimpan shift.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat menyimpan shift.', 'error');
+    console.error('Save shift error:', err);
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Simpan Shift'; }
+  }
+};
+
+// Soft-delete shift (set active=0)
+window.deleteShift = async (shiftId, shiftName) => {
+  if (!confirm(`Nonaktifkan shift "${shiftName}"?\n\nData presensi lama yang menggunakan shift ini TIDAK terpengaruh. Shift hanya hilang dari dropdown presensi.`)) return;
+  try {
+    const res = await fetch(`/api/shifts/${shiftId}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Shift dinonaktifkan.', 'success');
+      await window.loadSaShifts();
+      await loadShifts();
+    } else {
+      showToast(data.detail || data.message || 'Gagal menonaktifkan shift.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat menonaktifkan shift.', 'error');
+  }
 };
 
 // ---- TAB 1: RINGKASAN SISTEM ----

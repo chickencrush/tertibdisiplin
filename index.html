@@ -1521,6 +1521,7 @@
           <div style="display:flex; gap:8px; margin-top:18px; flex-wrap:wrap; background:#f1f5f9; padding:6px; border-radius:14px;">
             <button class="tab-pill-btn active" id="sa-tab-btn-overview" onclick="window.saSwitchTab && window.saSwitchTab('overview')">📊 Ringkasan Sistem</button>
             <button class="tab-pill-btn" id="sa-tab-btn-users" onclick="window.saSwitchTab && window.saSwitchTab('users')">👥 Manajemen Pengguna</button>
+            <button class="tab-pill-btn" id="sa-tab-btn-shifts" onclick="window.saSwitchTab && window.saSwitchTab('shifts')">🕐 Pengaturan Shift</button>
             <button class="tab-pill-btn" id="sa-tab-btn-settings" onclick="window.saSwitchTab && window.saSwitchTab('settings')">⚙️ Pengaturan Sistem</button>
           </div>
         </div>
@@ -1597,7 +1598,47 @@
           </div>
         </div>
 
-        <!-- ======== TAB 3: PENGATURAN SISTEM ======== -->
+        <!-- ======== TAB 3: PENGATURAN SHIFT (v82) ======== -->
+        <div id="sa-tab-shifts" style="display:none;">
+          <div class="modern-card" style="margin-bottom:20px;">
+            <div class="card-title-row">
+              <div>
+                <h3>Pengaturan Shift Presensi</h3>
+                <p style="font-size:12px; color:#64748b;">Kelola daftar shift yang dapat dipilih karyawan saat presensi. Perubahan langsung tersimpan ke Google Sheet <code>shifts</code> &amp; otomatis dipakai sistem.</p>
+              </div>
+              <button class="btn-primary" onclick="window.openShiftEditModal && window.openShiftEditModal()">
+                <i data-feather="plus"></i> Tambah Shift Baru
+              </button>
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="payslip-table" id="sa-shifts-table">
+                <thead>
+                  <tr>
+                    <th>Nama Shift</th>
+                    <th>Jam Mulai</th>
+                    <th>Label Waktu</th>
+                    <th>Durasi</th>
+                    <th>Kategori</th>
+                    <th>Kode Outlet</th>
+                    <th>Urutan</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="sa-shifts-tbody">
+                  <tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:18px;">Memuat daftar shift…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="font-size:11px; color:#94a3b8; margin:10px 0 0 0;">
+              💡 <strong>Kategori</strong>: Management (tampil utk karyawan divisi Management) • Operasional (tampil utk divisi Operasional) • Special (tampil utk karyawan di outlet tertentu, sesuai <strong>Kode Outlet</strong>).
+              <br>💡 <strong>Kode Outlet</strong> diisi kode outlet (mis. <code>SCH</code>, <code>UII</code>) untuk shift khusus outlet. Kosongkan untuk shift umum semua outlet.
+              <br>💡 Menghapus shift bersifat <strong>soft-delete</strong> (nonaktif) — data presensi lama tidak terpengaruh. Hard delete bisa dilakukan langsung di Google Sheet.
+            </p>
+          </div>
+        </div>
+
+        <!-- ======== TAB 4: PENGATURAN SISTEM ======== -->
         <div id="sa-tab-settings" style="display:none;">
           <div class="modern-card" style="margin-bottom:20px;">
             <div class="card-title-row">
@@ -2182,9 +2223,17 @@
             </div>
             <div class="form-group">
               <label class="form-label required">Titik Outlet</label>
-              <select class="form-control" id="dc-edit-outlet" required>
+              <select class="form-control" id="dc-edit-outlet" required onchange="window.populateDcEditShiftOptions && window.populateDcEditShiftOptions()">
                 <!-- Populated dynamically by loadDataCenterOutlets() -->
               </select>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Pindahkan karyawan ke outlet lain — ubah lokasi kerja karyawan di sini (bisa juga diedit langsung di Google Sheet kolom <code>outlet_id</code>).</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Shift Default (opsional)</label>
+              <select class="form-control" id="dc-edit-default-shift">
+                <option value="">— Ikuti default per divisi/outlet —</option>
+              </select>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">v82: Pilih shift default karyawan. Dropdown presensi otomatis ter-select ke shift ini saat karyawan login. Daftar shift dikelola di Panel Super Admin &gt; Pengaturan Shift.</p>
             </div>
           </div>
         </div>
@@ -2239,6 +2288,77 @@
         <button type="submit" class="btn-primary" id="btn-dc-save">
           <i data-feather="save" style="width:13px; height:13px;"></i> Simpan Perubahan
         </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 9b. Modal: Tambah / Edit Shift (Panel Super Admin > Pengaturan Shift) -->
+<div class="modal-overlay" id="modal-sa-shift">
+  <div class="modal-card" style="max-width:560px;">
+    <div class="modal-header">
+      <h3 id="sa-shift-modal-title">Tambah Shift Baru</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-sa-shift')">&times;</button>
+    </div>
+    <form onsubmit="window.submitShiftForm && window.submitShiftForm(event)">
+      <input type="hidden" id="sa-shift-mode" value="create">
+      <input type="hidden" id="sa-shift-id" value="">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label required">Nama Shift</label>
+          <input type="text" class="form-control" id="sa-shift-name" maxlength="60" required placeholder="Mis. Shift Pagi">
+          <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Nama unik. Dipakai sebagai key di data presensi.</p>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="form-group">
+            <label class="form-label required">Jam Mulai (0-23)</label>
+            <input type="number" class="form-control" id="sa-shift-start-hour" min="0" max="23" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label required">Menit Mulai (0-59)</label>
+            <input type="number" class="form-control" id="sa-shift-start-minute" min="0" max="59" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label required">Label Waktu</label>
+          <input type="text" class="form-control" id="sa-shift-time-label" maxlength="30" required placeholder="Mis. 07:00 - 15:00">
+          <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Tampilan ringkas jam kerja, dipakai di dropdown &amp; slip gaji.</p>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="form-group">
+            <label class="form-label required">Durasi (jam, 1-24)</label>
+            <input type="number" class="form-control" id="sa-shift-duration" min="1" max="24" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label required">Kategori</label>
+            <select class="form-control" id="sa-shift-category">
+              <option value="Management">Management (tampil utk divisi Management)</option>
+              <option value="Operasional" selected>Operasional (tampil utk divisi Operasional)</option>
+              <option value="Special">Special (tampil utk outlet tertentu)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="form-group">
+            <label class="form-label">Kode Outlet</label>
+            <input type="text" class="form-control" id="sa-shift-outlet-code" maxlength="10" placeholder="Mis. SCH / UII (kosongkan jika umum)">
+            <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Hanya relevan utk kategori Special. Harus sama persis dgn kode outlet di tabel Outlet.</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label required">Urutan Tampil (0-999)</label>
+            <input type="number" class="form-control" id="sa-shift-sort-order" min="0" max="999" value="50">
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="sa-shift-active" checked>
+            <span>Aktif (tampil di dropdown presensi)</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeModal('modal-sa-shift')">Batal</button>
+        <button type="submit" class="btn-primary" id="btn-sa-shift-save">Simpan Shift</button>
       </div>
     </form>
   </div>
