@@ -13,12 +13,13 @@ window.addEventListener('DOMContentLoaded', () => {
 /**
  * TERTIB DISIPLIN - Main JavaScript Controller
  * Complete functionality for Management & Operational Crew Daily Report & HR Suite
+ * v81: FLICKER FIX di Daily Report panel
  */
 
 // Application State
 const AppState = {
   currentView: 'dashboard',
-  currentMode: 'Management', // 'Management' or 'Operasional'
+  currentMode: 'Management',
   currentUser: null,
   employees: [],
   outlets: [],
@@ -26,26 +27,26 @@ const AppState = {
   attendanceLogs: [],
   payslips: [],
   kpiSummary: null,
-  kpiDivisionStats: [],  // cache divisionStats KPI untuk re-render saat mode ganti
-  saUsers: [],           // daftar pengguna Panel Super Admin
-  saOverview: null,      // cache ringkasan sistem Panel Super Admin
-  leaveRequests: [],     // cache pengajuan cuti/ijin
+  kpiDivisionStats: [],
+  saUsers: [],
+  saOverview: null,
+  leaveRequests: [],
   activeChatChannel: '#general',
   selectedPayslipForPin: null,
   deviceCoordinates: { lat: 0, lon: 0 },
-  gpsOk: false,          // false = unknown/denied, true = granted
-  gpsLoading: false,     // true while waiting for getCurrentPosition
-  gpsLastError: '',      // human-readable last error
-  gpsAccuracy: 0,        // GPS accuracy in meters
-  isMockSuspect: 0,      // 1 if mock GPS suspected
-  gpsReadings: [],       // multiple GPS readings for drift detection
+  gpsOk: false,
+  gpsLoading: false,
+  gpsLastError: '',
+  gpsAccuracy: 0,
+  isMockSuspect: 0,
+  gpsReadings: [],
   cameraStream: null,
-  cameraReady: false,    // true after stream attached & video dimensions known
+  cameraReady: false,
   cameraLoading: false,
   deferredPwaPrompt: null,
-  outletsLoadError: ''  // pesan error kalau loadOutlets gagal (untuk feedback di geofence banner)
+  outletsLoadError: ''
 };
-window.AppState = AppState;  // expose for debugging & cross-script access
+window.AppState = AppState;
 
 // Formatting Utilities
 const formatRupiah = (val) => {
@@ -70,7 +71,6 @@ const showToast = (message, type = 'info') => {
   toast.style.borderLeft = `4px solid ${borderColor}`;
   toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
   container.appendChild(toast);
-  // Auto-remove after 4s with smooth fade
   setTimeout(() => {
     toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
     toast.style.opacity = '0';
@@ -80,7 +80,6 @@ const showToast = (message, type = 'info') => {
 };
 
 // === MODERN UI HELPERS ===
-// Animate number count-up for stat cards
 const animateCountUp = (el, target, duration = 800) => {
   if (!el) return;
   const start = 0;
@@ -89,11 +88,9 @@ const animateCountUp = (el, target, duration = 800) => {
   const isDecimal = String(target).indexOf('.') >= 0 && !isPercent;
   const numericTarget = parseFloat(String(target).replace(/[^\d.-]/g, '')) || 0;
   const suffix = isPercent ? '%' : '';
-
   const step = (now) => {
     const elapsed = now - startTime;
     const progress = Math.min(elapsed / duration, 1);
-    // ease-out cubic
     const eased = 1 - Math.pow(1 - progress, 3);
     const value = start + (numericTarget - start) * eased;
     if (isDecimal) {
@@ -107,14 +104,10 @@ const animateCountUp = (el, target, duration = 800) => {
   requestAnimationFrame(step);
 };
 
-// v80: Debounced feather.replace — batch multiple calls jadi satu scan di next frame.
-// feather.replace() scan SELURUH dokumen untuk [data-feather] elements. Dipanggil di
-// 54 tempat dlm app.js — kalau beberapa render functions jalan di frame yg sama,
-// feather.replace() dipanggil berkali-kali → layout shift → flicker.
-// Dengan debouncing: hanya 1 scan per frame (rAF), multiple calls digabung.
+// v81: Debounced feather.replace — batch multiple calls jadi satu scan di next frame.
 let __featherReplaceScheduled_ = false;
 const debouncedFeatherReplace = () => {
-  if (__featherReplaceScheduled_) return; // sudah scheduled di frame ini
+  if (__featherReplaceScheduled_) return;
   __featherReplaceScheduled_ = true;
   requestAnimationFrame(() => {
     __featherReplaceScheduled_ = false;
@@ -125,23 +118,18 @@ const debouncedFeatherReplace = () => {
 };
 window.debouncedFeatherReplace = debouncedFeatherReplace;
 
-// Auto-animate stat numbers when view becomes active
 const animateStatCards = () => {
   setTimeout(() => {
     document.querySelectorAll('.stat-main-number').forEach((el, idx) => {
-      // Skip if already animated
       if (el.dataset.animated === '1') return;
       el.dataset.animated = '1';
-      // Get text content as target (might include HTML like "<span>/ 5</span>")
       const text = el.textContent || '';
       const match = text.match(/[\d.,]+%?/);
       if (match) {
         const target = match[0];
-        // Preserve any suffix (like " / 5")
         const suffix = text.substring(text.indexOf(target) + target.length);
         setTimeout(() => {
           animateCountUp(el, target, 700);
-          // Re-append suffix after animation
           if (suffix) setTimeout(() => {
             const currentText = el.textContent;
             if (currentText && !currentText.includes(suffix)) {
@@ -154,19 +142,14 @@ const animateStatCards = () => {
   }, 200);
 };
 
-// Stagger animation for cards in active view.
-// v75: Hanya animate SEKALI per view (pakai dataset flag). Sebelumnya, setiap switchView
-// me-reset animation ke 'none' lalu re-apply — ini menyebabkan cards "berkedip" (flicker)
-// dari opacity 0 setiap kali user pindah panel & balik lagi.
 const staggerViewCards = (view) => {
   if (!view) return;
-  // Skip stagger kalau view ini sudah pernah di-animate (cache per view id)
   if (view.dataset.staggered === '1') return;
   view.dataset.staggered = '1';
   const cards = view.querySelectorAll('.modern-card, .stat-card');
   cards.forEach((card, idx) => {
     card.style.animation = 'none';
-    card.offsetHeight; // trigger reflow
+    card.offsetHeight;
     card.style.animation = `fadeInUp 0.5s var(--ease-smooth) ${idx * 0.05}s backwards`;
   });
 };
@@ -174,42 +157,17 @@ const staggerViewCards = (view) => {
 // ==========================================
 // Hak akses panel per divisi
 // ==========================================
-// Super Admin (full akses semua panel): OM + PCD
-// v66: OPIS B (SUPER KETAT) — semua approval HANYA utk PCD division + SUPER ADMIN (role).
-// BM/HRD/SPV/Head Kitchen/Head Bar TIDAK bisa approve.
 const FULL_ACCESS_DIVISIONS = ['OM', 'PCD'];
 const PAYROLL_DIVISIONS = ['PCD'];
-// Divisi yang bisa approve/reject pengajuan cuti
 const LEAVE_APPROVER_DIVISIONS = ['PCD'];
-
-// ==========================================
-// ROLE SUPER ADMIN
-// Role khusus "SUPER ADMIN" disimpan di kolom role akun (diatur lewat
-// Panel Super Admin atau sheet employees). Akun dengan role ini mendapat
-// akses ke SEMUA panel + Panel Super Admin (kelola user & pengaturan sistem).
-//
-// ⚠️ v60: isSuperAdminUser sekarang STRICT — hanya cek role === 'SUPER ADMIN'.
-// Divisi OM/PCD TIDAK lagi auto-promote jadi Super Admin. Admin harus eksplisit
-// set role='SUPER ADMIN' via Panel Super Admin > Pengguna > Edit Karyawan.
-// ==========================================
 const SUPER_ADMIN_ROLE = 'SUPER ADMIN';
 const isSuperAdminUser = (user = AppState.currentUser) =>
   !!user && String(user.role || '').trim().toUpperCase() === SUPER_ADMIN_ROLE;
-
-// isFullAccess: alias ke isSuperAdminUser (backward compat).
-// Sebelumnya cek FULL_ACCESS_DIVISIONS, sekarang strict role check.
 const isFullAccess = (user = AppState.currentUser) => isSuperAdminUser(user);
 
-// ==========================================
-// Shift kerja per kelompok divisi (senada dengan MANAGEMENT/OPERASIONAL_DIVISIONS di Code.gs)
-// Dropdown "Pilihan Shift Kerja" hanya menampilkan shift sesuai divisi akun yang login.
-// ==========================================
 const MANAGEMENT_DIVISIONS = ['HRD', 'BM', 'Finance', 'QC', 'Creative', 'DOS', 'Logistik', 'Produksi', 'Driver', 'HRGA', 'Security', 'OM', 'PCD'];
 const OPERASIONAL_DIVISIONS = ['SPV', 'Head Kitchen', 'Head Bar', 'Kasir', 'Server', 'Kitchen', 'Bar', 'PA', 'CS'];
 
-// v74: Deteksi apakah user boleh presensi fleksibel (bypass geofence).
-// Management division → auto-bypass. Operasional dgn flag geofence_exempt=1 → juga bypass.
-// Dipakai di checkGpsDistance (skip validation) & submitAttendanceCheckOut (skip same-outlet check).
 const isGeofenceExemptUser_ = () => {
   const u = AppState.currentUser;
   if (!u) return false;
@@ -218,6 +176,7 @@ const isGeofenceExemptUser_ = () => {
   return false;
 };
 window.isGeofenceExemptUser_ = isGeofenceExemptUser_;
+
 const SHIFT_OPTIONS_MANAGEMENT = [
   { value: 'Shift Management', label: 'Shift Management (08:30 - 16:30)' },
   { value: 'Shift Security', label: 'Shift Security (07:00 - 19:00)' }
@@ -228,55 +187,29 @@ const SHIFT_OPTIONS_OPERASIONAL = [
   { value: 'Shift Sore', label: 'Shift Sore (15:00 - 23:00)' },
   { value: 'Shift Malam', label: 'Shift Malam (00:00 - 08:00)' }
 ];
-
-// === Shift khusus outlet SCH ===
-// Definisi jam sesuai permintaan admin SCH:
-//   - Reguler A (09:00-17:00) utk Senin/Rabu/Kamis/Sabtu/Minggu
-//   - Reguler B (08:00-16:00) utk Selasa/Jumat
-//   - Middle (13:00-21:00) utk semua hari
-//   - 2 Tetap (14:30-22:30) utk semua hari
-// Hanya muncul di dropdown karyawan yg outlet code-nya 'SCH'.
 const SHIFT_OPTIONS_SCH = [
   { value: 'Shift SCH Reguler A', label: 'SCH Reguler A (09:00 - 17:00) — Senin/Rabu/Kamis/Sabtu/Minggu' },
   { value: 'Shift SCH Reguler B', label: 'SCH Reguler B (08:00 - 16:00) — Selasa/Jumat' },
   { value: 'Shift SCH Middle',    label: 'SCH Middle (13:00 - 21:00)' },
   { value: 'Shift SCH 2 Tetap',   label: 'SCH 2 Tetap (14:30 - 22:30)' }
 ];
-
-// === Shift khusus outlet UII (v69) ===
-// 3 shift rotasi 24 jam:
-//   - Shift 1 (08:00-16:00) — pagi
-//   - Shift 2 (16:00-24:00) — sore/malam (lintas hari)
-//   - Shift 3 (00:00-08:00) — malam/dini hari
-// Hanya muncul di dropdown karyawan yg outlet code-nya 'UII'.
 const SHIFT_OPTIONS_UII = [
   { value: 'Shift UII 1', label: 'UII Shift 1 (08:00 - 16:00) — Pagi' },
   { value: 'Shift UII 2', label: 'UII Shift 2 (16:00 - 24:00) — Sore/Malam' },
   { value: 'Shift UII 3', label: 'UII Shift 3 (00:00 - 08:00) — Malam/Dini Hari' }
 ];
-
-// Hari kerja utk auto-pick SCH Reguler (1=Senin ... 0=Minggu, format getDay() JS).
-// Reguler A: Senin(1), Rabu(3), Kamis(4), Sabtu(6), Minggu(0)
-// Reguler B: Selasa(2), Jumat(5)
 const SCH_REGULER_A_DAYS = [1, 3, 4, 6, 0];
 const SCH_REGULER_B_DAYS = [2, 5];
 
-// Helper umum: cek apakah string (outlet code/name/id) mengandung token tertentu
-// dgn word boundary. Cocokkan 'SCH' / 'UII' tanpa false-positive (mis. 'SCHOLL' tidak match 'SCH').
 const outletTokenMatch_ = (str, token) => {
   if (!str) return false;
   const s = String(str).toUpperCase().trim();
   if (s === token) return true;
-  if (s.indexOf(token) === 0) return true; // 'SCH-01', 'UII-OUT'
-  // Word-boundary match: 'SCH' / 'UII' sebagai token terpisah
+  if (s.indexOf(token) === 0) return true;
   const re = new RegExp('(^|\\s|_|-|\\.)(' + token + ')(\\s|$|_|-|\\.)');
   return re.test(s);
 };
 
-// Deteksi apakah akun yg login berada di outlet SCH.
-// Match berdasarkan outlet code (paling akurat) atau nama outlet (fallback).
-// Catatan: tidak cek outlet_id langsung karena ID biasanya opaque (mis. 'o-sch')
-// dan bisa false-positive (token 'SCH' muncul di ID yg bukan outlet SCH sebenarnya).
 const isSchOutletUser_ = () => {
   const u = AppState.currentUser;
   if (!u) return false;
@@ -284,13 +217,10 @@ const isSchOutletUser_ = () => {
   const o = outlets.find(x => x.id === u.outlet_id);
   if (o && o.code && outletTokenMatch_(o.code, 'SCH')) return true;
   if (o && o.name && outletTokenMatch_(o.name, 'SCH')) return true;
-  // Fallback terakhir: cek outlet_name langsung dari user (tanpa lookup outlet)
   if (u.outlet_name && outletTokenMatch_(u.outlet_name, 'SCH')) return true;
   return false;
 };
 
-// Deteksi apakah akun yg login berada di outlet UII (v69).
-// Sama seperti SCH — cek outlet code/name utk token 'UII'.
 const isUiiOutletUser_ = () => {
   const u = AppState.currentUser;
   if (!u) return false;
@@ -302,23 +232,13 @@ const isUiiOutletUser_ = () => {
   return false;
 };
 
-// Pilih default shift SCH utk hari ini:
-// - Senin/Rabu/Kamis/Sabtu/Minggu → Reguler A
-// - Selasa/Jumat → Reguler B
 const pickDefaultSchShift_ = () => {
-  const today = new Date().getDay(); // 0=Minggu, 1=Senin, ..., 6=Sabtu
+  const today = new Date().getDay();
   if (SCH_REGULER_A_DAYS.indexOf(today) >= 0) return 'Shift SCH Reguler A';
   if (SCH_REGULER_B_DAYS.indexOf(today) >= 0) return 'Shift SCH Reguler B';
-  return 'Shift SCH Reguler A'; // fallback aman
+  return 'Shift SCH Reguler A';
 };
 
-// Isi dropdown shift sesuai divisi user yang login.
-// Management -> Shift Management + Shift Security; Operasional -> Shift Pagi/Middle/Sore/Malam.
-// Divisi tak dikenal: tampilkan semua shift (fallback aman).
-//
-// Khusus karyawan outlet SCH: 4 shift SCH ditambahkan di atas daftar standar,
-// dan shift SCH Reguler A/B (sesuai hari) dijadikan pilihan default otomatis.
-// Khusus karyawan outlet UII: 3 shift UII ditambahkan di atas daftar standar (v69).
 window.populateShiftOptions = () => {
   const shiftSelect = document.getElementById('presensi-shift-select');
   if (!shiftSelect) return;
@@ -327,30 +247,23 @@ window.populateShiftOptions = () => {
   if (MANAGEMENT_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_MANAGEMENT.slice();
   else if (OPERASIONAL_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_OPERASIONAL.slice();
   else opts = SHIFT_OPTIONS_MANAGEMENT.concat(SHIFT_OPTIONS_OPERASIONAL);
-
-  // Sisipkan shift SCH/UII di atas daftar standar jika user berada di outlet tsb.
   const isSch = isSchOutletUser_();
   const isUii = isUiiOutletUser_();
   if (isSch) opts = SHIFT_OPTIONS_SCH.concat(opts);
   if (isUii) opts = SHIFT_OPTIONS_UII.concat(opts);
-
   const prev = shiftSelect.value;
   shiftSelect.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
-  // Pertahankan pilihan sebelumnya kalau masih tersedia di daftar baru
   if (prev && opts.some(o => o.value === prev)) {
     shiftSelect.value = prev;
   } else if (isSch) {
-    // Auto-pick SCH Reguler A/B sesuai hari ini
     shiftSelect.value = pickDefaultSchShift_();
   } else if (isUii) {
-    // Default UII: Shift 1 (pagi)
     shiftSelect.value = 'Shift UII 1';
   }
 };
 const populateShiftOptions = window.populateShiftOptions;
 
 const VIEW_ACCESS = {
-  // === 9 PANEL YANG BISA DIAKSES SEMUA KARYAWAN (data terfilter ke akun sendiri di backend) ===
   'dashboard': 'all',
   'presensi': 'all',
   'daily-report': 'all',
@@ -360,13 +273,10 @@ const VIEW_ACCESS = {
   'calendar': 'all',
   'leaves': 'all',
   'profile': 'all',
-  // === PANEL ADMIN: HANYA SUPER ADMIN (role === 'SUPER ADMIN') ===
-  // 'superadmin' = sentinel value, dicek oleh canAccessView via isSuperAdminUser
-  'employees': 'superadmin',     // Database Karyawan
-  // v64: Input Data Center — SUPER ADMIN (any division) ATAU division PCD (any role)
+  'employees': 'superadmin',
   'data-center': ['PCD'],
-  'outlets': 'superadmin',       // Titik Lokasi Outlet
-  'superadmin': 'superadmin'     // Panel Super Admin
+  'outlets': 'superadmin',
+  'superadmin': 'superadmin'
 };
 const CHAT_CHANNEL_RULES = {
   '#general': null,
@@ -376,20 +286,14 @@ const CHAT_CHANNEL_RULES = {
   '#logistik': { divisions: ['Logistik', 'Driver', 'Produksi', 'Security', 'HRGA', 'Finance'] }
 };
 
-// v63: isPayrollAdmin strict — hanya SUPER ADMIN (role === 'SUPER ADMIN') yg
-// dapat akses payroll admin (lihat semua payslips, autopilot payroll, metrics).
-// Sebelumnya: PAYROLL_DIVISIONS = ['OM','PCD','HRD','Finance'] — Finance/HRGA/OM
-// masih bisa lihat daftar E-Payslip semua karyawan. Sekarang samakan dgn karyawan biasa.
 const isPayrollAdmin = (user = AppState.currentUser) => isSuperAdminUser(user);
 const canAccessView = (view, user = AppState.currentUser) => {
   if (!user) return false;
-  // SUPER ADMIN selalu dapat akses semua panel (regardless rule)
   if (isSuperAdminUser(user)) return true;
   const rule = VIEW_ACCESS[view];
   if (!rule) return false;
-  if (rule === 'all') return true;             // 9 panel umum
-  if (rule === 'superadmin') return false;     // panel admin-only (Super Admin sudah dicek di atas)
-  // Array division whitelist: cek apakah division user ada di array
+  if (rule === 'all') return true;
+  if (rule === 'superadmin') return false;
   return Array.isArray(rule) && rule.includes(user.division);
 };
 const canAccessChannel = (channel, user = AppState.currentUser) => {
@@ -402,19 +306,14 @@ const canAccessChannel = (channel, user = AppState.currentUser) => {
   return !!(rule.divisions && rule.divisions.includes(user.division));
 };
 
-// Terapkan hak akses ke menu, pemilih mode, tombol payroll, dan saluran chat
 const applyAccessControl = () => {
   const user = AppState.currentUser;
   if (!user) return;
-
   document.querySelectorAll('.nav-item').forEach(item => {
     const allowed = canAccessView(item.getAttribute('data-view'));
     const li = item.closest('li') || item;
     li.style.display = allowed ? '' : 'none';
   });
-
-  // Pemilih Dashboard Management / Tim Operasional HANYA untuk Super Admin
-  // (sebelumnya: isFullAccess(user) || isSuperAdminUser(user) — sekarang strict)
   const modeSwitcher = document.querySelector('.mode-switcher-container');
   if (modeSwitcher) modeSwitcher.style.display = isSuperAdminUser(user) ? '' : 'none';
   AppState.currentMode = user.type === 'Management' ? 'Management' : 'Operasional';
@@ -422,28 +321,23 @@ const applyAccessControl = () => {
   const bo = document.getElementById('btn-mode-operasional');
   if (bm) bm.classList.toggle('active', AppState.currentMode === 'Management');
   if (bo) bo.classList.toggle('active', AppState.currentMode === 'Operasional');
-
   document.querySelectorAll('.payroll-admin-only').forEach(el => {
     el.style.display = isPayrollAdmin(user) ? '' : 'none';
   });
-
   document.querySelectorAll('.chat-channel-item').forEach(el => {
     const m = /switchChatChannel\('([^']+)'/.exec(el.getAttribute('onclick') || '');
     el.style.display = (m ? canAccessChannel(m[1]) : true) ? '' : 'none';
   });
-
-  // body dataset access: super (SUPER ADMIN role) / staff (karyawan biasa)
   document.body.dataset.access = isSuperAdminUser(user) ? 'super' : 'staff';
 };
 
 // ==========================================
-// Sidebar (menu geser) untuk layar HP
+// Sidebar
 // ==========================================
 const setSidebarOpen = (open) => {
   const sb = document.getElementById('sidebar');
   const bd = document.getElementById('sidebar-backdrop');
   if (!sb) return;
-  // v77: Guard — skip jika state tidak berubah (no redundant DOM mutation → no flicker)
   const isOpen = sb.classList.contains('open');
   if (isOpen === open) return;
   sb.classList.toggle('open', open);
@@ -475,7 +369,6 @@ const initSidebarToggle = () => {
   window.addEventListener('resize', () => { if (!isMobileLayout()) setSidebarOpen(false); });
 };
 
-// Pesan kesalahan login tampil di dalam formulir (tidak bergantung pada toast)
 const showLoginError = (msg) => {
   const box = document.getElementById('auth-login-error');
   if (!box) return;
@@ -483,31 +376,19 @@ const showLoginError = (msg) => {
   box.style.display = msg ? 'block' : 'none';
 };
 
-// ==========================================
-// Authentication Gate & Session Management
-// ==========================================
-// Muat data aplikasi (hanya setelah login)
-// Optimized: load outlets in parallel, skip non-essential data on first load
-// ==========================================
 const loadAllAppData = async () => {
   applyAccessControl();
-
-  // Tahap 1: Load critical data secara paralel (outlets + reports + attendance)
   const criticalJobs = [
     loadOutlets(),
     loadDailyReports(),
     loadAttendanceLogs()
   ];
-  // Load payslips & calendar in background (tidak block dashboard)
   const backgroundJobs = [loadPayslips(), loadCalendarEvents()];
   if (canAccessView('employees')) criticalJobs.push(loadEmployees());
   if (canAccessView('kpi')) backgroundJobs.push(loadKpiSummary());
   backgroundJobs.push(loadLeaveBalance());
   backgroundJobs.push(loadLeaveRequests());
-
-  // Tunggu critical data dulu (untuk render dashboard cepat)
   await Promise.all(criticalJobs);
-
   populateRegisterOutlets();
   populateGlobalOutletFilter && populateGlobalOutletFilter();
   populateGlobalPeriodFilter && populateGlobalPeriodFilter();
@@ -515,10 +396,7 @@ const loadAllAppData = async () => {
   switchView('dashboard');
   updateDashboardStats && updateDashboardStats();
   if (window.feather) feather.replace();
-
-  // Tahap 2: Load non-critical data di background (user sudah bisa lihat dashboard)
   Promise.all(backgroundJobs).then(() => {
-    // Refresh dashboard stats setelah semua data tersedia
     updateDashboardStats && updateDashboardStats();
     if (window.feather) feather.replace();
   }).catch(err => console.warn('Background load error:', err));
@@ -527,24 +405,16 @@ const loadAllAppData = async () => {
 const initAuthSession = () => {
   const savedUserStr = localStorage.getItem('tertib_disiplin_auth_user');
   const authScreen = document.getElementById('auth-gate-screen');
-
   if (savedUserStr && localStorage.getItem('td_token')) {
     try {
       const user = JSON.parse(savedUserStr);
       AppState.currentUser = user;
       setCurrentUser(user);
       if (authScreen) authScreen.classList.add('hidden');
-      // v62: Re-fetch user fresh dari backend (/api/auth/me) supaya role/divisi
-      // selalu sync dgn Spreadsheet. Kalau admin ubah role di sheet (misal jadi
-      // 'SUPER ADMIN'), perubahan langsung efek setelah reload tanpa perlu logout.
-      // Re-fetch dilakukan async (tidak block UI), dan hanya update kalau berhasil.
       if (user && user.id) {
         fetch('/api/auth/me').then(r => {
-          // v78: Jika 401 (token expired/invalid), jangan reload — tampilkan login screen.
-          // Return null supaya freshUser check di then-chain skip update.
           if (r.status === 401) {
             console.warn('Token expired/invalid (401 dari /api/auth/me). Clearing session, showing login screen (NO reload).');
-            // Clear stale token & user data
             try { localStorage.removeItem('td_token'); } catch (e) { /* ignore */ }
             try { localStorage.removeItem('tertib_disiplin_auth_user'); } catch (e) { /* ignore */ }
             AppState.currentUser = null;
@@ -555,17 +425,13 @@ const initAuthSession = () => {
           return r.ok ? r.json() : null;
         }).then(freshUser => {
           if (freshUser && freshUser.id) {
-            // Hapus field sensitif yg tidak dikembalikan oleh auth_
             AppState.currentUser = freshUser;
             try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(freshUser)); } catch (e) { /* abaikan */ }
-            // Re-apply access control dgn data fresh
             if (typeof applyAccessControl === 'function') applyAccessControl();
-            // Refresh nama user di topbar
             const nameEl = document.getElementById('current-user-name');
             if (nameEl) nameEl.textContent = freshUser.name;
           }
         }).catch(err => {
-          // Gagal re-fetch (offline / backend error) — abaikan, lanjut dgn cached user
           console.warn('Re-fetch /api/auth/me gagal:', err);
         });
       }
@@ -574,18 +440,11 @@ const initAuthSession = () => {
       localStorage.removeItem('tertib_disiplin_auth_user');
     }
   }
-
-  // Not logged in: show auth screen
   if (authScreen) authScreen.classList.remove('hidden');
   return false;
 };
 
-// ==========================================
-// Auth Tab & Collapsible Registration Panel
-// ==========================================
 const switchAuthTab = (tab) => {
-  // Deprecated: tabs removed. Use toggleRegisterForm() instead.
-  // Kept as no-op for backward compatibility (older cached HTML may still call it).
   if (tab === 'register') {
     toggleRegisterForm(true);
   } else {
@@ -593,7 +452,6 @@ const switchAuthTab = (tab) => {
   }
 };
 
-// Exposed to window so inline onclick handlers can call it
 window.toggleRegisterForm = (show) => {
   const wrapper = document.getElementById('auth-register-wrapper');
   const toggleBtn = document.getElementById('btn-show-register');
@@ -602,12 +460,10 @@ window.toggleRegisterForm = (show) => {
     wrapper.classList.add('open');
     wrapper.setAttribute('aria-hidden', 'false');
     if (toggleBtn) toggleBtn.style.display = 'none';
-    // Lazy-initialise dropdowns first time the form is opened
     try {
       syncRegisterDivisions(document.getElementById('reg-type').value || 'Operasional');
       populateRegisterOutlets();
     } catch (e) { /* ignored */ }
-    // Smooth scroll to registration form
     setTimeout(() => wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     if (window.feather) feather.replace();
   } else {
@@ -617,10 +473,7 @@ window.toggleRegisterForm = (show) => {
   }
 };
 
-const quickFillLogin = (nip, password) => {
-  // Deprecated: Quick login panel removed for production security.
-  return;
-};
+const quickFillLogin = (nip, password) => { return; };
 
 const togglePasswordVisibility = (fieldId, btn) => {
   const field = document.getElementById(fieldId);
@@ -641,16 +494,13 @@ const handleAuthLogin = async (e) => {
   const ident = document.getElementById('login-identifier').value.trim();
   const pwd = document.getElementById('login-password').value;
   const submitBtn = document.getElementById('btn-login-submit');
-
   if (!ident || !pwd) {
     showLoginError('NIP/Email dan password wajib diisi.');
     return;
   }
-
   submitBtn.disabled = true;
   submitBtn.textContent = 'Memverifikasi...';
   const slowHint = setTimeout(() => { submitBtn.textContent = 'Menghubungi server, mohon tunggu...'; }, 4000);
-
   try {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
@@ -658,16 +508,13 @@ const handleAuthLogin = async (e) => {
       body: JSON.stringify({ identifier: ident, password: pwd })
     });
     const data = await res.json();
-
     if (res.ok && data.status === 'success') {
       document.getElementById('login-password').value = '';
       setCurrentUser(data.user);
       document.getElementById('auth-gate-screen').classList.add('hidden');
       showToast(data.message, 'success');
       await loadAllAppData();
-      // Cek versi backend — tampilkan banner peringatan jika outdated
       window.checkBackendVersion && window.checkBackendVersion();
-      // v72: tampilkan tombol install di topbar + auto-open modal di mobile first visit
       window.updateTopbarInstallButton && window.updateTopbarInstallButton();
       window.maybeAutoOpenInstallModal && window.maybeAutoOpenInstallModal();
     } else {
@@ -699,8 +546,6 @@ const handleAuthRegister = async (e) => {
   const password = document.getElementById('reg-password').value;
   const pin_code = document.getElementById('reg-pincode').value.trim();
   const submitBtn = document.getElementById('btn-register-submit');
-
-  // Field validation
   if (!name || !nip || !email || !phone || !role) {
     showToast('Mohon lengkapi semua kolom wajib (Nama, NIP, Email, HP, Jabatan).', 'warning');
     return;
@@ -717,28 +562,21 @@ const handleAuthRegister = async (e) => {
     showToast('Pilih titik outlet terlebih dahulu. Jika kosong, hubungi admin untuk menambahkan outlet.', 'warning');
     return;
   }
-
   submitBtn.disabled = true;
   submitBtn.textContent = 'Mendaftarkan akun...';
   const slowHint = setTimeout(() => { submitBtn.textContent = 'Menghubungi server, mohon tunggu...'; }, 4000);
-
   try {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name, nip, email, phone, type, division, role, outlet_id, password, pin_code
-      })
+      body: JSON.stringify({ name, nip, email, phone, type, division, role, outlet_id, password, pin_code })
     });
     const data = await res.json();
-
     if (res.ok && data.status === 'success') {
       setCurrentUser(data.user);
       document.getElementById('auth-gate-screen').classList.add('hidden');
       showToast(data.message || `Pendaftaran berhasil! Selamat datang, ${name}.`, 'success');
-      // Cek versi backend — tampilkan banner peringatan jika outdated
       window.checkBackendVersion && window.checkBackendVersion();
-
       if (data.user.type === 'Management') {
         AppState.currentMode = 'Management';
         const btnMgmt = document.getElementById('btn-mode-management');
@@ -752,7 +590,6 @@ const handleAuthRegister = async (e) => {
         if (btnOps) btnOps.classList.add('active');
         if (btnMgmt) btnMgmt.classList.remove('active');
       }
-
       await loadAllAppData();
     } else {
       showToast(data.detail || data.message || 'Registrasi gagal. Periksa kembali data Anda.', 'error');
@@ -770,15 +607,11 @@ const handleAuthRegister = async (e) => {
 const syncRegisterDivisions = (type) => {
   const divSelect = document.getElementById('reg-division');
   if (!divSelect) return;
-
-  // Registrasi mandiri: OM & PCD disembunyikan (hanya admin yang bisa set via Data Center)
   const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security"];
   const opsDivs = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
-
   const list = (type === 'Management') ? mgmtDivs : opsDivs;
   divSelect.innerHTML = list.map(d => `<option value="${d}">${d}</option>`).join('');
 };
-// Expose ke window supaya inline onchange di HTML bisa panggil
 window.syncRegisterDivisions = syncRegisterDivisions;
 
 const populateRegisterOutlets = () => {
@@ -787,7 +620,6 @@ const populateRegisterOutlets = () => {
   outSelect.innerHTML = AppState.outlets.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
 };
 
-// Hapus semua data pribadi dari memori & layar saat keluar / sesi berakhir
 const clearSessionData = () => {
   AppState.currentUser = null;
   AppState.employees = [];
@@ -807,7 +639,6 @@ const clearSessionData = () => {
   localStorage.removeItem('tertib_disiplin_auth_user');
   if (window.tdLogout) tdLogout();
 };
-// Muat ulang halaman agar tidak ada sisa data pengguna sebelumnya di layar
 const restartToLogin = (notice) => {
   if (notice) { try { sessionStorage.setItem('td_notice', notice); } catch (e) { /* abaikan */ } }
   if (window.location && typeof window.location.reload === 'function') window.location.reload();
@@ -824,32 +655,24 @@ const logoutUser = () => {
   restartToLogin('Anda telah keluar dari aplikasi.');
 };
 
-// Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
-  // Register PWA Service Worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').then(() => {
       console.log('TERTIB DISIPLIN Service Worker Registered');
     }).catch(err => console.log('SW registration error:', err));
   }
-
-  // Setup PWA Installation Prompt
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     AppState.deferredPwaPrompt = e;
     const banner = document.getElementById('pwa-banner');
     if (banner) banner.style.display = 'flex';
   });
-
   initSidebarToggle();
   initGlobalSearch();
   ['login-identifier', 'login-password'].forEach(id => {
     const f = document.getElementById(id);
     if (f) f.addEventListener('input', () => showLoginError(''));
   });
-
-  // Wire tombol Install PWA di sidebar (id='btn-install-pwa').
-  // Tombol ini sebelumnya tidak punya event listener -> tidak bisa diklik. Fix v71.
   const btnInstallPwa = document.getElementById('btn-install-pwa');
   if (btnInstallPwa) {
     btnInstallPwa.addEventListener('click', (e) => {
@@ -860,8 +683,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
-
-  // Setup Navigation listeners
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
@@ -869,20 +690,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (view) switchView(view);
     });
   });
-
-  // Start live clock for attendance
   setInterval(updateAttendanceClock, 1000);
   detectDeviceGPS();
-
-  // Sesi berakhir -> kembali ke layar login
-  // v78: Cooldown 10 detik antar reload — mencegah INFINITE RELOAD LOOP kalau
-  // multiple API call return 401 secara bersamaan (mis. loadAllAppData fetch 5 endpoint
-  // paralel, semua 401 → dispatch 5x td-session-expired → reload 5x).
   let __lastSessionExpiredReload_ = 0;
   window.addEventListener('td-session-expired', () => {
     const now = Date.now();
     if (now - __lastSessionExpiredReload_ < 10000) {
-      // Sudah reload dalam 10 detik terakhir — skip (anti-loop)
       console.warn('td-session-expired di-skip (cooldown 10s, anti-reload-loop)');
       return;
     }
@@ -895,33 +708,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     showToast('Sesi berakhir. Silakan login kembali.', 'warning');
     restartToLogin('Sesi berakhir. Silakan login kembali.');
   });
-
-  // Pesan dari sebelum halaman dimuat ulang (keluar / sesi berakhir)
   try {
     const notice = sessionStorage.getItem('td_notice');
     if (notice) { sessionStorage.removeItem('td_notice'); showToast(notice, 'info'); }
   } catch (e) { /* abaikan */ }
-
-  // Cek sesi login, data dimuat hanya jika sudah login
   const isLoggedIn = initAuthSession();
   if (isLoggedIn) {
-    // Load data critical dulu, jangan tunggu chart init
     await loadAllAppData();
-    // Cek versi backend — tampilkan banner peringatan jika outdated
     window.checkBackendVersion && window.checkBackendVersion();
-    // v72: tampilkan tombol install di topbar + auto-open modal di mobile (page reload dgn session aktif)
     window.updateTopbarInstallButton && window.updateTopbarInstallButton();
     window.maybeAutoOpenInstallModal && window.maybeAutoOpenInstallModal();
   }
-
-  // Initialize mockup charts (di background, tidak block UI)
   if (window.Chart) {
     requestIdleCallback ? requestIdleCallback(() => initMockupCharts()) : setTimeout(initMockupCharts, 100);
   }
-
-  // Populate UI dropdowns (di background)
   populateDivisionDropdowns();
-  // Isi dropdown divisi registrasi dengan default (Operasional) — pastikan tidak kosong
   try {
     const regType = document.getElementById('reg-type');
     const regDiv = document.getElementById('reg-division');
@@ -929,31 +730,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       window.syncRegisterDivisions(regType.value || 'Operasional');
     }
   } catch (e) { console.warn('Gagal init reg division dropdown:', e); }
-
   if (window.feather) feather.replace();
 });
 
-// PWA Install — handle Android (beforeinstallprompt) + iOS (manual instructions modal).
-// v71: tombol #btn-install-pwa sebelumnya tidak ter-wire -> sekarang terhubung & buka modal informatif.
 window.triggerPwaPrompt = () => {
-  // Deteksi platform
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isAndroid = /Android/i.test(navigator.userAgent);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-
   if (isStandalone) {
     showToast('Aplikasi sudah terinstall di perangkat Anda!', 'success');
     dismissPwaBanner();
     return;
   }
-
-  // Sembunyikan banner floating kalau ada (modal yg tampil jadi sumber info utama)
   dismissPwaBanner();
-
-  // Body modal — instruksi spesifik per platform
   const body = document.getElementById('install-app-body');
   if (!body) {
-    // Fallback kalau modal tidak ada (defensive) — pakai toast lama
     if (AppState.deferredPwaPrompt) {
       AppState.deferredPwaPrompt.prompt();
       AppState.deferredPwaPrompt.userChoice.then((choice) => {
@@ -969,8 +760,6 @@ window.triggerPwaPrompt = () => {
     }
     return;
   }
-
-  // Build instruksi sesuai platform
   let html = '';
   if (isIOS) {
     html = `
@@ -999,7 +788,6 @@ window.triggerPwaPrompt = () => {
       </div>
     `;
   } else {
-    // Android tanpa deferredPrompt, atau desktop
     html = `
       <div style="text-align:center; padding:8px 0 12px 0;">
         <div style="font-size:48px; line-height:1; margin-bottom:8px;">💻</div>
@@ -1023,15 +811,12 @@ window.triggerPwaPrompt = () => {
     `;
   }
   body.innerHTML = html;
-
-  // Tombol aksi: tampil hanya utk Android dgn deferredPrompt
   const actionBtn = document.getElementById('btn-install-action');
   const actionBtnText = document.getElementById('btn-install-action-text');
   if (actionBtn) {
     if (isAndroid && AppState.deferredPwaPrompt) {
       actionBtn.style.display = 'inline-flex';
       if (actionBtnText) actionBtnText.textContent = 'Install Sekarang';
-      // Re-wire handler (hindari double-bind)
       actionBtn.onclick = null;
       actionBtn.onclick = async () => {
         try {
@@ -1059,28 +844,22 @@ window.triggerPwaPrompt = () => {
       actionBtn.style.display = 'none';
     }
   }
-
   if (window.feather) feather.replace();
   openModal('modal-install-app');
 };
 const triggerPwaPrompt = window.triggerPwaPrompt;
 
-// Auto-show PWA banner setelah login (sekali per sesi)
 const showPwaBannerIfNeeded = () => {
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-  if (isStandalone) return; // sudah terinstall
+  if (isStandalone) return;
   const dismissed = sessionStorage.getItem('td_pwa_dismissed');
   if (dismissed) return;
-  // Tampilkan banner setelah 3 detik
   setTimeout(() => {
     const banner = document.getElementById('pwa-banner');
     if (banner) banner.style.display = 'flex';
   }, 3000);
 };
 
-// v72: Tampilkan tombol install di topbar (selalu visible di semua device).
-// Auto-hide jika app sudah terinstall (standalone mode).
-// Dipanggil setelah login sukses.
 const updateTopbarInstallButton = () => {
   const btn = document.getElementById('btn-topbar-install');
   if (!btn) return;
@@ -1094,21 +873,16 @@ const updateTopbarInstallButton = () => {
 };
 window.updateTopbarInstallButton = updateTopbarInstallButton;
 
-// v72: Auto-open install modal di mobile (Android/iOS) pada first visit setelah login.
-// Sekali per sesi (sessionStorage flag). Desktop tidak auto-open (hanya tampilkan tombol).
 const maybeAutoOpenInstallModal = () => {
   try {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    if (isStandalone) return; // sudah terinstall
+    if (isStandalone) return;
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && !window.MSStream;
-    if (!isMobile) return; // desktop: tidak auto-open, user klik sendiri
+    if (!isMobile) return;
     const shown = sessionStorage.getItem('td_install_modal_shown');
-    if (shown) return; // sudah pernah tampil sesi ini
-    // Tampilkan setelah 2.5 detik (biar user selesai lihat dashboard dulu)
+    if (shown) return;
     setTimeout(() => {
-      try {
-        sessionStorage.setItem('td_install_modal_shown', '1');
-      } catch (e) { /* ignore */ }
+      try { sessionStorage.setItem('td_install_modal_shown', '1'); } catch (e) { /* ignore */ }
       if (window.triggerPwaPrompt) window.triggerPwaPrompt();
     }, 2500);
   } catch (e) {
@@ -1124,15 +898,13 @@ const dismissPwaBanner = () => {
 };
 window.dismissPwaBanner = dismissPwaBanner;
 
-// Navigation View Switcher
+// ============ v81 FLICKER FIX: switchView ============
 const switchView = (viewName) => {
-  window.switchView = switchView;  // expose for debugging & external access
+  window.switchView = switchView;
   if (!canAccessView(viewName)) {
     showToast('Anda tidak memiliki akses ke panel ini.', 'warning');
     viewName = 'dashboard';
   }
-  // v77: Guard — jika user klik nav item yang sama dgn view yg sudah active,
-  // skip view-specific logic (no re-render, no re-load, no flicker).
   const isSameView = AppState.currentView === viewName;
   setSidebarOpen(false);
   AppState.currentView = viewName;
@@ -1140,11 +912,9 @@ const switchView = (viewName) => {
   const activeNav = document.querySelector(`.nav-item[data-view="${viewName}"]`);
   if (activeNav && activeNav.scrollIntoView) { try { activeNav.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { /* abaikan */ } }
   if (activeNav) activeNav.classList.add('active');
-
   document.querySelectorAll('.view-panel').forEach(panel => panel.classList.remove('active'));
   const activePanel = document.getElementById(`view-${viewName}`);
   if (activePanel) activePanel.classList.add('active');
-
   const titles = {
     'dashboard': ['Dashboard', 'Pusat Kontrol Operasional & Manajemen Multi-Outlet'],
     'daily-report': ['Daily Report Operasional', 'Alur Tugas: Proses ➔ Hold (Wajib Bukti) ➔ Selesai (Wajib Bukti)'],
@@ -1160,7 +930,6 @@ const switchView = (viewName) => {
     'outlets': ['Pengaturan Titik Outlet', 'Konfigurasi Titik Koordinat GPS dan Toleransi Radius Geofencing'],
     'superadmin': ['Panel Super Admin', 'Kelola Pengguna, Hak Akses, dan Pengaturan Seluruh Sistem Aplikasi']
   };
-
   const titleEl = document.getElementById('page-title');
   const subEl = document.getElementById('page-subtitle');
   if (titles[viewName]) {
@@ -1171,104 +940,78 @@ const switchView = (viewName) => {
     titleEl.textContent = 'Slip Gaji Saya';
     subEl.textContent = 'Slip gaji pribadi Anda. Dibuka dengan PIN 6 digit.';
   }
-
   if (viewName === 'presensi' && !isSameView) {
-    // v68: Kamera OTOMATIS terbuka saat masuk panel Presensi (tanpa tombol Buka Kamera).
-    // SetFaceStatus('loading') dipanggil di dalam startCamera. Kalau permission denied,
-    // indikator berubah jadi "Kamera ditolak" + toast instruksi — user tetap bisa
-    // presensi lewat tombol kamera HP.
     window.startCamera && window.startCamera();
-    // Pastikan dropdown shift sesuai divisi user (jaga-jaga kalau populate belum jalan)
     window.populateShiftOptions && window.populateShiftOptions();
     if (!AppState.gpsOk && !AppState.gpsLoading) {
       window.detectDeviceGPS && window.detectDeviceGPS();
     }
-    // Auto-retry loading outlets if they failed before or are still empty
     if (!AppState.outlets || AppState.outlets.length === 0 || AppState.outletsLoadError) {
       loadOutlets && loadOutlets();
     }
     window.checkGpsDistance && window.checkGpsDistance();
     loadAttendanceLogs && loadAttendanceLogs();
   } else if (viewName === 'leaves' && !isSameView) {
-    // Refresh leave data when entering the leaves view
     stopCamera();
     loadLeaveBalance && loadLeaveBalance();
     loadLeaveRequests && loadLeaveRequests();
-    // SUPER ADMIN: tampilkan banner shortcut "Atur Penyesuaian Cuti"
     const saBanner = document.getElementById('leaves-sa-adjustment-banner');
     if (saBanner) saBanner.style.display = isFullAccess() ? '' : 'none';
-    // v67: SUPER ADMIN + PCD: tampilkan banner shortcut "Atur Tanggal Bergabung"
     const jdBanner = document.getElementById('leaves-join-date-banner');
     if (jdBanner) jdBanner.style.display = (isSuperAdminUser() || (AppState.currentUser && AppState.currentUser.division === 'PCD')) ? '' : 'none';
   } else if (viewName === 'chat' && !isSameView) {
-    // Auto-load chat messages saat masuk view chat
     stopCamera();
-    // Reset signature agar tidak skip pertama kali
     if (window.ChatState) ChatState.lastSig = '';
-    // Scroll content-body ke atas supaya chat wrapper terlihat penuh sebelum diukur
     const cb = document.querySelector('.content-body');
     if (cb) cb.scrollTop = 0;
     loadChatMessages && loadChatMessages(AppState.activeChatChannel || '#general', { showLoading: true });
-    // Ukur tinggi wrapper presisi setelah layout settle (2x frame)
     requestAnimationFrame(() => requestAnimationFrame(() => {
       window.sizeChatWrapper && window.sizeChatWrapper();
     }));
-    // Mulai polling real-time
     window.startChatPolling && window.startChatPolling();
   } else if (viewName === 'data-center' && !isSameView) {
-    // Input Data Center — load employees & outlets
     stopCamera();
-    // Stop chat polling kalau keluar dari view chat (hemat network)
     window.stopChatPolling && window.stopChatPolling();
     loadEmployees && loadEmployees();
     loadDataCenterOutlets && loadDataCenterOutlets();
     renderDataCenterEmployeeList && renderDataCenterEmployeeList();
   } else if (viewName === 'profile' && !isSameView) {
-    // Profile view — render current user data
     stopCamera();
     window.stopChatPolling && window.stopChatPolling();
     renderProfileView && renderProfileView();
   } else if (viewName === 'superadmin' && !isSameView) {
-    // Panel Super Admin — muat ringkasan + daftar pengguna + pengaturan
     stopCamera();
     window.stopChatPolling && window.stopChatPolling();
     window.loadSaOverview && window.loadSaOverview();
     window.loadSaUsers && window.loadSaUsers();
     window.loadSaSettings && window.loadSaSettings();
   } else if (viewName === 'daily-report' && !isSameView) {
-    // v80: Daily Report — render board saat masuk panel (karena renderDailyReportBoard
-    // sekarang skip jika panel tidak aktif — v80 guard).
     stopCamera();
     window.stopChatPolling && window.stopChatPolling();
-    // Jika data belum di-load (fresh login langsung ke daily-report), load dulu
     if (!AppState.dailyReports || AppState.dailyReports.length === 0) {
       loadDailyReports && loadDailyReports();
     } else {
-      // Data sudah ada — hanya render (cache check di dalam)
       renderDailyReportBoard && renderDailyReportBoard();
     }
   } else if (!isSameView) {
     stopCamera();
-    // Stop chat polling kalau keluar dari view chat (hemat network)
     window.stopChatPolling && window.stopChatPolling();
   }
 
-  if (window.feather) feather.replace();
+  // v81 FIX: debounced feather — batch rAF, no synchronous global scan
+  window.debouncedFeatherReplace && window.debouncedFeatherReplace();
 
-  // Modern UI: animate stat cards & stagger view cards
-  // v77: Skip stagger & animate jika same view (no re-animate → no flicker)
   if (activePanel && !isSameView) {
     staggerViewCards(activePanel);
     if (viewName === 'dashboard') {
       animateStatCards();
       updateDashboardStats && updateDashboardStats();
+      // v81 FIX: render stream saat masuk dashboard (render di-skip saat hidden)
+      renderDashboardReportsStream && renderDashboardReportsStream(currentStreamStatus_());
     }
   }
 };
 
-// Switch Dashboard Mode: Management vs Tim Operasional
-// Saat diklik, filter SEMUA data di SEMUA panel (dashboard, daily report, presensi,
-// data center, database karyawan, Panel Super Admin, cuti & ijin, payroll, KPI).
 window.switchDashboardMode = (mode) => {
   if (mode !== 'Management' && mode !== 'Operasional') return;
   AppState.currentMode = mode;
@@ -1276,13 +1019,11 @@ window.switchDashboardMode = (mode) => {
   const bo = document.getElementById('btn-mode-operasional');
   if (bm) bm.classList.toggle('active', mode === 'Management');
   if (bo) bo.classList.toggle('active', mode === 'Operasional');
-
   if (mode === 'Management') {
     showToast('Beralih ke Tampilan Management — semua panel kini menampilkan data karyawan Management', 'info');
   } else {
     showToast('Beralih ke Tampilan Tim Operasional — semua panel kini menampilkan data karyawan Operasional', 'info');
   }
-
   rerenderAllPanels_();
   if (window.feather) feather.replace();
 };
@@ -1291,7 +1032,6 @@ const switchDashboardMode = window.switchDashboardMode;
 const setCurrentUser = (user) => {
   if (!user) return;
   AppState.currentUser = user;
-  // Isi ulang dropdown shift sesuai divisi akun yang login
   window.populateShiftOptions && window.populateShiftOptions();
   const nameEl = document.getElementById('current-user-name');
   const roleEl = document.getElementById('current-user-role');
@@ -1308,17 +1048,10 @@ const setCurrentUser = (user) => {
   localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(user));
 };
 
-// ============ BACKEND VERSION CHECK (warn user jika backend outdated) ============
-// Memanggil endpoint root /exec (doGet) utk dapat version. Kalau versi < v45-leave-fix,
-// tampilkan banner peringatan di top supaya user tahu harus deploy ulang Code.gs.
 AppState.backendVersion = null;
 AppState.backendVersionChecked = false;
-
-const MIN_BACKEND_VERSION = 'v45-leave-fix'; // versi minimum yang support /api/admin/*
-
+const MIN_BACKEND_VERSION = 'v45-leave-fix';
 const compareVersion_ = (a, b) => {
-  // Simplisitan: split by '-', compare first segment as version (v44 < v45)
-  // Return true jika a >= b
   if (!a || !b) return false;
   const am = String(a).match(/v(\d+)/i);
   const bm = String(b).match(/v(\d+)/i);
@@ -1330,22 +1063,12 @@ window.checkBackendVersion = async () => {
   if (AppState.backendVersionChecked) return AppState.backendVersion;
   AppState.backendVersionChecked = true;
   try {
-    // v79: Fetch /api/health (akan di-redirect oleh api-client.js ke API_URL/exec)
-    // Sebelumnya fetch('/') yang hit GitHub Pages root → 404.
-    // /api/health tidak ada di backend, tapi api-client.js akan resolve ke API_URL/exec
-    // yang return { ok:true, app:..., version:..., time:... } dari doGet().
-    // Kalau /api/health tidak dikenali backend, return 404 — fallback ke fetch('/') 
-    // tapi via api-client (POST ke API_URL).
-    // Simplest fix: langsung fetch via api-client dengan path yang dikenali backend.
-    // Backend doGet() handle GET / → return version info. Jadi pakai '/api/' prefix
-    // supaya api-client.js intercept & route ke API_URL.
     const res = await fetch('/api/');
     if (!res.ok) return null;
     const data = await res.json().catch(() => ({}));
     const ver = (data && data.body && data.body.version) || data.version || null;
     AppState.backendVersion = ver;
     if (ver && !compareVersion_(ver, MIN_BACKEND_VERSION)) {
-      // Backend outdated — tampilkan banner peringatan
       console.warn('Backend outdated:', ver, '< minimum', MIN_BACKEND_VERSION);
       showBackendOutdatedBanner(ver);
     }
@@ -1357,7 +1080,6 @@ window.checkBackendVersion = async () => {
 };
 
 const showBackendOutdatedBanner = (currentVer) => {
-  // Ciptakan banner sekali saja
   if (document.getElementById('backend-outdated-banner')) return;
   const banner = document.createElement('div');
   banner.id = 'backend-outdated-banner';
@@ -1371,13 +1093,10 @@ const showBackendOutdatedBanner = (currentVer) => {
   `;
   document.body.appendChild(banner);
   if (window.feather) feather.replace();
-  // Auto-hide setelah 30 detik (user bisa tutup manual)
   setTimeout(() => { if (banner && banner.parentElement) banner.style.display = 'none'; }, 30000);
 };
 
-// Load Outlets from API
 const loadOutlets = async () => {
-  // === CHECK 1: Pastikan API_URL sudah diisi di config.js ===
   const cfg = window.TD_CONFIG || {};
   if (!cfg.API_URL || cfg.API_URL.indexOf('GANTI_DENGAN') >= 0 || cfg.API_URL.indexOf('script.google.com') < 0) {
     const errMsg = 'API_URL belum diisi di config.js. Buka file config.js, ganti nilai API_URL dengan link /exec dari Apps Script Anda.';
@@ -1387,12 +1106,9 @@ const loadOutlets = async () => {
     window.checkGpsDistance && window.checkGpsDistance();
     return;
   }
-
   try {
     const res = await fetch('/api/outlets');
-    // Log full response untuk debugging
     console.log('loadOutlets response: HTTP', res.status, res.statusText);
-
     if (!res.ok) {
       let errMsg = 'Gagal memuat outlet (HTTP ' + res.status + ')';
       let errDetail = '';
@@ -1403,7 +1119,6 @@ const loadOutlets = async () => {
       } catch (e) { /* response body bukan JSON */ }
       console.error('loadOutlets error:', errMsg, errDetail);
       AppState.outlets = [];
-      // Berikan pesan error yang lebih actionable
       if (res.status === 500) {
         AppState.outletsLoadError = 'Server error (500). Kemungkinan: (1) Sheet "outlets" belum dibuat — jalankan setupBaru di Apps Script. (2) Code.gs belum di-deploy ulang. Detail: ' + errMsg;
       } else if (res.status === 401) {
@@ -1416,25 +1131,15 @@ const loadOutlets = async () => {
     }
     const data = await res.json();
     console.log('loadOutlets data:', Array.isArray(data) ? data.length + ' outlets' : typeof data, data);
-
-    // Pastikan data adalah array
     const outletList = Array.isArray(data) ? data : (data && data.body && Array.isArray(data.body) ? data.body : []);
     AppState.outlets = outletList;
     AppState.outletsLoadError = '';
-
-    // Isi dropdown filter "Semua Outlet" di topbar dengan daftar outlet
     window.populateGlobalOutletFilter && window.populateGlobalOutletFilter();
-
-    // Segarkan dropdown shift kerja — sekarang AppState.outlets sudah terisi,
-    // sehingga isSchOutletUser_() bisa menentukan apakah user berada di outlet SCH
-    // (shift SCH baru bisa muncul setelah outlet list tersedia).
     window.populateShiftOptions && window.populateShiftOptions();
-
-    // Populate presensi outlet select
     const pSelect = document.getElementById('presensi-outlet-select');
     const rSelect = document.getElementById('rep-form-outlet');
     if (pSelect && outletList.length > 0) {
-      pSelect.innerHTML = '<option value="">— Pilih outlet —</option>' + 
+      pSelect.innerHTML = '<option value="">— Pilih outlet —</option>' +
         outletList.map(o => `<option value="${o.id}">${o.name}${o.radius_meters ? ' (Radius: ' + o.radius_meters + 'm)' : ''}</option>`).join('');
       console.log('Dropdown presensi terisi dengan', outletList.length, 'outlet');
     } else if (pSelect) {
@@ -1444,7 +1149,6 @@ const loadOutlets = async () => {
     if (rSelect && outletList.length > 0) {
       rSelect.innerHTML = outletList.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
     }
-
     renderOutletsTable();
     window.checkGpsDistance && window.checkGpsDistance();
   } catch (err) {
@@ -1455,16 +1159,11 @@ const loadOutlets = async () => {
   }
 };
 
-// === DIAGNOSTIC TOOL: Cek koneksi API & outlet ===
-// Bisa dipanggil dari tombol di halaman presensi atau dari console browser
 window.diagnosePresensi = async () => {
   const results = [];
   const log = (msg) => { results.push(msg); console.log('[DIAGNOSE]', msg); };
-
   log('=== DIAGNOSTIC PRESENSI ===');
   log('Waktu: ' + new Date().toString());
-
-  // Check 1: config.js
   const cfg = window.TD_CONFIG || {};
   log('1. Config TD_CONFIG: ' + (cfg ? 'OK' : 'TIDAK DITEMUKAN'));
   log('   API_URL: ' + (cfg.API_URL || '(kosong)'));
@@ -1477,15 +1176,9 @@ window.diagnosePresensi = async () => {
   } else {
     log('   ✅ API_URL terlihat valid.');
   }
-
-  // Check 2: Token login
   const token = localStorage.getItem('td_token');
   log('2. Token login: ' + (token ? 'Ada (' + token.substring(0, 20) + '...)' : 'TIDAK ADA — silakan login dulu'));
-
-  // Check 3: currentUser
   log('3. Current user: ' + (AppState.currentUser ? AppState.currentUser.name + ' (' + AppState.currentUser.nip + ')' : 'TIDAK ADA — silakan login'));
-
-  // Check 4: Test API /api/outlets
   log('4. Test API /api/outlets...');
   try {
     const res = await fetch('/api/outlets');
@@ -1498,7 +1191,6 @@ window.diagnosePresensi = async () => {
         list.forEach(function (o, i) {
           log('   Outlet ' + (i + 1) + ': ' + o.name + ' (id=' + o.id + ', lat=' + (o.lat) + ' type=' + typeof o.lat + ', lon=' + (o.lon) + ' type=' + typeof o.lon + ', radius=' + (o.radius_meters || 'N/A') + 'm)');
         });
-        // Test hitung jarak manual
         if (AppState.gpsOk && list.length > 0) {
           const o = list[0];
           const oLat = parseFloat(o.lat), oLon = parseFloat(o.lon);
@@ -1530,24 +1222,16 @@ window.diagnosePresensi = async () => {
     log('   ❌ Error koneksi: ' + err.message);
     log('   Kemungkinan: API_URL salah, internet mati, atau Apps Script tidak aktif.');
   }
-
-  // Check 5: GPS status
   log('5. GPS status: ' + (AppState.gpsOk ? 'AKTIF (' + AppState.deviceCoordinates.lat + ', ' + AppState.deviceCoordinates.lon + ')' : 'BELUM AKTIF'));
   if (AppState.gpsLastError) log('   GPS error terakhir: ' + AppState.gpsLastError);
-
-  // Check 6: Outlets di AppState
   log('6. Outlets di AppState: ' + (AppState.outlets ? AppState.outlets.length + ' outlet' : 'tidak ada'));
   if (AppState.outletsLoadError) log('   Error: ' + AppState.outletsLoadError);
-
   log('=== DIAGNOSTIC SELESAI ===');
-
-  // Tampilkan hasil di alert
   const msg = results.join('\n');
   try { alert(msg); } catch (e) { /* abaikan */ }
   return results;
 };
 
-// Load Employees from API
 const loadEmployees = async () => {
   try {
     const res = await fetch('/api/employees');
@@ -1555,14 +1239,12 @@ const loadEmployees = async () => {
     const data = await res.json();
     AppState.employees = Array.isArray(data) ? data : [];
     renderEmployeesTable(AppState.employees);
-    // v75: Sync dashboard stats (rating rata-rata, jumlah karyawan) setelah data employees di-update.
     if (typeof updateDashboardStats === 'function') updateDashboardStats();
   } catch (err) {
     console.error('Failed loading employees:', err);
   }
 };
 
-// Load Daily Reports from API
 const loadDailyReports = async () => {
   try {
     const res = await fetch('/api/daily-reports');
@@ -1571,28 +1253,22 @@ const loadDailyReports = async () => {
     AppState.dailyReports = Array.isArray(data) ? data : [];
     renderDashboardReportsStream();
     renderDailyReportBoard();
-    // v75: Sync dashboard stats (reports count, etc.) setelah data daily reports di-update.
-    // Sebelumnya dashboard stats tetap stale sampai user pindah ke dashboard & trigger updateDashboardStats.
     if (typeof updateDashboardStats === 'function') updateDashboardStats();
   } catch (err) {
     console.error('Failed loading reports:', err);
   }
 };
 
-// Load KPI Summary from API
 const loadKpiSummary = async () => {
   try {
     const res = await fetch('/api/kpi/summary');
     if (!res.ok) return;
     const data = await res.json();
     AppState.kpiSummary = data;
-
     const personalCard = document.getElementById('kpi-personal-card');
     const adminTableCard = document.getElementById('kpi-admin-table-card');
     const leaderboardCard = document.getElementById('kpi-leaderboard-card');
-
     if (data.mode === 'personal') {
-      // Non-admin: show personal card, hide admin views
       renderPersonalKpi(data);
       if (personalCard) personalCard.style.display = 'block';
       if (adminTableCard) adminTableCard.style.display = 'none';
@@ -1601,7 +1277,6 @@ const loadKpiSummary = async () => {
       AppState.kpiDivisionStats = [];
       renderKpiTable([]);
     } else {
-      // Admin: show leaderboard & per-division table, hide personal card
       renderStaffRatingsCards(data.topStaff || []);
       AppState.kpiDivisionStats = data.divisionStats || [];
       renderKpiTable(data.divisionStats || []);
@@ -1614,7 +1289,7 @@ const loadKpiSummary = async () => {
   }
 };
 
-// Render personal KPI card (for non-admin users — only their own data)
+// v81: renderPersonalKpi uses debounced feather
 const renderPersonalKpi = (data) => {
   const container = document.getElementById('kpi-personal-card');
   if (!container) return;
@@ -1623,7 +1298,6 @@ const renderPersonalKpi = (data) => {
   const p = data.personal || {};
   const onTimeColor = p.on_time_rate >= 85 ? '#10b981' : (p.on_time_rate >= 60 ? '#f59e0b' : '#ef4444');
   const kpiColor = p.kpi_score >= 85 ? '#10b981' : (p.kpi_score >= 70 ? '#f59e0b' : '#ef4444');
-
   container.innerHTML = `
     <div style="display:flex; align-items:center; gap:14px; padding:18px; background:linear-gradient(135deg, var(--burgundy-soft), #fff); border-radius:18px; margin-bottom:18px;">
       <div style="width:64px; height:64px; border-radius:50%; background:var(--burgundy-primary); color:#fff; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:800; flex-shrink:0;">
@@ -1657,7 +1331,6 @@ const renderPersonalKpi = (data) => {
         <p style="font-size:11px; color:#94a3b8; margin:2px 0 0 0;">${p.late_count || 0}x terlambat</p>
       </div>
     </div>
-    <!-- Sisa Cuti Widget (loaded asynchronously from /api/leaves/balance) -->
     <div style="margin-top:14px; padding:14px; background:linear-gradient(135deg, #ecfdf5, #d1fae5); border:1px solid #a7f3d0; border-radius:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
       <div>
         <p style="font-size:11px; color:#065f46; margin:0; text-transform:uppercase; font-weight:700;">Sisa Cuti Tahunan</p>
@@ -1675,12 +1348,11 @@ const renderPersonalKpi = (data) => {
       <strong>Catatan:</strong> Data KPI hanya menampilkan performa pribadi Anda. Hubungi HRD untuk evaluasi lengkap.
     </div>
   `;
-  if (window.feather) feather.replace();
-  // After rendering, fetch & display leave balance in the widget
+  // v81 FIX: debounced feather
+  window.debouncedFeatherReplace && window.debouncedFeatherReplace();
   loadLeaveBalance && loadLeaveBalance();
 };
 
-// Load Attendance Logs
 const loadAttendanceLogs = async () => {
   try {
     const res = await fetch('/api/attendance');
@@ -1688,15 +1360,12 @@ const loadAttendanceLogs = async () => {
     const data = await res.json();
     AppState.attendanceLogs = Array.isArray(data) ? data : [];
     renderAttendanceTable(AppState.attendanceLogs);
-    // v75: Sync dashboard attendance stats setelah data presensi di-update.
-    // Sebelumnya dashboard "hari presensi" tetap stale sampai user pindah ke dashboard.
     if (typeof updateDashboardStats === 'function') updateDashboardStats();
   } catch (err) {
     console.error('Failed loading attendance:', err);
   }
 };
 
-// Load Payslips
 const loadPayslips = async () => {
   try {
     const res = await fetch('/api/payroll/slips');
@@ -1704,8 +1373,6 @@ const loadPayslips = async () => {
     const data = await res.json();
     AppState.payslips = Array.isArray(data) ? data : [];
     renderPayslipsTable(AppState.payslips);
-
-    // Summary
     const sumRes = await fetch('/api/payroll/summary');
     if (!sumRes.ok) return;
     const sum = await sumRes.json();
@@ -1720,35 +1387,26 @@ const loadPayslips = async () => {
   }
 };
 
-// Populate Divisions in Filter Dropdowns
 const populateDivisionDropdowns = () => {
   const empDivFilter = document.getElementById('emp-filter-division');
   if (!empDivFilter) return;
-
-  // Registrasi mandiri: OM & PCD disembunyikan (hanya admin yang bisa set via Data Center)
   const mgmtDivs = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security"];
   const opsDivs = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
-
   let html = '<option value="all">Semua Divisi</option>';
   html += '<optgroup label="Management">';
   mgmtDivs.forEach(d => html += `<option value="${d}">${d}</option>`);
   html += '</optgroup><optgroup label="Tim Operasional">';
   opsDivs.forEach(d => html += `<option value="${d}">${d}</option>`);
   html += '</optgroup>';
-
   empDivFilter.innerHTML = html;
 };
-// Expose ke window
 window.populateDivisionDropdowns = populateDivisionDropdowns;
 
-// ================= CHARTS INITIALIZATION (MATCHING MOCKUP) =================
 let branchRatingChartInstance = null;
 let issueRingsChartInstance = null;
 let happyDonutChartInstance = null;
 
-// Render charts with placeholder (zero) data; refreshFromApi() updates them later.
 const initMockupCharts = () => {
-  // 1. Branch Rating Bar Chart
   const branchCanvas = document.getElementById('branchRatingChart');
   if (branchCanvas) {
     const ctx = branchCanvas.getContext('2d');
@@ -1757,45 +1415,20 @@ const initMockupCharts = () => {
       data: {
         labels: ['(Memuat outlet...)'],
         datasets: [
-          {
-            label: 'Bulan Ini',
-            data: [0],
-            backgroundColor: '#701c34',
-            borderRadius: 6,
-            barThickness: 14
-          },
-          {
-            label: 'Bulan Lalu',
-            data: [0],
-            backgroundColor: '#e2e8f0',
-            borderRadius: 6,
-            barThickness: 14
-          }
+          { label: 'Bulan Ini', data: [0], backgroundColor: '#701c34', borderRadius: 6, barThickness: 14 },
+          { label: 'Bulan Lalu', data: [0], backgroundColor: '#e2e8f0', borderRadius: 6, barThickness: 14 }
         ]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false }
-        },
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
         scales: {
-          y: {
-            min: 0,
-            max: 5,
-            ticks: { stepSize: 1, color: '#94a3b8' },
-            grid: { color: '#f1f5f9' }
-          },
-          x: {
-            grid: { display: false },
-            ticks: { color: '#64748b', font: { weight: '600', size: 11 } }
-          }
+          y: { min: 0, max: 5, ticks: { stepSize: 1, color: '#94a3b8' }, grid: { color: '#f1f5f9' } },
+          x: { grid: { display: false }, ticks: { color: '#64748b', font: { weight: '600', size: 11 } } }
         }
       }
     });
   }
-
-  // 2. Issue Status Donut / Ring Chart
   const issueCanvas = document.getElementById('issueRingsChart');
   if (issueCanvas) {
     const ctx = issueCanvas.getContext('2d');
@@ -1803,25 +1436,11 @@ const initMockupCharts = () => {
       type: 'doughnut',
       data: {
         labels: ['Resolved (Selesai)', 'Pending (Hold)', 'Escalated'],
-        datasets: [{
-          data: [0, 0, 0],
-          backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
-          borderWidth: 3,
-          borderColor: '#ffffff',
-          cutout: '72%'
-        }]
+        datasets: [{ data: [0, 0, 0], backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], borderWidth: 3, borderColor: '#ffffff', cutout: '72%' }]
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false }
-        }
-      }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
   }
-
-  // 3. Happy Customers Donut Chart (placeholder until real data arrives)
   const happyCanvas = document.getElementById('happyDonutChart');
   if (happyCanvas) {
     const ctx = happyCanvas.getContext('2d');
@@ -1829,48 +1448,24 @@ const initMockupCharts = () => {
       type: 'doughnut',
       data: {
         labels: ['Members', 'Non-Members', 'New Guest', 'Existing Guest'],
-        datasets: [{
-          data: [0, 0, 0, 0],
-          backgroundColor: ['#701c34', '#0284c7', '#f43f5e', '#10b981'],
-          borderWidth: 2,
-          borderColor: '#ffffff',
-          cutout: '65%'
-        }]
+        datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#701c34', '#0284c7', '#f43f5e', '#10b981'], borderWidth: 2, borderColor: '#ffffff', cutout: '65%' }]
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false }
-        }
-      }
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
   }
 };
 
-// ================= DASHBOARD STREAM & STAFF RATINGS =================
-// Helper: apakah user saat ini bisa lihat semua data di dashboard (Super Admin)
-// v75: isDashboardAdmin konsisten dgn strict RBAC v60 — HANYA SUPER ADMIN (role) atau PCD division.
-// Sebelumnya: FULL_ACCESS_DIVISIONS.includes(user.division) — ini menyebabkan SEMUA user dgn
-// division OM/PCD (walau role-nya bukan SUPER ADMIN) diperlakukan sbg dashboard admin & lihat
-// semua data karyawan (reports, attendance, KPI). Inkonsisten dgn v60 strict role check.
-// Setelah fix: BM/HRD/SPV/dll dgn role biasa TIDAK lihat dashboard admin view (hanya data sendiri).
 const isDashboardAdmin = (user = AppState.currentUser) => !!user && (isSuperAdminUser(user) || user.division === 'PCD');
 
-// Update stat cards berdasarkan data user (pribadi untuk non-admin, semua untuk admin)
 const updateDashboardStats = () => {
   if (!AppState.currentUser) return;
   const u = AppState.currentUser;
   const adminMode = isDashboardAdmin();
   const gf = getGlobalFilters();
-
-  // Karyawan sesuai filter global (mode + outlet) — dipakai untuk rating & kehadiran
   let scopeEmps = AppState.employees || [];
   if (gf.mode === 'Management') scopeEmps = scopeEmps.filter(e => MANAGEMENT_DIVISIONS.indexOf(e.division) >= 0);
   else if (gf.mode === 'Operasional') scopeEmps = scopeEmps.filter(e => MANAGEMENT_DIVISIONS.indexOf(e.division) < 0);
   if (gf.outlet !== 'all') scopeEmps = scopeEmps.filter(e => e.outlet_id === gf.outlet);
-
-  // Stat 1: Reports count
   const reportsEl = document.getElementById('stat-reports-value');
   if (reportsEl) {
     let myReports = AppState.dailyReports || [];
@@ -1884,13 +1479,10 @@ const updateDashboardStats = () => {
     }
     reportsEl.textContent = myReports.length;
   }
-
-  // Stat 2: Rating (pribadi untuk semua)
   const ratingsEl = document.getElementById('stat-ratings-value');
   const ratingsSubEl = document.getElementById('stat-ratings-subtitle');
   if (ratingsEl) {
     if (adminMode) {
-      // Admin: rata-rata karyawan sesuai filter mode + outlet
       const avgRating = scopeEmps.length > 0
         ? (scopeEmps.reduce((sum, e) => sum + (e.rating || 0), 0) / scopeEmps.length).toFixed(1)
         : '-';
@@ -1901,13 +1493,10 @@ const updateDashboardStats = () => {
       if (ratingsSubEl) ratingsSubEl.textContent = '⭐ Rating pribadi Anda';
     }
   }
-
-  // Stat 3: Attendance rate
   const attEl = document.getElementById('stat-attendance-value');
   const attSubEl = document.getElementById('stat-attendance-subtitle');
   if (attEl) {
     let myLogs = AppState.attendanceLogs || [];
-    // Filter global: mode + outlet + periode
     if (gf.mode === 'Management') myLogs = myLogs.filter(a => MANAGEMENT_DIVISIONS.indexOf(a.division) >= 0);
     else if (gf.mode === 'Operasional') myLogs = myLogs.filter(a => MANAGEMENT_DIVISIONS.indexOf(a.division) < 0);
     if (gf.outlet !== 'all') myLogs = myLogs.filter(a => a.outlet_id === gf.outlet);
@@ -1917,24 +1506,26 @@ const updateDashboardStats = () => {
     }
     const todayLogs = myLogs.filter(a => a.date === gf.todayStr);
     if (adminMode) {
-      // Admin: persentase kehadiran hari ini dari karyawan dalam scope filter
       const totalEmps = scopeEmps.length;
       const pct = totalEmps > 0 ? Math.round((todayLogs.length / totalEmps) * 100) : 0;
       attEl.textContent = pct + '%';
       if (attSubEl) attSubEl.textContent = '❤️ ' + todayLogs.length + ' dari ' + totalEmps + ' karyawan hadir hari ini';
     } else {
-      // Personal: tampilkan jumlah hari hadir (dalam periode terpilih)
       attEl.textContent = myLogs.length;
       if (attSubEl) attSubEl.textContent = gf.period === 'all' ? '❤️ Total hari presensi Anda' : '❤️ Hari presensi Anda (' + gf.period + ')';
     }
   }
 };
 
+// ============ v81 FLICKER FIX: renderDashboardReportsStream ============
 const renderDashboardReportsStream = (filterStatus = 'All') => {
   const container = document.getElementById('dashboard-reports-stream');
   if (!container) return;
 
-  // v77: Cache check — skip re-render jika tidak ada perubahan
+  // v81 FIX: SKIP render saat panel Dashboard HIDDEN — cegah layout-shift
+  const __dashView = document.getElementById('view-dashboard');
+  if (__dashView && !__dashView.classList.contains('active')) return;
+
   const gf = getGlobalFilters();
   const cacheKey = JSON.stringify({
     filterStatus,
@@ -1949,7 +1540,6 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
   container.__lastStreamCache = cacheKey;
 
   let reports = AppState.dailyReports;
-  // Filter by current mode (Management / Operasional) untuk Super Admin
   if (isDashboardAdmin() && AppState.currentMode) {
     if (AppState.currentMode === 'Management') {
       reports = reports.filter(r => r.type === 'Management');
@@ -1957,14 +1547,12 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
       reports = reports.filter(r => r.type !== 'Management');
     }
   }
-  // Non-Super-Admin: hanya tampilkan laporan sendiri di dashboard
   if (!isDashboardAdmin() && AppState.currentUser) {
     reports = reports.filter(r => r.reporter_id === AppState.currentUser.id);
   }
   if (filterStatus !== 'All') {
     reports = reports.filter(r => r.status.toLowerCase() === filterStatus.toLowerCase());
   }
-  // Filter global topbar: outlet + periode + pencarian
   if (gf.outlet !== 'all') reports = reports.filter(r => r.outlet_id === gf.outlet);
   reports = reports.filter(r => dateInPeriod_(r.created_at, gf.cutoff, gf.todayStr));
   reports = reports.filter(r => matchGlobalSearch_(gf.search, [r.title, r.description, r.reporter_name, r.outlet_name, r.division]));
@@ -1987,13 +1575,11 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
       statusClass = 'status-selesai';
       statusIcon = 'check-circle';
     }
-
     const proofBtn = r.proof_file_url ? `
       <button class="btn-proof-preview" onclick="openLightbox('${r.proof_file_url}', '${r.title} - ${r.reporter_name}')">
         <i data-feather="image" style="width:12px; height:12px;"></i> Bukti Foto
       </button>
     ` : '';
-
     return `
       <div class="stream-item-row">
         <img src="${r.reporter_avatar || 'https://images.unsplash.com/photo-1534528741775?w=100&auto=format&fit=crop&q=80'}" class="stream-avatar" alt="Avatar">
@@ -2022,7 +1608,8 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
     `;
   }).join('');
 
-  if (window.feather) feather.replace();
+  // v81 FIX: debounced feather (rAF-batch) — no synchronous global scan
+  window.debouncedFeatherReplace && window.debouncedFeatherReplace();
 };
 
 const filterDashboardReports = (status, btn) => {
@@ -2031,9 +1618,8 @@ const filterDashboardReports = (status, btn) => {
   renderDashboardReportsStream(status);
 };
 
-// Render Staff Ratings Cards (Exact Match Georgy, Emma, Akash from Mockup)
+// v81: renderStaffRatingsCards uses debounced feather
 const renderStaffRatingsCards = (staffList) => {
-  // Staff ratings (leaderboard) hanya tampil untuk Super Admin di dashboard
   if (!isDashboardAdmin()) {
     const container = document.getElementById('dashboard-staff-ratings-list');
     if (container) {
@@ -2044,7 +1630,6 @@ const renderStaffRatingsCards = (staffList) => {
   const container = document.getElementById('dashboard-staff-ratings-list');
   const kpiLeader = document.getElementById('kpi-leaderboard-list');
   if (!container && !kpiLeader) return;
-
   const html = staffList.slice(0, 3).map(s => {
     return `
       <div class="staff-rating-card">
@@ -2059,74 +1644,53 @@ const renderStaffRatingsCards = (staffList) => {
           </div>
         </div>
         <div class="staff-sub-metrics">
-          <div class="sub-metric-col">
-            <p class="lbl">Performance</p>
-            <p class="num">+21% ↑</p>
-          </div>
-          <div class="sub-metric-col">
-            <p class="lbl">Attendance</p>
-            <p class="num">+46% ↑</p>
-          </div>
-          <div class="sub-metric-col">
-            <p class="lbl">Ratings</p>
-            <p class="num">+8% ↑</p>
-          </div>
+          <div class="sub-metric-col"><p class="lbl">Performance</p><p class="num">+21% ↑</p></div>
+          <div class="sub-metric-col"><p class="lbl">Attendance</p><p class="num">+46% ↑</p></div>
+          <div class="sub-metric-col"><p class="lbl">Ratings</p><p class="num">+8% ↑</p></div>
         </div>
       </div>
     `;
   }).join('');
-
   if (container) container.innerHTML = html;
   if (kpiLeader) kpiLeader.innerHTML = html;
-  if (window.feather) feather.replace();
+  // v81 FIX: debounced feather
+  window.debouncedFeatherReplace && window.debouncedFeatherReplace();
 };
 
-// ================= DAILY REPORT BOARD (PROSES - HOLD - SELESAI) =================
-// v77: Render cache — skip re-render jika data + filter tidak berubah.
-// v80: SKIP render jika panel TIDAK aktif (user di panel lain). Sebelumnya,
-// loadDailyReports & rerenderAllPanels_ tetap render ke panel yang hidden —
-// innerHTML rewrite + feather.replace() global scan menyebabkan layout shift
-// yang terlihat sbg flicker saat user masuk panel. Sekarang: render hanya
-// jika panel aktif, atau kalau panel baru jadi aktif (dari switchView).
+// ============ v81 FLICKER FIX: renderDailyReportBoard cacheKey diperluas ============
 let __dailyReportBoardCache_ = null;
 const renderDailyReportBoard = () => {
   const colProses = document.getElementById('kanban-col-proses');
   const colHold = document.getElementById('kanban-col-hold');
   const colSelesai = document.getElementById('kanban-col-selesai');
   if (!colProses) return;
-
-  // v80: Skip jika panel Daily Report tidak aktif (user sedang di panel lain).
-  // Panel hidden tidak perlu di-render — akan di-render saat switchView masuk panel.
   const viewEl = document.getElementById('view-daily-report');
   if (viewEl && !viewEl.classList.contains('active')) return;
-
   const divFilter = document.getElementById('report-filter-division')?.value || 'all';
   const statusFilter = document.getElementById('report-filter-status')?.value || 'all';
   const search = document.getElementById('report-search-box')?.value?.toLowerCase() || '';
   const gf = getGlobalFilters();
-
-  // v77: Cache check — skip re-render jika data + filter tidak berubah
+  // v81 FIX: cache signature diperluas — report_number & hold_reason juga dicek
   const cacheKey = JSON.stringify({
     count: (AppState.dailyReports || []).length,
-    ids: (AppState.dailyReports || []).map(r => r.id + ':' + r.status).join('|'),
+    ids: (AppState.dailyReports || []).map(r =>
+      r.id + ':' + r.status + ':' + (r.report_number || '') +
+      ':' + ((r.hold_reason || '').slice(0, 8))
+    ).join('|'),
     divFilter, statusFilter, search,
     mode: AppState.currentMode,
     outlet: gf.outlet, period: gf.period, gfSearch: gf.search
   });
   if (__dailyReportBoardCache_ === cacheKey) {
-    // Data & filter tidak berubah — skip re-render (no flicker)
     return;
   }
   __dailyReportBoardCache_ = cacheKey;
-
   let list = AppState.dailyReports;
-  // Filter by current mode (Management / Operasional)
   if (AppState.currentMode === 'Management') {
     list = list.filter(r => r.type === 'Management');
   } else if (AppState.currentMode === 'Operasional') {
     list = list.filter(r => r.type !== 'Management');
   }
-  // Filter global topbar: outlet + periode + pencarian global
   if (gf.outlet !== 'all') list = list.filter(r => r.outlet_id === gf.outlet);
   list = list.filter(r => dateInPeriod_(r.created_at, gf.cutoff, gf.todayStr));
   if (gf.search) {
@@ -2135,16 +1699,13 @@ const renderDailyReportBoard = () => {
   if (divFilter !== 'all') list = list.filter(r => r.division === divFilter);
   if (statusFilter !== 'all') list = list.filter(r => r.status === statusFilter);
   if (search) list = list.filter(r => r.title.toLowerCase().includes(search) || r.report_number.toLowerCase().includes(search) || r.description.toLowerCase().includes(search));
-
   const prosesItems = list.filter(r => r.status === 'Proses');
   const holdItems = list.filter(r => r.status === 'Hold');
   const selesaiItems = list.filter(r => r.status === 'Selesai');
-
   document.getElementById('count-col-proses').textContent = prosesItems.length;
   document.getElementById('count-col-hold').textContent = holdItems.length;
   document.getElementById('count-col-selesai').textContent = selesaiItems.length;
   document.getElementById('badge-pending-reports').textContent = holdItems.length;
-
   const renderCard = (r) => {
     const proofTag = r.proof_file_url ? `
       <div style="margin-top:8px;">
@@ -2153,7 +1714,6 @@ const renderDailyReportBoard = () => {
         </button>
       </div>
     ` : '';
-
     return `
       <div style="background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:14px; box-shadow:var(--shadow-sm);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
@@ -2162,16 +1722,12 @@ const renderDailyReportBoard = () => {
         </div>
         <h5 style="font-size:13px; font-weight:700; margin-bottom:4px;">${r.title}</h5>
         <p style="font-size:11.5px; color:#64748b; margin-bottom:8px;">${r.description}</p>
-        
         ${r.hold_reason ? `<div style="font-size:11px; color:#b45309; background:#fffbeb; padding:6px 8px; border-radius:6px; margin-bottom:8px;"><strong>Kendala:</strong> ${r.hold_reason}</div>` : ''}
-
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8; border-top:1px dashed #f1f5f9; padding-top:8px;">
           <span>👤 ${r.reporter_name}</span>
           <span>📍 ${r.outlet_name.split(' ')[1] || 'Outlet'}</span>
         </div>
-
         ${proofTag}
-
         <div style="display:flex; gap:6px; margin-top:10px;">
           ${r.status !== 'Proses' ? `<button class="btn-secondary" style="font-size:10.5px; padding:3px 8px;" onclick="quickUpdateReportStatus('${r.id}', 'Proses')">Ke Proses</button>` : ''}
           ${r.status !== 'Hold' ? `<button class="btn-secondary" style="font-size:10.5px; padding:3px 8px; color:#b45309;" onclick="promptHoldWithProof('${r.id}')">Hold (Wajib Bukti)</button>` : ''}
@@ -2180,15 +1736,9 @@ const renderDailyReportBoard = () => {
       </div>
     `;
   };
-
   colProses.innerHTML = prosesItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada tugas aktif.</p>';
   colHold.innerHTML = holdItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada kendala tertunda.</p>';
   colSelesai.innerHTML = selesaiItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Belum ada tugas selesai.</p>';
-
-  // v80: Debounced feather.replace — jangan replace global scan langsung di sini.
-  // feather.replace() scan SELURUH dokumen & replace semua [data-feather] — kalau dipanggil
-  // di setiap render, icons di panel lain juga diganti → layout shift → flicker.
-  // DebouncedFeatherReplace batch multiple calls jadi satu (next frame).
   window.debouncedFeatherReplace && window.debouncedFeatherReplace();
 };
 
@@ -2196,7 +1746,6 @@ const filterDailyReportBoard = () => {
   renderDailyReportBoard();
 };
 
-// Open Create Report Modal
 const openCreateReportModal = () => {
   document.getElementById('modal-report-title').textContent = 'Buat Laporan Operasional Baru';
   document.getElementById('rep-form-title').value = '';
@@ -2204,7 +1753,6 @@ const openCreateReportModal = () => {
   document.getElementById('rep-form-status').value = 'Proses';
   document.getElementById('rep-form-hold-reason').value = '';
   document.getElementById('rep-form-proof-url').value = '';
-  // Reset juga input file (kamera + reguler) supaya tidak tersisa file lama
   const f1 = document.getElementById('rep-form-file'); if (f1) f1.value = '';
   const f2 = document.getElementById('rep-form-file-camera'); if (f2) f2.value = '';
   document.getElementById('proof-preview-container').style.display = 'none';
@@ -2216,7 +1764,6 @@ const handleReportStatusChange = (status) => {
   const section = document.getElementById('proof-upload-section');
   const holdGroup = document.getElementById('group-hold-reason');
   const label = document.getElementById('proof-instruction-label');
-
   if (status === 'Hold') {
     section.style.display = 'block';
     holdGroup.style.display = 'block';
@@ -2234,7 +1781,6 @@ const handleReportStatusChange = (status) => {
 const previewReportFile = async (input) => {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
-  // Validasi size (max 5MB) — konsisten dgn quick-proof modal
   if (file.size > 5 * 1024 * 1024) {
     showToast('Ukuran file melebihi 5 MB. Pilih file lebih kecil.', 'error');
     input.value = '';
@@ -2242,18 +1788,13 @@ const previewReportFile = async (input) => {
   }
   const formData = new FormData();
   formData.append('file', file);
-
   try {
     showToast('Mengunggah bukti file...', 'info');
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData
-    });
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
     const data = await res.json();
     if (res.ok && (data.status === 'success' || data.url)) {
       const url = data.url;
       document.getElementById('rep-form-proof-url').value = url;
-      // Preview hanya jika image (bukan PDF)
       if (file.type.startsWith('image/')) {
         const previewImg = document.getElementById('proof-preview-img');
         previewImg.src = url;
@@ -2272,24 +1813,19 @@ const previewReportFile = async (input) => {
 };
 window.previewReportFile = previewReportFile;
 
-// Submit Daily Report with MANDATORY proof check
 const submitDailyReportForm = async (e) => {
   e.preventDefault();
   const status = document.getElementById('rep-form-status').value;
   const proofUrl = document.getElementById('rep-form-proof-url').value;
   const holdReason = document.getElementById('rep-form-hold-reason').value;
-
-  // STRICT VALIDATION
   if ((status === 'Hold' || status === 'Selesai') && !proofUrl) {
     alert(`Status "${status}" WAJIB menyertakan bukti file/foto dokumentasi! Harap upload foto bukti terlebih dahulu.`);
     return;
   }
-
   if (status === 'Hold' && !holdReason.trim()) {
     alert('Status "Hold" wajib mencantumkan alasan kendala atau penundaan!');
     return;
   }
-
   const payload = {
     title: document.getElementById('rep-form-title').value,
     category: document.getElementById('rep-form-category').value,
@@ -2305,7 +1841,6 @@ const submitDailyReportForm = async (e) => {
     priority: document.getElementById('rep-form-priority').value,
     assigned_to: AppState.currentUser.name
   };
-
   try {
     const res = await fetch('/api/daily-reports', {
       method: 'POST',
@@ -2325,20 +1860,12 @@ const submitDailyReportForm = async (e) => {
   }
 };
 
-// ================= QUICK PROOF MODAL (Hold/Selesai dari Kanban) =================
-// Sebelumnya pakai prompt() — UX buruk di iPhone. Sekarang pakai modal dgn:
-// - Ambil Foto (capture=environment, langsung kamera iPhone)
-// - Pilih File (galeri/PDF)
-// - Hold reason wajib utk Hold
-// - Submit -> PUT /api/daily-reports/:id/status
 AppState.__quickProof = { reportId: null, status: null };
 
 const openQuickProofModal = (reportId, status) => {
   const r = (AppState.dailyReports || []).find(x => x.id === reportId);
   if (!r) { showToast('Laporan tidak ditemukan.', 'error'); return; }
   AppState.__quickProof = { reportId: reportId, status: status };
-
-  // Reset form
   document.getElementById('quick-proof-url').value = '';
   document.getElementById('quick-proof-hold-reason').value = '';
   document.getElementById('quick-proof-notes').value = '';
@@ -2346,8 +1873,6 @@ const openQuickProofModal = (reportId, status) => {
   document.getElementById('quick-proof-file-camera').value = '';
   document.getElementById('quick-proof-preview-container').style.display = 'none';
   document.getElementById('quick-proof-preview-img').src = '';
-
-  // Set judul & info
   document.getElementById('quick-proof-title').textContent =
     status === 'Hold' ? 'Tandai Hold (Wajib Bukti)' : 'Tandai Selesai (Wajib Bukti)';
   document.getElementById('quick-proof-info').innerHTML =
@@ -2355,8 +1880,6 @@ const openQuickProofModal = (reportId, status) => {
     '<br><strong>No:</strong> ' + (r.report_number || r.id) +
     '<br><strong>Pelapor:</strong> ' + (r.reporter_name || '-') +
     '<br><strong>Status saat ini:</strong> ' + (r.status || '-');
-
-  // Tampilkan/sembunyikan group hold reason
   const holdGroup = document.getElementById('quick-proof-hold-group');
   const fileLabel = document.getElementById('quick-proof-file-label');
   if (status === 'Hold') {
@@ -2366,8 +1889,6 @@ const openQuickProofModal = (reportId, status) => {
     holdGroup.style.display = 'none';
     fileLabel.textContent = 'Bukti Foto Hasil Pekerjaan';
   }
-
-  // Tombol submit warna mengikuti status
   const submitBtn = document.getElementById('btn-quick-proof-submit');
   if (status === 'Hold') {
     submitBtn.style.background = '#b45309';
@@ -2376,7 +1897,6 @@ const openQuickProofModal = (reportId, status) => {
     submitBtn.style.background = '#10b981';
     submitBtn.textContent = 'Kirim & Tandai Selesai';
   }
-
   openModal('modal-quick-proof');
   if (window.feather) setTimeout(() => feather.replace(), 50);
 };
@@ -2385,7 +1905,6 @@ window.openQuickProofModal = openQuickProofModal;
 const previewQuickProofFile = async (input) => {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
-  // Validasi size (max 5MB)
   if (file.size > 5 * 1024 * 1024) {
     showToast('Ukuran file melebihi 5 MB. Pilih file lebih kecil.', 'error');
     input.value = '';
@@ -2400,7 +1919,6 @@ const previewQuickProofFile = async (input) => {
     if (res.ok && (data.status === 'success' || data.url)) {
       const url = data.url;
       document.getElementById('quick-proof-url').value = url;
-      // Preview hanya jika image (bukan PDF)
       if (file.type.startsWith('image/')) {
         const previewImg = document.getElementById('quick-proof-preview-img');
         previewImg.src = url;
@@ -2422,11 +1940,9 @@ window.previewQuickProofFile = previewQuickProofFile;
 const submitQuickProof = async () => {
   const { reportId, status } = AppState.__quickProof;
   if (!reportId || !status) { showToast('Sesi bukti tidak valid. Tutup & coba lagi.', 'error'); return; }
-
   const proofUrl = document.getElementById('quick-proof-url').value;
   const holdReason = document.getElementById('quick-proof-hold-reason').value.trim();
   const notes = document.getElementById('quick-proof-notes').value.trim();
-
   if (!proofUrl) {
     showToast('Bukti wajib diunggah. Ambil foto atau pilih file dulu.', 'warning');
     return;
@@ -2435,12 +1951,10 @@ const submitQuickProof = async () => {
     showToast('Status Hold wajib mencantumkan alasan kendala.', 'warning');
     return;
   }
-
   const submitBtn = document.getElementById('btn-quick-proof-submit');
   const origText = submitBtn.textContent;
   submitBtn.disabled = true;
   submitBtn.textContent = 'Mengirim...';
-
   try {
     await updateReportStatusDirect(reportId, status, proofUrl, notes || null, status === 'Hold' ? holdReason : null);
     closeModal('modal-quick-proof');
@@ -2453,16 +1967,10 @@ const submitQuickProof = async () => {
 };
 window.submitQuickProof = submitQuickProof;
 
-// ============ Tombol quick-action Hold/Selesai di Kanban card ============
-// Sebelumnya pakai prompt() — sekarang buka modal quick-proof dgn file picker.
-const promptHoldWithProof = (reportId) => {
-  openQuickProofModal(reportId, 'Hold');
-};
+const promptHoldWithProof = (reportId) => { openQuickProofModal(reportId, 'Hold'); };
 window.promptHoldWithProof = promptHoldWithProof;
 
-const promptSelesaiWithProof = (reportId) => {
-  openQuickProofModal(reportId, 'Selesai');
-};
+const promptSelesaiWithProof = (reportId) => { openQuickProofModal(reportId, 'Selesai'); };
 window.promptSelesaiWithProof = promptSelesaiWithProof;
 
 const quickUpdateReportStatus = (reportId, newStatus) => {
@@ -2474,12 +1982,7 @@ const updateReportStatusDirect = async (reportId, status, proofUrl, proofNotes, 
     const res = await fetch(`/api/daily-reports/${reportId}/status`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        status: status,
-        proof_file_url: proofUrl,
-        proof_notes: proofNotes,
-        hold_reason: holdReason
-      })
+      body: JSON.stringify({ status: status, proof_file_url: proofUrl, proof_notes: proofNotes, hold_reason: holdReason })
     });
     const data = await res.json();
     if (res.ok) {
@@ -2494,10 +1997,6 @@ const updateReportStatusDirect = async (reportId, status, proofUrl, proofNotes, 
 };
 
 // ================= PRESENSI GPS & SELFIE CAMERA =================
-// All presensi functions are exposed to window.* so inline onclick handlers
-// work even when the script is loaded as a module / in strict mode.
-
-// --- GPS Detection (async, with anti-fake GPS detection) ---
 window.detectDeviceGPS = () => {
   if (!navigator.geolocation) {
     AppState.gpsOk = false;
@@ -2505,11 +2004,10 @@ window.detectDeviceGPS = () => {
     window.checkGpsDistance();
     return;
   }
-  if (AppState.gpsLoading) return; // prevent duplicate concurrent requests
+  if (AppState.gpsLoading) return;
   AppState.gpsLoading = true;
-  AppState.gpsReadings = []; // reset readings for drift detection
-  window.checkGpsDistance(); // show "mendeteksi..." immediately
-
+  AppState.gpsReadings = [];
+  window.checkGpsDistance();
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       AppState.deviceCoordinates = { lat: pos.coords.latitude, lon: pos.coords.longitude };
@@ -2517,31 +2015,21 @@ window.detectDeviceGPS = () => {
       AppState.gpsOk = true;
       AppState.gpsLoading = false;
       AppState.gpsLastError = '';
-
-      // === ANTI-FAKE GPS: Detect mock location ===
       AppState.isMockSuspect = 0;
-
-      // Cek 1: Akurasi terlalu sempurna (< 3m) — GPS asli biasanya 5-50m
       if (AppState.gpsAccuracy > 0 && AppState.gpsAccuracy < 3) {
         AppState.isMockSuspect = 1;
         console.warn('⚠️ GPS accuracy mencurigakan (< 3m):', AppState.gpsAccuracy, 'm');
       }
-
-      // Cek 2: Akurasi = 0 (beberapa mock app return 0)
       if (AppState.gpsAccuracy === 0) {
         AppState.isMockSuspect = 1;
         console.warn('⚠️ GPS accuracy = 0, kemungkinan mock location');
       }
-
-      // Cek 3: Koordinat persis di (0,0) — Atlantic Ocean
       if (pos.coords.latitude === 0 && pos.coords.longitude === 0) {
         AppState.isMockSuspect = 1;
         AppState.gpsOk = false;
         AppState.gpsLastError = 'Lokasi tidak dapat dideteksi. Pastikan GPS aktif, berada di area terbuka, lalu coba lagi.';
         console.warn('⚠️ Koordinat GPS (0,0) — tidak valid');
       }
-
-      // Cek 4: Ambil reading kedua untuk cek drift (GPS asli selalu bergesek sedikit)
       setTimeout(() => {
         navigator.geolocation.getCurrentPosition(
           (pos2) => {
@@ -2549,17 +2037,10 @@ window.detectDeviceGPS = () => {
               pos.coords.latitude, pos.coords.longitude,
               pos2.coords.latitude, pos2.coords.longitude
             );
-            // GPS asli: drift 0-10m antara 2 reading dalam 2 detik
-            // Mock GPS: drift = 0m persis (koordinat tidak berubah)
             if (drift === 0 && pos.coords.latitude === pos2.coords.latitude && pos.coords.longitude === pos2.coords.longitude) {
               AppState.isMockSuspect = 1;
               console.warn('⚠️ GPS drift = 0m antara 2 reading — kemungkinan mock location (koordinat tidak berubah)');
             }
-            // === Re-evaluasi flag dengan reading kedua (cegah false-positive) ===
-            // Beberapa HP/laporan jaringan return accuracy 0 di reading pertama lalu normal
-            // di reading kedua. Kalau reading kedua masuk rentang GPS asli (3-100m),
-            // hapus flag mencurigakan supaya karyawan tidak terbloir tanpa alasan.
-            // (Backend tetap mencatat is_mock_suspect untuk review admin.)
             const acc2 = pos2.coords.accuracy || 0;
             if (acc2 >= 3 && acc2 <= 100) {
               if (AppState.isMockSuspect) console.warn('✅ Reading kedua sehat (akurasi ' + acc2 + 'm) — flag mencurigakan dihapus');
@@ -2567,7 +2048,6 @@ window.detectDeviceGPS = () => {
             } else if (acc2 > 0 && acc2 < 3) {
               AppState.isMockSuspect = 1;
             }
-            // Update koordinat dengan reading terbaru
             AppState.deviceCoordinates = { lat: pos2.coords.latitude, lon: pos2.coords.longitude };
             AppState.gpsAccuracy = acc2 || AppState.gpsAccuracy;
             window.checkGpsDistance();
@@ -2576,7 +2056,6 @@ window.detectDeviceGPS = () => {
           { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
         );
       }, 2000);
-
       window.checkGpsDistance();
     },
     (err) => {
@@ -2596,7 +2075,6 @@ window.detectDeviceGPS = () => {
 };
 const detectDeviceGPS = window.detectDeviceGPS;
 
-// --- Live clock on camera overlay (also updates GPS display) ---
 const updateAttendanceClock = () => {
   const clockEl = document.getElementById('camera-clock');
   if (clockEl) {
@@ -2616,12 +2094,10 @@ const updateAttendanceClock = () => {
   }
 };
 
-// --- Camera Start (async, with proper state tracking) ---
-// v68: dipanggil otomatis saat masuk panel Presensi (tanpa tombol Buka Kamera).
 window.startCamera = async () => {
   const video = document.getElementById('camera-feed');
   if (!video) return;
-  if (AppState.cameraLoading || AppState.cameraReady) return; // prevent duplicate calls
+  if (AppState.cameraLoading || AppState.cameraReady) return;
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showToast('Browser tidak mendukung akses kamera. Gunakan tombol kamera HP saat presensi.', 'warning');
     setFaceStatus('idle', 'Kamera tidak didukung browser');
@@ -2629,7 +2105,6 @@ window.startCamera = async () => {
   }
   AppState.cameraLoading = true;
   setFaceStatus('loading');
-  // Update button label if exists
   const btn = document.getElementById('btn-submit-checkin');
   try {
     AppState.cameraStream = await navigator.mediaDevices.getUserMedia({
@@ -2637,15 +2112,13 @@ window.startCamera = async () => {
       audio: false
     });
     video.srcObject = AppState.cameraStream;
-    // Wait for video metadata to ensure dimensions are available
     await new Promise((resolve) => {
       if (video.readyState >= 2) return resolve();
       video.onloadedmetadata = () => resolve();
-      setTimeout(resolve, 3000); // safety timeout
+      setTimeout(resolve, 3000);
     });
     AppState.cameraReady = true;
     AppState.cameraLoading = false;
-    // v68: init FaceDetector API (kalau tersedia — Chrome/Android), lalu mulai loop deteksi
     try {
       if ('FaceDetector' in window) {
         AppState.faceDetection.detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
@@ -2667,31 +2140,19 @@ window.startCamera = async () => {
 };
 const startCamera = window.startCamera;
 
-// --- Stop Camera (called when leaving presensi view) ---
 const stopCamera = () => {
   if (AppState.cameraStream) {
-    try {
-      AppState.cameraStream.getTracks().forEach(track => track.stop());
-    } catch (e) { /* ignored */ }
+    try { AppState.cameraStream.getTracks().forEach(track => track.stop()); } catch (e) { /* ignored */ }
     AppState.cameraStream = null;
   }
   AppState.cameraReady = false;
   AppState.cameraLoading = false;
-  stopFaceDetection();   // v68: hentikan face detection loop
+  stopFaceDetection();
   const video = document.getElementById('camera-feed');
   if (video) video.srcObject = null;
-  setFaceStatus('idle'); // reset indikator
+  setFaceStatus('idle');
 };
 
-// ================= v68: FACE DETECTION & INDICATOR =================
-// Deteksi wajah utk indikator presensi:
-//  - Prioritas: FaceDetector API (Chrome/Android) — akurat
-//  - Fallback: heuristik skin-tone di area tengah frame — cukup utk guidance
-// Indikator 4 state:
-//  idle    : kamera belum aktif (abu)
-//  loading : kamera sedang dibuka (biru berkedip)
-//  seeking : kamera aktif, wajah belum sesuai (kuning)
-//  ok      : wajah sesuai posisi (HIJAU)
 AppState.faceDetection = { timer: null, detector: null, apiAvailable: false, seekingCount: 0, okCount: 0 };
 
 const FACE_STATUS_STYLES = {
@@ -2733,31 +2194,26 @@ const setFaceStatus = (state, customLabel) => {
   }
 };
 
-// Heuristik skin-tone: hitung persentase pixel "warna kulit" di area tengah frame.
-// Cukup akurat utk guidance selfie (bukan biometrik) — korelasi kuat dgn ada wajah di frame.
 const detectFaceHeuristic_ = (video) => {
   const canvas = document.getElementById('face-detect-canvas');
   if (!canvas) return false;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return false;
   try {
-    // Draw frame video ke canvas kecil 64x48
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const data = ctx.getImageData(
-      canvas.width * 0.2, canvas.height * 0.1,   // area tengah (20%-80% x, 10%-90% y)
+      canvas.width * 0.2, canvas.height * 0.1,
       canvas.width * 0.6, canvas.height * 0.8
     ).data;
     let skin = 0, total = data.length / 4;
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i], g = data[i + 1], b = data[i + 2];
-      // Skin tone range (umum utk selfie): r>g>b, brightness cukup
       if (r > 80 && g > 40 && b > 20 && r > g && g > b && (r - b) > 12 && (r - g) > 8) skin++;
     }
     const pct = (skin / total) * 100;
-    // Threshold: >14% skin pixels di area tengah = kemungkinan besar ada wajah
     return pct > 14;
   } catch (e) {
-    return false;   // canvas error (misal video belum ready)
+    return false;
   }
 };
 
@@ -2775,18 +2231,13 @@ const updateFaceIndicator = async () => {
   if (!AppState.cameraReady || !AppState.cameraStream) return;
   const video = document.getElementById('camera-feed');
   if (!video || !video.videoWidth) return;
-
   let hasFace = null;
-  // Coba native FaceDetector dulu
   if (AppState.faceDetection.apiAvailable) {
     hasFace = await detectFaceNative_(video);
   }
-  // Fallback / primary: heuristik skin-tone
   if (hasFace === null || hasFace === undefined) {
     hasFace = detectFaceHeuristic_(video);
   }
-
-  // Debounce: butuh 2 deteksi berturut-turut yg sama agar indikator tidak flicker
   if (hasFace) {
     AppState.faceDetection.okCount++;
     AppState.faceDetection.seekingCount = 0;
@@ -2794,7 +2245,6 @@ const updateFaceIndicator = async () => {
     AppState.faceDetection.seekingCount++;
     AppState.faceDetection.okCount = 0;
   }
-
   if (AppState.faceDetection.okCount >= 2) {
     setFaceStatus('ok');
   } else if (AppState.faceDetection.seekingCount >= 1) {
@@ -2803,11 +2253,10 @@ const updateFaceIndicator = async () => {
 };
 
 const startFaceDetection = () => {
-  if (AppState.faceDetection.timer) return;   // sudah jalan
+  if (AppState.faceDetection.timer) return;
   AppState.faceDetection.okCount = 0;
   AppState.faceDetection.seekingCount = 0;
   setFaceStatus('seeking');
-  // Sampling tiap 400ms — cukup responsif tanpa berat CPU
   AppState.faceDetection.timer = setInterval(updateFaceIndicator, 400);
 };
 
@@ -2822,9 +2271,8 @@ const stopFaceDetection = () => {
   AppState.faceDetection.seekingCount = 0;
 };
 
-// --- Haversine Distance Calculation (client-side) ---
 const calculateHaversine = (lat1, lon1, lat2, lon2) => {
-  const R = 6371000; // meters
+  const R = 6371000;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -2834,12 +2282,8 @@ const calculateHaversine = (lat1, lon1, lat2, lon2) => {
   return Math.round(R * c);
 };
 
-// === GEOFENCING KETAT (match backend GEOFENCE_TOLERANCE_METERS = 5) ===
-// Toleransi GPS ±5 meter supaya karyawan di tepi radius tidak false-reject.
 const GEOFENCE_TOLERANCE_METERS = 5;
 
-// Helper: enable/disable both presensi submit buttons based on geofence validity.
-// Dipanggil dari checkGpsDistance setiap kali state GPS/outlet berubah.
 window.setPresensiButtonsEnabled = (enabled) => {
   const checkInBtn = document.getElementById('btn-submit-checkin');
   const checkOutBtn = document.getElementById('btn-submit-checkout');
@@ -2852,13 +2296,7 @@ window.setPresensiButtonsEnabled = (enabled) => {
 };
 const setPresensiButtonsEnabled = window.setPresensiButtonsEnabled;
 
-// Helper: hitung state lokasi presensi SAAT INI berdasarkan outlet terpilih + GPS device.
-// Returns { ok: true, outlet, dist, radius, effectiveLimit } ketika dalam radius,
-// atau { ok: false, reason, outlet, dist, radius, nearestOutlet } ketika tidak.
-// reason: 'no_outlet' | 'gps_not_ready' | 'outlet_no_coords' | 'out_of_radius'
 window.getPresensiLocationState = () => {
-  // v74: Bypass geofence utk Management & geofence_exempt users.
-  // Mereka boleh presensi dari lokasi manapun — return ok=true tanpa cek outlet/GPS.
   if (isGeofenceExemptUser_()) {
     const outletSelect = document.getElementById('presensi-outlet-select');
     const outletId = outletSelect ? outletSelect.value : '';
@@ -2875,7 +2313,6 @@ window.getPresensiLocationState = () => {
   const radius = Number(outlet.radius_meters) || 100;
   const effectiveLimit = radius + GEOFENCE_TOLERANCE_METERS;
   const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, oLat, oLon);
-  // Cari outlet terdekat yang dalam radius (untuk saran pindah outlet)
   let nearestOutlet = null, nearestDist = Infinity;
   (AppState.outlets || []).forEach(function (o) {
     const nLat = parseFloat(o.lat), nLon = parseFloat(o.lon);
@@ -2890,19 +2327,13 @@ window.getPresensiLocationState = () => {
 };
 const getPresensiLocationState = window.getPresensiLocationState;
 
-// --- Update Geofence Banner (called whenever GPS or outlet changes) ---
 window.checkGpsDistance = () => {
   const outletSelect = document.getElementById('presensi-outlet-select');
   const banner = document.getElementById('geofence-status-banner');
   const text = document.getElementById('geofence-text');
   const icon = document.getElementById('geofence-icon');
   if (!outletSelect || !banner || !text) return;
-  // DEFAULT: tombol presensi di-disable sampai dibuktikan user berada di dalam radius.
   setPresensiButtonsEnabled(false);
-
-  // v74: Bypass geofence utk Management & geofence_exempt users.
-  // Mereka boleh presensi dari lokasi manapun (kantor pusat, outlet manapun, dll).
-  // Tombol presensi langsung aktif tanpa cek GPS ke outlet.
   if (isGeofenceExemptUser_()) {
     banner.className = 'geofence-alert geofence-valid';
     const u = AppState.currentUser || {};
@@ -2916,8 +2347,6 @@ window.checkGpsDistance = () => {
     if (window.feather) feather.replace();
     return;
   }
-
-  // === STATE: Outlet gagal dimuat — tampilkan error + tombol retry + diagnosa ===
   if (AppState.outletsLoadError) {
     banner.className = 'geofence-alert geofence-invalid';
     text.innerHTML = `<strong>Gagal memuat daftar outlet:</strong> ${AppState.outletsLoadError}
@@ -2930,29 +2359,22 @@ window.checkGpsDistance = () => {
     if (window.feather) feather.replace();
     return;
   }
-
-  // === STATE: Outlet masih loading (belum ada error, belum ada data) ===
   if (!AppState.outlets || AppState.outlets.length === 0) {
     banner.className = 'geofence-alert geofence-warning';
     text.innerHTML = '<strong>Memuat daftar outlet...</strong> Mohon tunggu sebentar.';
     return;
   }
-
   const outlet = AppState.outlets.find(o => o.id === outletSelect.value) || AppState.outlets[0];
   if (!outlet) {
     banner.className = 'geofence-alert geofence-invalid';
     text.innerHTML = '<strong>Tidak ada outlet.</strong> Hubungi admin untuk menambahkan outlet.';
     return;
   }
-
-  // GPS still loading
   if (AppState.gpsLoading) {
     banner.className = 'geofence-alert geofence-warning';
     text.innerHTML = '<strong>Mendeteksi lokasi GPS...</strong> Pastikan GPS perangkat aktif.';
     return;
   }
-
-  // GPS not yet acquired
   if (!AppState.gpsOk) {
     banner.className = 'geofence-alert geofence-invalid';
     text.innerHTML = `<strong>GPS belum aktif:</strong> ${AppState.gpsLastError || 'Izinkan akses lokasi pada browser, lalu tekan tombol "Deteksi Lokasi GPS".'}
@@ -2962,8 +2384,6 @@ window.checkGpsDistance = () => {
     if (window.feather) feather.replace();
     return;
   }
-
-  // === LOKASI TIDAK SESUAI: GPS tidak dapat diverifikasi ===
   if (AppState.isMockSuspect) {
     banner.className = 'geofence-alert geofence-invalid';
     text.innerHTML = `<strong>📍 Lokasi Anda Tidak Sesuai</strong>
@@ -2975,11 +2395,7 @@ window.checkGpsDistance = () => {
     if (window.feather) feather.replace();
     return;
   }
-
-  // === Tampilkan akurasi GPS di banner ===
   const accuracyInfo = AppState.gpsAccuracy > 0 ? ` <span style="font-size:10px; color:#94a3b8;">(Akurasi: ±${AppState.gpsAccuracy}m)</span>` : '';
-
-  // Pastikan lat/lon adalah number (parse kalau string)
   const parseLat = parseFloat(outlet.lat);
   const parseLon = parseFloat(outlet.lon);
   if (isNaN(parseLat) || isNaN(parseLon)) {
@@ -2987,11 +2403,8 @@ window.checkGpsDistance = () => {
     text.innerHTML = `<strong>${outlet.name}</strong> dipilih. Koordinat GPS outlet belum lengkap. Hubungi admin untuk mengisi latitude/longitude outlet. Presensi tidak dapat dilakukan sampai koordinat outlet diatur.`;
     return;
   }
-  // Gunakan nilai yang sudah diparse
   outlet.lat = parseLat;
   outlet.lon = parseLon;
-
-  // === AUTO-DETECT: Cari outlet terdekat yang dalam radius ===
   let nearestOutlet = null;
   let nearestDist = Infinity;
   let nearestValid = false;
@@ -2999,7 +2412,7 @@ window.checkGpsDistance = () => {
     const oLat = parseFloat(o.lat);
     const oLon = parseFloat(o.lon);
     if (isNaN(oLat) || isNaN(oLon)) return;
-    o.lat = oLat; o.lon = oLon; // update supaya konsisten
+    o.lat = oLat; o.lon = oLon;
     const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, oLat, oLon);
     if (d < nearestDist) {
       nearestDist = d;
@@ -3007,12 +2420,8 @@ window.checkGpsDistance = () => {
       nearestValid = d <= ((o.radius_meters || 100) + GEOFENCE_TOLERANCE_METERS);
     }
   });
-
-  // Kalau ada outlet terdekat yang dalam radius DAN berbeda dari yang dipilih,
-  // auto-select outlet terdekat itu di dropdown
   if (nearestOutlet && nearestValid && nearestOutlet.id !== outletSelect.value) {
     outletSelect.value = nearestOutlet.id;
-    // Update outlet reference ke yang baru dipilih
     const autoOutlet = nearestOutlet;
     banner.className = 'geofence-alert geofence-valid';
     text.innerHTML = `<strong>📍 Auto-Terdeteksi di Lokasi:</strong> ${autoOutlet.name} (${nearestDist} meter)
@@ -3021,14 +2430,10 @@ window.checkGpsDistance = () => {
     if (window.feather) feather.replace();
     return;
   }
-
-  // Kalau outlet yang dipilih manual punya lat/lon, hitung jaraknya
   const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, outlet.lat, outlet.lon);
   const radiusLimit = outlet.radius_meters || 100;
   const isValid = dist <= (radiusLimit + GEOFENCE_TOLERANCE_METERS);
-
   if (isValid) {
-    // Cek apakah ada outlet lain yang lebih dekat
     let closerOutlet = null;
     let closerDist = dist;
     AppState.outlets.forEach(function (o) {
@@ -3040,7 +2445,6 @@ window.checkGpsDistance = () => {
         closerOutlet = o;
       }
     });
-
     if (closerOutlet) {
       banner.className = 'geofence-alert geofence-valid';
       text.innerHTML = `<strong>Tervalidasi di ${outlet.name}:</strong> ${dist} meter (Radius: ${radiusLimit}m).
@@ -3051,7 +2455,6 @@ window.checkGpsDistance = () => {
     }
     setPresensiButtonsEnabled(true);
   } else {
-    // User di luar radius outlet yang dipilih — cek apakah ada outlet lain yang dalam radius
     if (nearestOutlet && nearestValid) {
       banner.className = 'geofence-alert geofence-warning';
       text.innerHTML = `<strong>Anda berada di ${nearestOutlet.name}:</strong> ${nearestDist} meter (Radius: ${nearestOutlet.radius_meters}m).
@@ -3068,38 +2471,29 @@ window.checkGpsDistance = () => {
 };
 const checkGpsDistance = window.checkGpsDistance;
 
-// Retry loading outlets (dipanggil dari tombol di geofence banner)
 window.retryLoadOutlets = async () => {
   AppState.outletsLoadError = '';
-  window.checkGpsDistance && window.checkGpsDistance(); // show "loading..." again
+  window.checkGpsDistance && window.checkGpsDistance();
   await loadOutlets();
-  // If still failed, checkGpsDistance will show error (called inside loadOutlets)
-  // If success, checkGpsDistance will show outlet info (called inside loadOutlets)
 };
 
-// --- Snapshot from video to canvas ---
 const captureSelfieSnapshot = () => {
   const video = document.getElementById('camera-feed');
   const canvas = document.getElementById('camera-snapshot-canvas');
   if (!video || !canvas) return null;
   if (!AppState.cameraReady || !AppState.cameraStream || !video.videoWidth) return null;
-
   canvas.width = video.videoWidth || 480;
   canvas.height = video.videoHeight || 360;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  // Stamp current time & GPS on the snapshot
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
   ctx.fillRect(10, canvas.height - 40, canvas.width - 20, 30);
   ctx.fillStyle = '#ffffff';
   ctx.font = '12px sans-serif';
   ctx.fillText(`GPS: ${AppState.deviceCoordinates.lat.toFixed(4)}, ${AppState.deviceCoordinates.lon.toFixed(4)} | ${new Date().toLocaleString('id-ID')}`, 20, canvas.height - 20);
-
   return canvas.toDataURL('image/jpeg', 0.85);
 };
 
-// --- Fallback: native camera input (used when in-page camera fails or on iOS Safari) ---
 const captureSelfieViaNativeCamera = () => new Promise((resolve) => {
   const input = document.createElement('input');
   input.type = 'file';
@@ -3132,19 +2526,16 @@ const captureSelfieViaNativeCamera = () => new Promise((resolve) => {
   input.click();
 });
 
-// --- Submit Attendance (Check-in) with full UX feedback ---
 window.submitAttendanceCheckIn = async () => {
   const outletSelect = document.getElementById('presensi-outlet-select');
   const shiftSelect = document.getElementById('presensi-shift-select');
   const submitBtn = document.getElementById('btn-submit-checkin');
-
   if (!outletSelect || !shiftSelect) {
     showToast('Form presensi tidak ditemukan. Muat ulang halaman.', 'error');
     return;
   }
   const outletId = outletSelect.value;
   const shiftName = shiftSelect.value;
-
   if (!outletId) {
     showToast('Pilih outlet terlebih dahulu.', 'warning');
     return;
@@ -3153,12 +2544,9 @@ window.submitAttendanceCheckIn = async () => {
     showToast('Sesi login tidak ditemukan. Silakan login kembali.', 'error');
     return;
   }
-
-  // --- GPS check: if not ready, request once and wait briefly ---
   if (!AppState.gpsOk) {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mendeteksi GPS...'; }
     window.detectDeviceGPS();
-    // Wait up to 8 seconds for GPS to come back
     let waited = 0;
     while (AppState.gpsLoading && waited < 8000) {
       await new Promise(r => setTimeout(r, 500));
@@ -3170,9 +2558,6 @@ window.submitAttendanceCheckIn = async () => {
       return;
     }
   }
-
-  // === GEOFENCING KETAT: Client-side guard — TOLAK sebelum upload kalau di luar radius ===
-  // Backend juga akan menolak, tapi guard ini menghemat upload selfie & lock.
   const locState = getPresensiLocationState();
   if (locState.reason === 'no_outlet') {
     showToast('Pilih outlet presensi terlebih dahulu.', 'warning');
@@ -3191,23 +2576,17 @@ window.submitAttendanceCheckIn = async () => {
       ? `Presensi DITOLAK. Anda berada ${locState.dist}m dari ${locState.outlet.name} (batas radius: ${locState.radius}m). Mendekatlah ke outlet lalu coba lagi.`
       : 'Presensi DITOLAK. Anda berada di luar radius outlet. Mendekatlah ke lokasi outlet lalu coba lagi.';
     showToast(msg, 'error');
-    // Update banner biar pesan di luar radius konsisten dengan toast
     window.checkGpsDistance && window.checkGpsDistance();
     return;
   }
-
-  // --- Camera: ensure in-page camera is started; fallback to native camera input ---
   if (!AppState.cameraReady) {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Memulai kamera...'; }
     await window.startCamera();
     if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i data-feather="check-circle"></i> AMBIL SELFIE & PRESENSI MASUK'; if (window.feather) feather.replace(); }
   }
-
-  // --- Take selfie (in-page camera first, native fallback second) ---
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengambil foto...'; }
   let selfieBase64 = captureSelfieSnapshot();
   if (!selfieBase64) {
-    // Prompt user to capture via native camera
     showToast('Kamera halaman tidak siap. Buka kamera HP untuk ambil selfie.', 'info');
     selfieBase64 = await captureSelfieViaNativeCamera();
   }
@@ -3216,11 +2595,8 @@ window.submitAttendanceCheckIn = async () => {
     showToast('Foto selfie wajib diambil. Coba lagi, atau izinkan akses kamera di pengaturan browser.', 'warning');
     return;
   }
-
-  // --- Submit to API ---
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengirim presensi...'; }
   showToast('Memverifikasi GPS & wajah selfie...', 'info');
-
   try {
     const res = await fetch('/api/attendance/check-in', {
       method: 'POST',
@@ -3239,12 +2615,9 @@ window.submitAttendanceCheckIn = async () => {
     });
     const data = await res.json();
     if (res.ok && data.status !== 'error') {
-      // Skema ketat: presensi hanya sukses jika dalam radius (backend sudah menolak jika luar).
-      // data.in_radius akan selalu true di sini.
       showToast(`Presensi berhasil! Status: ${data.attendance_status}${data.late_minutes ? ' (Terlambat ' + data.late_minutes + ' menit)' : ' (Tepat Waktu)'}`, 'success');
       await loadAttendanceLogs();
     } else {
-      // Tampilkan pesan DITOLAK dari backend (mis. "Presensi DITOLAK. Anda berada X meter...")
       showToast(data.detail || data.message || 'Gagal check-in. Coba beberapa saat lagi.', 'error');
     }
   } catch (err) {
@@ -3260,23 +2633,16 @@ window.submitAttendanceCheckIn = async () => {
 };
 const submitAttendanceCheckIn = window.submitAttendanceCheckIn;
 
-// --- Submit Attendance (Check-out / Presensi Pulang) ---
-// Records the check-out time for the user's most recent check-in today.
-// Also requires GPS + selfie, and computes overtime if check-out is past shift end.
 window.submitAttendanceCheckOut = async () => {
   const submitBtn = document.getElementById('btn-submit-checkout');
-
   if (!AppState.currentUser || !AppState.currentUser.id) {
     showToast('Sesi login tidak ditemukan. Silakan login kembali.', 'error');
     return;
   }
-
-  // Make sure we have today's attendance logs to know which record to update
   if (!AppState.attendanceLogs || AppState.attendanceLogs.length === 0) {
     await loadAttendanceLogs();
   }
-  // Find today's check-in for this user (any shift)
-  const today = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
+  const today = new Date().toISOString().split('T')[0];
   const myCheckInToday = (AppState.attendanceLogs || []).find(l =>
     l.employee_id === AppState.currentUser.id && l.date === today && l.check_in_time
   );
@@ -3288,8 +2654,6 @@ window.submitAttendanceCheckOut = async () => {
     showToast(`Anda sudah presensi pulang hari ini pada ${myCheckInToday.check_out_time.split(' ')[1] || myCheckInToday.check_out_time}.`, 'info');
     return;
   }
-
-  // --- GPS check ---
   if (!AppState.gpsOk) {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mendeteksi GPS...'; }
     window.detectDeviceGPS();
@@ -3304,11 +2668,6 @@ window.submitAttendanceCheckOut = async () => {
       return;
     }
   }
-
-  // === GEOFENCING KETAT: Client-side guard untuk check-out ===
-  // Validasi jarak ke outlet tempat user check-in (myCheckInToday.outlet_id).
-  // Backend juga akan menolak, tapi guard ini menghemat upload selfie.
-  // v74: Skip utk Management & geofence_exempt users (presensi pulang fleksibel).
   if (!isGeofenceExemptUser_()) {
     const checkInOutlet = (AppState.outlets || []).find(o => String(o.id) === String(myCheckInToday.outlet_id));
     if (checkInOutlet) {
@@ -3323,8 +2682,6 @@ window.submitAttendanceCheckOut = async () => {
       }
     }
   }
-
-  // --- Camera + selfie ---
   if (!AppState.cameraReady) {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Memulai kamera...'; }
     await window.startCamera();
@@ -3341,11 +2698,8 @@ window.submitAttendanceCheckOut = async () => {
     showToast('Foto selfie wajib diambil untuk presensi pulang.', 'warning');
     return;
   }
-
-  // --- Submit to API ---
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengirim presensi pulang...'; }
   showToast('Memverifikasi GPS & menyimpan presensi pulang...', 'info');
-
   try {
     const res = await fetch('/api/attendance/check-out', {
       method: 'POST',
@@ -3361,9 +2715,7 @@ window.submitAttendanceCheckOut = async () => {
     });
     const data = await res.json();
     if (res.ok && data.status !== 'error') {
-      const otMsg = data.overtime_hours > 0
-        ? ` (+${data.overtime_hours} jam lembur)`
-        : '';
+      const otMsg = data.overtime_hours > 0 ? ` (+${data.overtime_hours} jam lembur)` : '';
       showToast(`Presensi pulang berhasil! Jam pulang: ${data.check_out_time ? data.check_out_time.split(' ')[1] || data.check_out_time : '-'}${otMsg}`, 'success');
       await loadAttendanceLogs();
     } else {
@@ -3385,10 +2737,7 @@ const submitAttendanceCheckOut = window.submitAttendanceCheckOut;
 const renderAttendanceTable = (logs) => {
   const tbody = document.getElementById('attendance-tbody');
   if (!tbody) return;
-
   logs = logs || AppState.attendanceLogs || [];
-
-  // Filter global topbar: mode + outlet + periode + pencarian
   const gf = getGlobalFilters();
   let filtered = logs;
   if (gf.mode === 'Management') {
@@ -3399,7 +2748,6 @@ const renderAttendanceTable = (logs) => {
   if (gf.outlet !== 'all') filtered = filtered.filter(l => l.outlet_id === gf.outlet);
   filtered = filtered.filter(l => dateInPeriod_(l.date, gf.cutoff, gf.todayStr));
   filtered = filtered.filter(l => matchGlobalSearch_(gf.search, [l.employee_name, l.division, l.outlet_name, l.shift_name]));
-
   if (!filtered || filtered.length === 0) {
     const emptyMsg = (gf.outlet !== 'all' || gf.period !== 'all' || gf.search)
       ? 'Tidak ada data presensi yang cocok dengan filter (outlet/periode/pencarian).'
@@ -3407,7 +2755,6 @@ const renderAttendanceTable = (logs) => {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8;">${emptyMsg}</td></tr>`;
     return;
   }
-
   tbody.innerHTML = filtered.map(l => {
     const isLate = l.late_minutes > 0;
     const lateBadge = isLate ? `<span style="color:#ef4444; font-weight:700;">+${l.late_minutes} Menit (Denda: ${formatRupiah(l.late_deduction)})</span>` : '<span style="color:#10b981; font-weight:700;">Tepat Waktu</span>';
@@ -3418,7 +2765,6 @@ const renderAttendanceTable = (logs) => {
     const checkOutDisplay = l.check_out_time
       ? `<strong style="color:#92400e;">${checkOutTime}</strong>${(l.overtime_hours > 0) ? `<div style="font-size:10.5px; color:#92400e; font-weight:700;">+${l.overtime_hours} jam lembur</div>` : ''}`
       : checkOutTime;
-
     return `
       <tr>
         <td>
@@ -3450,32 +2796,26 @@ const renderAttendanceTable = (logs) => {
   }).join('');
 };
 
-// ================= DATABASE KARYAWAN & SKALA UPAH PERMENAKER 1/2017 =================
 const renderEmployeesTable = (list) => {
   const tbody = document.getElementById('employees-tbody');
   if (!tbody) return;
-
   const typeFilter = document.getElementById('emp-filter-type')?.value || 'all';
   const divFilter = document.getElementById('emp-filter-division')?.value || 'all';
   const outletFilter = document.getElementById('emp-filter-outlet')?.value || 'all';
   const search = document.getElementById('emp-search-input')?.value?.toLowerCase() || '';
   const gf = getGlobalFilters();
-
   let filtered = list;
   if (typeFilter !== 'all') filtered = filtered.filter(e => e.type === typeFilter);
   if (divFilter !== 'all') filtered = filtered.filter(e => e.division === divFilter);
   if (outletFilter !== 'all') filtered = filtered.filter(e => e.outlet_id === outletFilter);
   if (search) filtered = filtered.filter(e => e.name.toLowerCase().includes(search) || e.nip.toLowerCase().includes(search) || e.role.toLowerCase().includes(search));
-  // Filter global topbar: mode + outlet + pencarian (kombinasi dengan filter lokal panel ini)
   filtered = filtered.filter(e => matchGlobalMode_(e.type, e.division));
   if (gf.outlet !== 'all') filtered = filtered.filter(e => e.outlet_id === gf.outlet);
   if (gf.search) filtered = filtered.filter(e => matchGlobalSearch_(gf.search, [e.name, e.nip, e.role, e.division, e.outlet_name]));
-
   if (filtered.length === 0) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan untuk Mode ${activeModeLabel_()}${gf.outlet !== 'all' || gf.search ? ' / filter aktif' : ''}.</td></tr>`;
     return;
   }
-
   tbody.innerHTML = filtered.slice(0, 100).map(e => {
     return `
       <tr>
@@ -3515,11 +2855,8 @@ const renderEmployeesTable = (list) => {
   }).join('');
 };
 
-const loadEmployeesList = () => {
-  renderEmployeesTable(AppState.employees);
-};
+const loadEmployeesList = () => { renderEmployeesTable(AppState.employees); };
 
-// Permenaker 1/2017 Matrix Modal
 const openWageScaleModal = () => {
   const tbody = document.getElementById('wage-scale-tbody');
   const scales = [
@@ -3531,7 +2868,6 @@ const openWageScaleModal = () => {
     { grade: 'Grade 6', range: 'Rp 12.000.000 - Rp 16.000.000', daily: 'Rp 90.000 / hari', pos: 'BM (Branch Manager)' },
     { grade: 'Grade 7', range: 'Rp 16.000.000 - Rp 25.000.000', daily: 'Rp 120.000 / hari', pos: 'OM (Operations Manager)' }
   ];
-
   tbody.innerHTML = scales.map(s => `
     <tr>
       <td><strong>${s.grade}</strong></td>
@@ -3540,7 +2876,6 @@ const openWageScaleModal = () => {
       <td>${s.pos}</td>
     </tr>
   `).join('');
-
   openModal('modal-wage-scale');
 };
 
@@ -3548,32 +2883,22 @@ const openOrgTreeModal = () => {
   alert("Hierarki Multilevel Approval Organisasi:\n1. Level 1: Crew & Staff ➔ Approval oleh SPV / Head Kitchen / Head Bar\n2. Level 2: Supervisor ➔ Approval oleh Branch Manager (BM) & HRD\n3. Level 3: BM & Middle Management ➔ Approval oleh Operations Manager (OM)");
 };
 
-// ================= PAYROLL & E-PAYSLIP =================
+// v81: renderPayslipsTable uses debounced feather
 const renderPayslipsTable = (slips) => {
   const tbody = document.getElementById('payslips-tbody');
   if (!tbody) return;
-  if (slips) AppState.payslips = slips;   // simpan cache untuk re-render saat mode berubah
-
-  // v63: Defensive frontend filter — kalau bukan SUPER ADMIN, hanya tampilkan
-  // slip sendiri (employee_id === currentUser.id). Backend h_slipsList_ sudah
-  // filter utk non-PAYROLL_DIVISIONS, tapi Finance/HRGA/OM masih PAYROLL_DIVISIONS
-  // di backend, jadi kita filter lagi di sini sbg lapis keamanan tambahan.
+  if (slips) AppState.payslips = slips;
   const u = AppState.currentUser;
   let allSlips = (slips || AppState.payslips || []);
   if (u && !isSuperAdminUser(u)) {
     allSlips = allSlips.filter(s => s.employee_id === u.id);
   }
-
-  // Filter global topbar: mode Management / Tim Operasional (berdasarkan divisi)
-  // Catatan: data slip tidak punya outlet_id, jadi filter outlet topbar tidak diterapkan di sini
   const gf = getGlobalFilters();
   const list = allSlips.filter(s => matchGlobalMode_(s.type, s.division));
-
   if (list.length === 0) {
     tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada slip gaji untuk Anda pada Mode ${activeModeLabel_()}.</td></tr>`;
     return;
   }
-
   tbody.innerHTML = list.slice(0, 100).map(s => {
     const m = !!s.masked;
     const hide = (v) => (m ? '••••••' : v);
@@ -3604,7 +2929,8 @@ const renderPayslipsTable = (slips) => {
       </tr>
     `;
   }).join('');
-  if (window.feather) feather.replace();
+  // v81 FIX: debounced feather
+  window.debouncedFeatherReplace && window.debouncedFeatherReplace();
 };
 
 const promptPinForPayslip = (slipId, empId) => {
@@ -3624,19 +2950,12 @@ const openEmployeePayslipDirect = (empId) => {
 
 const confirmPinAndOpenSlip = async () => {
   const pin = document.getElementById('input-pin-auth').value;
-  if (!pin) {
-    alert('Masukkan PIN 6 Digit!');
-    return;
-  }
-
+  if (!pin) { alert('Masukkan PIN 6 Digit!'); return; }
   try {
     const res = await fetch('/api/payroll/verify-pin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        employee_id: AppState.selectedPayslipForPin.empId,
-        pin: pin
-      })
+      body: JSON.stringify({ employee_id: AppState.selectedPayslipForPin.empId, pin: pin })
     });
     const result = await res.json();
     if (res.ok) {
@@ -3654,7 +2973,6 @@ const confirmPinAndOpenSlip = async () => {
 const showPayslipContent = (slipId) => {
   const slip = AppState.payslips.find(s => s.id === slipId);
   if (!slip) return;
-
   const container = document.getElementById('payslip-modal-content');
   container.innerHTML = `
     <div class="payslip-sheet">
@@ -3670,125 +2988,46 @@ const showPayslipContent = (slipId) => {
           <span style="font-size:10px; background:#ecfdf5; color:#065f46; padding:2px 8px; border-radius:10px; font-weight:700;">CONFIDENTIAL / RAHASIA</span>
         </div>
       </div>
-
       <div class="payslip-meta-grid">
-        <div class="meta-field">
-          <span class="lbl">Nama Karyawan</span>
-          <span class="val">${slip.employee_name}</span>
-        </div>
-        <div class="meta-field">
-          <span class="lbl">Periode Gaji</span>
-          <span class="val">${slip.period_label}</span>
-        </div>
-        <div class="meta-field">
-          <span class="lbl">Divisi & Jabatan</span>
-          <span class="val">${slip.division} - ${slip.role}</span>
-        </div>
-        <div class="meta-field">
-          <span class="lbl">Struktur Grading</span>
-          <span class="val">${slip.grade} (Permenaker 1/2017)</span>
-        </div>
+        <div class="meta-field"><span class="lbl">Nama Karyawan</span><span class="val">${slip.employee_name}</span></div>
+        <div class="meta-field"><span class="lbl">Periode Gaji</span><span class="val">${slip.period_label}</span></div>
+        <div class="meta-field"><span class="lbl">Divisi & Jabatan</span><span class="val">${slip.division} - ${slip.role}</span></div>
+        <div class="meta-field"><span class="lbl">Struktur Grading</span><span class="val">${slip.grade} (Permenaker 1/2017)</span></div>
       </div>
-
-      <!-- Earnings Table -->
       <table class="payslip-table">
-        <thead>
-          <tr>
-            <th>KOMPONEN PENERIMAAN (EARNINGS)</th>
-            <th style="text-align:right;">JUMLAH (IDR)</th>
-          </tr>
-        </thead>
+        <thead><tr><th>KOMPONEN PENERIMAAN (EARNINGS)</th><th style="text-align:right;">JUMLAH (IDR)</th></tr></thead>
         <tbody>
-          <tr>
-            <td>Gaji Pokok</td>
-            <td class="amount">${formatRupiah(slip.base_salary)}</td>
-          </tr>
-          <tr>
-            <td>Uang Makan (${slip.attendance_days || 0} Hari)</td>
-            <td class="amount">${formatRupiah(slip.meal_allowance_total || 0)}</td>
-          </tr>
-          <tr>
-            <td>Uang Transport (${slip.attendance_days || 0} Hari)</td>
-            <td class="amount">${formatRupiah(slip.transport_allowance_total || 0)}</td>
-          </tr>
-          <tr>
-            <td>Tunjangan Jabatan</td>
-            <td class="amount">${formatRupiah(slip.position_allowance)}</td>
-          </tr>
-          <tr>
-            <td>Tunjangan Bonus (KPI ${(slip.bonus_kpi / 10000) || 0}%)</td>
-            <td class="amount">${formatRupiah(slip.bonus_kpi)}</td>
-          </tr>
-          ${(slip.tunjangan_bonus && slip.tunjangan_bonus > 0) ? `
-          <tr>
-            <td>Tunjangan Bonus Tambahan</td>
-            <td class="amount">${formatRupiah(slip.tunjangan_bonus)}</td>
-          </tr>
-          ` : ''}
-          <tr>
-            <td>Tunjangan Kehadiran (${slip.attendance_days || 0} Hari Hadir)</td>
-            <td class="amount">${formatRupiah(slip.daily_allowance_total)}</td>
-          </tr>
-          <tr>
-            <td>Lembur (${slip.overtime_hours || 0} Jam)</td>
-            <td class="amount">${formatRupiah(slip.overtime_pay)}</td>
-          </tr>
-          <tr style="background:#f8fafc; font-weight:700;">
-            <td>TOTAL PENGHASILAN BRUTO</td>
-            <td class="amount" style="color:var(--burgundy-primary);">${formatRupiah(slip.gross_salary)}</td>
-          </tr>
+          <tr><td>Gaji Pokok</td><td class="amount">${formatRupiah(slip.base_salary)}</td></tr>
+          <tr><td>Uang Makan (${slip.attendance_days || 0} Hari)</td><td class="amount">${formatRupiah(slip.meal_allowance_total || 0)}</td></tr>
+          <tr><td>Uang Transport (${slip.attendance_days || 0} Hari)</td><td class="amount">${formatRupiah(slip.transport_allowance_total || 0)}</td></tr>
+          <tr><td>Tunjangan Jabatan</td><td class="amount">${formatRupiah(slip.position_allowance)}</td></tr>
+          <tr><td>Tunjangan Bonus (KPI ${(slip.bonus_kpi / 10000) || 0}%)</td><td class="amount">${formatRupiah(slip.bonus_kpi)}</td></tr>
+          ${(slip.tunjangan_bonus && slip.tunjangan_bonus > 0) ? `<tr><td>Tunjangan Bonus Tambahan</td><td class="amount">${formatRupiah(slip.tunjangan_bonus)}</td></tr>` : ''}
+          <tr><td>Tunjangan Kehadiran (${slip.attendance_days || 0} Hari Hadir)</td><td class="amount">${formatRupiah(slip.daily_allowance_total)}</td></tr>
+          <tr><td>Lembur (${slip.overtime_hours || 0} Jam)</td><td class="amount">${formatRupiah(slip.overtime_pay)}</td></tr>
+          <tr style="background:#f8fafc; font-weight:700;"><td>TOTAL PENGHASILAN BRUTO</td><td class="amount" style="color:var(--burgundy-primary);">${formatRupiah(slip.gross_salary)}</td></tr>
         </tbody>
       </table>
-
-      <!-- Deductions Table -->
       <table class="payslip-table">
-        <thead>
-          <tr>
-            <th>KOMPONEN POTONGAN (DEDUCTIONS)</th>
-            <th style="text-align:right;">JUMLAH (IDR)</th>
-          </tr>
-        </thead>
+        <thead><tr><th>KOMPONEN POTONGAN (DEDUCTIONS)</th><th style="text-align:right;">JUMLAH (IDR)</th></tr></thead>
         <tbody>
-          <tr>
-            <td>Telat (Potongan Keterlambatan Presensi)</td>
-            <td class="amount">-${formatRupiah(slip.late_deduction)}</td>
-          </tr>
-          <tr>
-            <td>BPJS Ketenagakerjaan (3%)</td>
-            <td class="amount">-${formatRupiah(slip.bpjs_tk_deduction)}</td>
-          </tr>
-          <tr>
-            <td>BPJS Kesehatan (1%)</td>
-            <td class="amount">-${formatRupiah(slip.bpjs_kes_deduction)}</td>
-          </tr>
-          <tr>
-            <td>PPh 21 Skema TER</td>
-            <td class="amount">-${formatRupiah(slip.pph21_ter_deduction)}</td>
-          </tr>
-          <tr>
-            <td>Potongan Pinjaman / Kasbon</td>
-            <td class="amount">-${formatRupiah(slip.kasbon_deduction)}</td>
-          </tr>
-          <tr style="background:#fef2f2; font-weight:700; color:#ef4444;">
-            <td>TOTAL PENGURANG GAJI</td>
-            <td class="amount">-${formatRupiah(slip.total_deductions)}</td>
-          </tr>
+          <tr><td>Telat (Potongan Keterlambatan Presensi)</td><td class="amount">-${formatRupiah(slip.late_deduction)}</td></tr>
+          <tr><td>BPJS Ketenagakerjaan (3%)</td><td class="amount">-${formatRupiah(slip.bpjs_tk_deduction)}</td></tr>
+          <tr><td>BPJS Kesehatan (1%)</td><td class="amount">-${formatRupiah(slip.bpjs_kes_deduction)}</td></tr>
+          <tr><td>PPh 21 Skema TER</td><td class="amount">-${formatRupiah(slip.pph21_ter_deduction)}</td></tr>
+          <tr><td>Potongan Pinjaman / Kasbon</td><td class="amount">-${formatRupiah(slip.kasbon_deduction)}</td></tr>
+          <tr style="background:#fef2f2; font-weight:700; color:#ef4444;"><td>TOTAL PENGURANG GAJI</td><td class="amount">-${formatRupiah(slip.total_deductions)}</td></tr>
         </tbody>
       </table>
-
-      <!-- Net Salary Row -->
       <div style="background:#f8fafc; border:2px solid var(--burgundy-primary); border-radius:12px; padding:16px; display:flex; justify-content:space-between; align-items:center;">
         <div>
           <strong style="font-size:14px; color:var(--burgundy-primary);">GAJI BERSIH DITERIMA (TAKE HOME PAY)</strong>
           <div style="font-size:11px; color:#64748b;">Ditransfer langsung ke Rekening Bank Karyawan</div>
         </div>
-        <div style="font-size:22px; font-weight:800; color:#065f46;">
-          ${formatRupiah(slip.net_salary)}
-        </div>
+        <div style="font-size:22px; font-weight:800; color:#065f46;">${formatRupiah(slip.net_salary)}</div>
       </div>
     </div>
   `;
-
   AppState.activeViewingSlipId = slipId;
   openModal('modal-payslip');
   if (window.feather) feather.replace();
@@ -3797,11 +3036,8 @@ const showPayslipContent = (slipId) => {
 const sendPayslipToEmail = async () => {
   if (!AppState.activeViewingSlipId) return;
   showToast('Mengirimkan slip gaji rahasia ke email karyawan...', 'info');
-
   try {
-    const res = await fetch(`/api/payroll/slips/${AppState.activeViewingSlipId}/send-email`, {
-      method: 'POST'
-    });
+    const res = await fetch(`/api/payroll/slips/${AppState.activeViewingSlipId}/send-email`, { method: 'POST' });
     const data = await res.json();
     if (res.ok) {
       showToast(data.message, 'success');
@@ -3819,7 +3055,6 @@ const runAutopilotPayroll = async () => {
   }
   if (!confirm('Jalankan proses Autopilot Payroll bulan ini untuk seluruh karyawan?')) return;
   showToast('Memproses kalkulasi otomatis upah harian, lembur, BPJS, dan PPh 21...', 'info');
-
   try {
     const res = await fetch('/api/payroll/run-autopilot', { method: 'POST' });
     const data = await res.json();
@@ -3832,20 +3067,15 @@ const runAutopilotPayroll = async () => {
   }
 };
 
-// ================= KPI & ANALISIS KINERJA =================
 const renderKpiTable = (stats) => {
   const tbody = document.getElementById('kpi-division-tbody');
   if (!tbody) return;
-
-  // Filter global topbar: mode Management / Tim Operasional (berdasarkan tipe divisi)
   const gf = getGlobalFilters();
   const list = (stats || []).filter(s => matchGlobalMode_(s.type, s.division));
-
   if (list.length === 0) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada data KPI divisi untuk Mode ${activeModeLabel_()}.</td></tr>`;
     return;
   }
-
   tbody.innerHTML = list.map(s => {
     let badgeClass = 'status-selesai';
     let statusText = 'Sangat Memuaskan';
@@ -3853,7 +3083,6 @@ const renderKpiTable = (stats) => {
       badgeClass = 'status-hold';
       statusText = 'Perlu Evaluasi';
     }
-
     return `
       <tr>
         <td><strong>${s.division}</strong></td>
@@ -3867,8 +3096,7 @@ const renderKpiTable = (stats) => {
   }).join('');
 };
 
-// ================= CHAT ROOM INTERNAL (v2 - FAST & REAL-TIME) =================
-// Expose to window so inline onclick/onsubmit di HTML bisa panggil
+// ================= CHAT ROOM INTERNAL =================
 window.switchChatChannel = (channel, el) => {
   if (!canAccessChannel(channel)) {
     showToast('Anda tidak memiliki akses ke saluran ini.', 'warning');
@@ -3879,34 +3107,29 @@ window.switchChatChannel = (channel, el) => {
   if (el) el.classList.add('active');
   const nameEl = document.getElementById('active-chat-channel-name');
   if (nameEl) nameEl.textContent = channel;
-  // Sync mobile selector
   const sel = document.getElementById('chat-channel-select');
   if (sel) sel.value = channel;
-  // Reset last-message tracker saat ganti channel
   ChatState.lastSig = '';
   ChatState.lastCount = 0;
   loadChatMessages(channel, { showLoading: true });
 };
 const switchChatChannel = window.switchChatChannel;
 
-// Chat state: tracking untuk polling & smart-diff
 const ChatState = {
   pollingTimer: null,
-  pollInterval: 4000,          // 4 detik — balance antara real-time & hemat quota Apps Script
-  isActive: false,             // hanya poll saat chat view sedang dibuka
-  isLoading: false,            // mencegah request paralel
-  lastSig: '',                 // signature = lastMessageId + count, untuk skip re-render
+  pollInterval: 4000,
+  isActive: false,
+  isLoading: false,
+  lastSig: '',
   lastCount: 0,
-  pendingMessages: [],         // pesan yang baru dikirim, menunggu konfirmasi server
+  pendingMessages: [],
   networkErrorStreak: 0,
 };
 window.ChatState = ChatState;
 
-// Helper: format timestamp ke "HH:mm" (hari ini) atau "kemarin HH:mm" atau "dd/MM HH:mm"
 const formatChatTime = (raw) => {
   if (!raw) return '';
   const s = String(raw).trim();
-  // Kasus 1: sudah string ISO-like "yyyy-MM-dd HH:mm:ss"
   const m1 = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (m1) {
     const dt = new Date(+m1[1], +m1[2] - 1, +m1[3], +m1[4], +m1[5], m1[6] ? +m1[6] : 0);
@@ -3920,32 +3143,23 @@ const formatChatTime = (raw) => {
     if (isYesterday) return 'Kemarin ' + hh + ':' + mm;
     return ('0' + dt.getDate()).slice(-2) + '/' + ('0' + (dt.getMonth() + 1)).slice(-2) + ' ' + hh + ':' + mm;
   }
-  // Kasus 2: "yyyy-MM-dd" saja (lama, tanggal saja)
   const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m2) return m2[3] + '/' + m2[2] + '/' + m2[1];
-  // Kasus 3: "HH:mm" saja
   if (/^\d{1,2}:\d{2}$/.test(s)) return s;
-  // Kasus 4: Date object 1899-12-30 HH:mm:ss (kasus lama sebelum fix backend)
   if (s.indexOf('1899-12-30') === 0) {
     const t = s.split(' ')[1];
     return t ? t.slice(0, 5) : '';
   }
-  // Fallback: kalau ada jam di akhir, ambil jam saja
   const m3 = s.match(/(\d{1,2}:\d{2})(?::\d{2})?$/);
   return m3 ? m3[1] : s;
 };
 
-// Cek apakah user sedang scroll di dekat bottom (untuk auto-scroll only saat relevan)
 const isChatNearBottom = () => {
   const c = document.getElementById('chat-messages-stream');
   if (!c) return true;
   return (c.scrollHeight - c.scrollTop - c.clientHeight) < 80;
 };
 
-// ====== UKUR TINGGI CHAT WRAPPER SECARA PRESISI ======
-// Fix: input bar terdorong keluar layar di iPhone (height tebakan calc() meleset
-// karena address bar & safe-area). Kita ukur posisi wrapper dari viewport,
-// lalu set tinggi = sisa ruang sampai bawah content-body.
 window.sizeChatWrapper = () => {
   const panel = document.getElementById('view-chat');
   const wrap = document.querySelector('#view-chat .chat-window-wrapper');
@@ -3955,7 +3169,6 @@ window.sizeChatWrapper = () => {
   const cs = window.getComputedStyle(contentBody);
   const padBottom = parseFloat(cs.paddingBottom) || 0;
   const top = wrap.getBoundingClientRect().top;
-  // Sisa ruang = tinggi viewport - posisi atas wrapper - padding bawah - margin kecil
   const avail = window.innerHeight - top - padBottom - 4;
   if (avail > 220) {
     wrap.style.height = avail + 'px';
@@ -3963,10 +3176,8 @@ window.sizeChatWrapper = () => {
   }
 };
 
-// Panggil ulang saat resize / rotasi / keyboard iOS muncul-hilang
 window.addEventListener('resize', () => { window.sizeChatWrapper && window.sizeChatWrapper(); });
 window.addEventListener('orientationchange', () => {
-  // Tunggu layout stabil setelah rotasi
   setTimeout(() => { window.sizeChatWrapper && window.sizeChatWrapper(); }, 250);
 });
 if (window.visualViewport) {
@@ -3977,13 +3188,10 @@ const loadChatMessages = async (channel, opts) => {
   const ch = channel || AppState.activeChatChannel || '#general';
   const options = opts || {};
   const container = document.getElementById('chat-messages-stream');
-  if (ChatState.isLoading) return; // hindari request paralel
+  if (ChatState.isLoading) return;
   ChatState.isLoading = true;
-
-  // Update status indikator (jika ada)
   const statusEl = document.getElementById('chat-conn-status');
   if (statusEl && !options.silent) statusEl.textContent = 'Memuat…';
-
   if (container && options.showLoading) {
     container.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:20px; font-size:12px;">Memuat pesan…</div>';
   }
@@ -4004,21 +3212,16 @@ const loadChatMessages = async (channel, opts) => {
     }
     const data = await res.json();
     ChatState.networkErrorStreak = 0;
-    // Gabungkan pesan pending (yang baru dikirim, belum ter-fetch dari server)
     const merged = (ChatState.pendingMessages.filter(p => p.channel === ch)).concat(data || []);
-    // Smart diff: cek signature — kalau sama, skip re-render
     const lastMsg = (data && data.length) ? data[data.length - 1] : null;
     const sig = (lastMsg ? (lastMsg.id || lastMsg.timestamp || '') : '') + '|' + data.length + '|' + (ChatState.pendingMessages.length);
     if (sig === ChatState.lastSig && !options.force) {
-      // Tidak ada perubahan — skip render, hemat DOM
       if (statusEl) statusEl.textContent = 'Online';
       return;
     }
     ChatState.lastSig = sig;
     ChatState.lastCount = data.length;
-    // Bersihkan pending messages yang sudah masuk server (match by content+timestamp window)
     ChatState.pendingMessages = ChatState.pendingMessages.filter(p => {
-      // Hapus yang sudah ada di server (match by sender+message content dalam window waktu dekat)
       return !data.some(s => s.sender_id === p.sender_id && s.message === p.message);
     });
     renderChatMessages(merged);
@@ -4045,12 +3248,10 @@ window.loadChatMessages = loadChatMessages;
 const renderChatMessages = (messages) => {
   const container = document.getElementById('chat-messages-stream');
   if (!container) return;
-
   if (!messages || messages.length === 0) {
     container.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:40px 20px; font-size:13px;">💬 Belum ada pesan di saluran ini.<br>Mulai percakapan dengan menulis pesan di bawah.</div>';
     return;
   }
-
   const myId = AppState.currentUser ? AppState.currentUser.id : '';
   const wasNearBottom = isChatNearBottom();
   container.innerHTML = messages.map(m => {
@@ -4068,8 +3269,6 @@ const renderChatMessages = (messages) => {
       '</div>' +
     '</div>';
   }).join('');
-
-  // Auto-scroll only jika user sudah di dekat bottom (jangan ganggu user yang sedang scroll ke atas baca pesan lama)
   if (wasNearBottom) {
     requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
   }
@@ -4077,14 +3276,12 @@ const renderChatMessages = (messages) => {
 window.renderChatMessages = renderChatMessages;
 window.formatChatTime = formatChatTime;
 
-// Mulai polling otomatis saat chat view aktif
 window.startChatPolling = () => {
   if (ChatState.pollingTimer) return;
   ChatState.isActive = true;
-  // Polling tiap 4 detik, silent (tidak menampilkan loading)
   ChatState.pollingTimer = setInterval(() => {
     if (!ChatState.isActive) return;
-    if (document.visibilityState === 'hidden') return; // jangan poll saat tab tidak aktif
+    if (document.visibilityState === 'hidden') return;
     const chatView = document.getElementById('view-chat');
     if (!chatView || !chatView.classList.contains('active')) return;
     loadChatMessages(AppState.activeChatChannel, { silent: true });
@@ -4098,12 +3295,10 @@ window.stopChatPolling = () => {
   }
 };
 
-// Polling juga pause saat tab di-hide, resume saat kembali visible
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     const chatView = document.getElementById('view-chat');
     if (chatView && chatView.classList.contains('active')) {
-      // Refresh sekali langsung saat kembali
       loadChatMessages(AppState.activeChatChannel, { silent: true });
     }
   }
@@ -4119,11 +3314,8 @@ window.sendChatMessage = async (e) => {
     showToast('Sesi login tidak ditemukan. Silakan login kembali.', 'error');
     return;
   }
-
   const sendBtn = document.getElementById('chat-send-btn');
   if (sendBtn) { sendBtn.disabled = true; sendBtn.setAttribute('data-busy', '1'); }
-
-  // === OPTIMISTIC UI: tampilkan pesan langsung di layar (tidak tunggu server) ===
   const tempId = 'pending-' + Date.now();
   const optimisticMsg = {
     id: tempId,
@@ -4132,10 +3324,9 @@ window.sendChatMessage = async (e) => {
     sender_name: AppState.currentUser.name,
     sender_division: AppState.currentUser.division,
     message: text,
-    timestamp: '', // akan diisi "sekarang" oleh formatChatTime
+    timestamp: '',
     __pending: true,
   };
-  // Inject timestamp sebagai string ISO-like now
   const now = new Date();
   optimisticMsg.timestamp = now.getFullYear() + '-' +
     ('0' + (now.getMonth() + 1)).slice(-2) + '-' +
@@ -4144,13 +3335,10 @@ window.sendChatMessage = async (e) => {
     ('0' + now.getMinutes()).slice(-2) + ':' +
     ('0' + now.getSeconds()).slice(-2);
   ChatState.pendingMessages.push(optimisticMsg);
-  // Render langsung (skip diff — kita paksa)
   const allExisting = (Array.from(document.querySelectorAll('#chat-messages-stream .chat-message-bubble'))
     .map(el => el.dataset.msgId).filter(Boolean));
-  // Cukup re-render dengan pesan baru di akhir
   const container = document.getElementById('chat-messages-stream');
   if (container) {
-    // Hapus pesan "Belum ada pesan" kalau ada
     if (container.innerHTML.indexOf('Belum ada pesan') >= 0) container.innerHTML = '';
     const wasNearBottom = isChatNearBottom();
     const myId = AppState.currentUser.id;
@@ -4166,10 +3354,7 @@ window.sendChatMessage = async (e) => {
     container.appendChild(bubble);
     if (wasNearBottom) container.scrollTop = container.scrollHeight;
   }
-  // Kosongkan input segera supaya user bisa ketik pesan berikutnya
   input.value = '';
-
-  // Kirim ke server di background
   try {
     const res = await fetch('/api/chat/messages', {
       method: 'POST',
@@ -4185,15 +3370,12 @@ window.sendChatMessage = async (e) => {
     });
     const data = await res.json();
     if (res.ok) {
-      // Hapus dari pending — pesan akan muncul dari server saat polling berikutnya
       ChatState.pendingMessages = ChatState.pendingMessages.filter(p => p.id !== tempId);
       const pendingEl = container && container.querySelector('[data-msg-id="' + tempId + '"]');
       if (pendingEl) pendingEl.remove();
-      // Force refresh untuk ambil pesan baru dari server
       ChatState.lastSig = '';
       await loadChatMessages(AppState.activeChatChannel, { silent: true, force: true });
     } else {
-      // Tandai pesan pending sebagai gagal
       const pendingEl = container && container.querySelector('[data-msg-id="' + tempId + '"]');
       if (pendingEl) {
         pendingEl.classList.remove('pending');
@@ -4225,11 +3407,9 @@ window.sendChatMessage = async (e) => {
 };
 const sendChatMessage = window.sendChatMessage;
 
-// Mobile channel selector handler
 window.switchChatChannelMobile = (selectEl) => {
   if (!selectEl) return;
   const channel = selectEl.value;
-  // Tandai active di sidebar (kalau ada)
   document.querySelectorAll('.chat-channel-item').forEach(c => {
     if (c.getAttribute('onclick') && c.getAttribute('onclick').indexOf("'" + channel + "'") >= 0) {
       c.classList.add('active');
@@ -4241,34 +3421,27 @@ window.switchChatChannelMobile = (selectEl) => {
 };
 window.switchChatChannelMobile = window.switchChatChannelMobile;
 
-// ================= KALENDER & AGENDA =================
 const loadCalendarEvents = async () => {
   try {
     const res = await fetch('/api/calendar/events');
     if (!res.ok) return;
     const data = await res.json();
     let events = Array.isArray(data) ? data : [];
-    // v60: Filter event utk non-Super-Admin — hanya tampilkan event yg relevan:
-    //   (a) event sendiri (organizer_name === user.name), ATAU
-    //   (b) event umum (attendees_division kosong / 'Semua' / 'All' / 'Umum' / 'Manajemen & Operasional' / 'Semua Outlet'), ATAU
-    //   (c) event yg attendees_division mengandung divisi user
-    // Backend (h_calList_) belum filter — ini filter sisi frontend sbg lapis keamanan.
     const u = AppState.currentUser;
     if (u && !isSuperAdminUser(u)) {
       const myName = String(u.name || '').trim().toLowerCase();
       const myDiv = String(u.division || '').trim();
       events = events.filter(ev => {
         const org = String(ev.organizer_name || '').trim().toLowerCase();
-        if (org && org === myName) return true;  // event sendiri
+        if (org && org === myName) return true;
         const ad = String(ev.attendees_division || '').trim();
-        if (!ad) return true;  // tanpa divisi = umum
+        if (!ad) return true;
         const adLow = ad.toLowerCase();
         if (adLow === 'semua' || adLow === 'all' || adLow === 'umum' ||
             adLow.indexOf('semua outlet') >= 0 || adLow.indexOf('semua divisi') >= 0 ||
             adLow.indexOf('manajemen & operasional') >= 0 || adLow.indexOf('management & operasional') >= 0) {
-          return true;  // event umum
+          return true;
         }
-        // Cek apakah divisi user disebut di attendees_division (misal "OM, HRD, Server")
         if (ad.split(/[,/&\s]+/).some(d => d.trim() === myDiv)) return true;
         return false;
       });
@@ -4282,7 +3455,6 @@ const loadCalendarEvents = async () => {
 const renderCalendarEvents = (events) => {
   const container = document.getElementById('calendar-events-list');
   if (!container) return;
-
   container.innerHTML = events.map(ev => {
     return `
       <div style="background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:16px; box-shadow:var(--shadow-sm); display:flex; gap:16px; align-items:center;">
@@ -4304,7 +3476,6 @@ const renderCalendarEvents = (events) => {
       </div>
     `;
   }).join('');
-
   if (window.feather) feather.replace();
 };
 
@@ -4313,7 +3484,6 @@ const openCreateEventModal = () => {
   if (!title) return;
   const time = prompt('Waktu Mulai (contoh: 10:00):', '10:00');
   const cat = prompt('Kategori (Meeting / Briefing / Audit / Training):', 'Meeting');
-
   fetch('/api/calendar/events', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -4335,11 +3505,8 @@ const openCreateEventModal = () => {
   });
 };
 
-// ================= LEAVE REQUESTS (CUTI & IJIN) =================
-// v66: OPIS B — SUPER ADMIN (role) ATAU PCD division dapat approve cuti.
 const isLeaveApprover = (user = AppState.currentUser) => !!user && (isSuperAdminUser(user) || LEAVE_APPROVER_DIVISIONS.includes(user.division));
 
-// State for leave requests
 AppState.leaveRequests = [];
 AppState.leaveBalance = null;
 
@@ -4350,7 +3517,6 @@ const loadLeaveBalance = async () => {
     const data = await res.json();
     AppState.leaveBalance = data;
     renderLeaveBalance(data);
-    // Also update the leave balance widget on KPI personal card (if visible)
     const kpiBalance = document.getElementById('kpi-leave-balance');
     if (kpiBalance) {
       kpiBalance.textContent = (data.remaining || 0) + ' hari';
@@ -4378,7 +3544,6 @@ const renderLeaveBalance = (b) => {
   const remainingColor = (b.remaining || 0) >= 6 ? '#10b981' : ((b.remaining || 0) >= 3 ? '#f59e0b' : '#ef4444');
   const usedPct = b.entitlement > 0 ? Math.min(100, Math.round((b.used / b.entitlement) * 100)) : 0;
   const adj = Number(b.adjustment) || 0;
-  // Subjudul dinamis: tampilkan sumber jatah (pengaturan SUPER ADMIN) + penyesuaian individu
   const subtitle = adj !== 0
     ? `Hak dasar <b>${b.base_entitlement || 0}</b> hari + penyesuaian <b style="color:${adj > 0 ? '#059669' : '#dc2626'};">${adj > 0 ? '+' : ''}${adj}</b> hari (diatur SUPER ADMIN)`
     : `Jatah tahunan <b>${b.entitlement || 0}</b> hari (diatur lewat Panel Super Admin)`;
@@ -4420,19 +3585,17 @@ const renderLeaveBalance = (b) => {
   `;
 };
 
+// v81: renderLeaveRequestsList uses debounced feather
 const renderLeaveRequestsList = (requests) => {
   const tbody = document.getElementById('leaves-tbody');
   if (!tbody) return;
-  if (requests) AppState.leaveRequests = requests;   // simpan cache untuk re-render saat mode berubah
-
-  // Filter global topbar: mode + outlet + periode + pencarian
+  if (requests) AppState.leaveRequests = requests;
   const gf = getGlobalFilters();
   let list = requests || AppState.leaveRequests || [];
   list = list.filter(l => matchGlobalMode_(l.employee_type, l.division));
   if (gf.outlet !== 'all') list = list.filter(l => l.outlet_id === gf.outlet);
   list = list.filter(l => dateInPeriod_(l.start_date, gf.cutoff, gf.todayStr));
   list = list.filter(l => matchGlobalSearch_(gf.search, [l.employee_name, l.division, l.type, l.reason]));
-
   if (list.length === 0) {
     const filtered = gf.outlet !== 'all' || gf.period !== 'all' || gf.search ||
       gf.mode === 'Management' || gf.mode === 'Operasional';
@@ -4443,14 +3606,12 @@ const renderLeaveRequestsList = (requests) => {
   }
   const isApprover = isLeaveApprover();
   const me = AppState.currentUser;
-
   tbody.innerHTML = list.map(l => {
     let statusBadge = '';
     if (l.status === 'Pending') statusBadge = '<span class="status-badge-pill status-proses" style="background:#fef3c7; color:#92400e;">Menunggu Approval</span>';
     else if (l.status === 'Approved') statusBadge = '<span class="status-badge-pill status-selesai" style="background:#d1fae5; color:#065f46;">Disetujui</span>';
     else if (l.status === 'Rejected') statusBadge = '<span class="status-badge-pill status-hold" style="background:#fee2e2; color:#991b1b;">Ditolak</span>';
     else if (l.status === 'Canceled') statusBadge = '<span class="status-badge-pill" style="background:#f1f5f9; color:#475569;">Dibatalkan</span>';
-
     let actions = '';
     if (isApprover && l.status === 'Pending' && l.employee_id !== me.id) {
       actions = `
@@ -4462,11 +3623,9 @@ const renderLeaveRequestsList = (requests) => {
     } else if (l.approver_note) {
       actions = `<span style="font-size:10.5px; color:#64748b; font-style:italic;">"${l.approver_note}"</span>`;
     }
-
     const attachmentLink = l.attachment_url
       ? `<a href="${l.attachment_url}" target="_blank" style="color:var(--burgundy-primary); font-size:11px; font-weight:600;">📎 Lampir</a>`
       : '<span style="font-size:10px; color:#94a3b8;">-</span>';
-
     return `
       <tr>
         <td>
@@ -4483,7 +3642,8 @@ const renderLeaveRequestsList = (requests) => {
       </tr>
     `;
   }).join('');
-  if (window.feather) feather.replace();
+  // v81 FIX: debounced feather
+  window.debouncedFeatherReplace && window.debouncedFeatherReplace();
 };
 
 const submitLeaveRequest = async (e) => {
@@ -4494,7 +3654,6 @@ const submitLeaveRequest = async (e) => {
   const reasonEl = document.getElementById('leave-form-reason');
   const attachmentEl = document.getElementById('leave-form-attachment');
   const submitBtn = document.getElementById('btn-submit-leave');
-
   if (!typeEl || !startEl || !endEl || !reasonEl) {
     showToast('Form pengajuan cuti tidak ditemukan.', 'error');
     return;
@@ -4515,10 +3674,8 @@ const submitLeaveRequest = async (e) => {
     showToast('Alasan terlalu singkat (minimal 3 karakter).', 'warning');
     return;
   }
-
   submitBtn.disabled = true;
   submitBtn.textContent = 'Mengirim pengajuan...';
-
   try {
     const res = await fetch('/api/leaves', {
       method: 'POST',
@@ -4534,16 +3691,13 @@ const submitLeaveRequest = async (e) => {
     const data = await res.json();
     if (res.ok && data.status === 'success') {
       showToast(data.message || `Pengajuan ${type} berhasil dikirim. Menunggu approval.`, 'success');
-      // Reset form
       typeEl.value = 'Cuti Tahunan';
       startEl.value = '';
       endEl.value = '';
       reasonEl.value = '';
       if (attachmentEl) attachmentEl.value = '';
-      // Reload list & balance
       await loadLeaveRequests();
       await loadLeaveBalance();
-      // Close modal if open
       const modal = document.getElementById('modal-leave-create');
       if (modal) modal.classList.remove('active');
     } else {
@@ -4609,10 +3763,7 @@ window.rejectLeaveRequest = async (id) => {
 window.cancelLeaveRequest = async (id) => {
   if (!confirm('Batalkan pengajuan cuti ini? Tindakan tidak bisa dibatalkan.')) return;
   try {
-    const res = await fetch(`/api/leaves/${id}/cancel`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const res = await fetch(`/api/leaves/${id}/cancel`, { method: 'PUT', headers: { 'Content-Type': 'application/json' } });
     const data = await res.json();
     if (res.ok && data.status === 'success') {
       showToast(data.message || 'Pengajuan dibatalkan.', 'success');
@@ -4626,16 +3777,8 @@ window.cancelLeaveRequest = async (id) => {
   }
 };
 
-// Expose to window
 window.submitLeaveRequest = submitLeaveRequest;
 
-// ================= INPUT DATA CENTER (Khusus Super Admin OM) =================
-// Panel ini hanya untuk Super Admin (OM). Berisi 3 fitur:
-// 1. Edit data karyawan (nama, divisi, role, outlet, dll)
-// 2. Edit data gaji (gaji pokok, uang hadir harian)
-// 3. Edit data KPI (rating, skor KPI)
-
-// Populate outlet dropdown in the Data Center modal
 const loadDataCenterOutlets = () => {
   const select = document.getElementById('dc-edit-outlet');
   if (!select) return;
@@ -4643,27 +3786,20 @@ const loadDataCenterOutlets = () => {
   select.innerHTML = AppState.outlets.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
 };
 
-// Render daftar karyawan di panel Data Center
 const renderDataCenterEmployeeList = (filterText = '') => {
   const tbody = document.getElementById('dc-employees-tbody');
   if (!tbody) return;
   const allEmps = AppState.employees || [];
   const gf = getGlobalFilters();
-
-  // Filter by current mode (Management / Operasional)
   let modeFiltered = allEmps;
   if (AppState.currentMode === 'Management') {
     modeFiltered = allEmps.filter(e => e.type === 'Management');
   } else if (AppState.currentMode === 'Operasional') {
     modeFiltered = allEmps.filter(e => e.type === 'Operasional');
   }
-  // Filter global topbar: outlet
   if (gf.outlet !== 'all') modeFiltered = modeFiltered.filter(e => e.outlet_id === gf.outlet);
-
-  // Update badge count
   const badge = document.getElementById('dc-emp-count-badge');
   if (badge) badge.textContent = modeFiltered.length + ' karyawan (' + (AppState.currentMode || 'Semua') + (gf.outlet !== 'all' ? ' • outlet terpilih' : '') + ')';
-
   if (modeFiltered.length === 0) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada karyawan pada tipe ini.</td></tr>';
     return;
@@ -4712,30 +3848,25 @@ const renderDataCenterEmployeeList = (filterText = '') => {
   if (window.feather) feather.replace();
 };
 
-// Search input handler
 window.dcSearchEmployees = (input) => {
   const text = (input && input.value) || '';
   renderDataCenterEmployeeList(text);
 };
 
-// Open modal to edit employee data (data + gaji + KPI in one form)
 window.openEditEmployeeModal = (employeeId) => {
   const emp = (AppState.employees || []).find(e => e.id === employeeId);
   if (!emp) {
     showToast('Data karyawan tidak ditemukan.', 'error');
     return;
   }
-  // Fill form fields
   const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val !== undefined && val !== null ? val : ''; };
   setVal('dc-edit-id', emp.id);
   setVal('dc-edit-name', emp.name);
-  setVal('dc-edit-nip-display', emp.nip); // read-only display
+  setVal('dc-edit-nip-display', emp.nip);
   setVal('dc-edit-phone', emp.phone);
   setVal('dc-edit-type', emp.type);
-  // ISI DIVISI DROPDOWN DULU, baru set nilainya
   window.dcSyncDivisions && window.dcSyncDivisions();
   setVal('dc-edit-division', emp.division);
-  // Kalau divisi tidak ada di list (mis. OM/PCD), tambahkan manual
   const divSelect = document.getElementById('dc-edit-division');
   if (divSelect && emp.division) {
     let exists = false;
@@ -4759,10 +3890,8 @@ window.openEditEmployeeModal = (employeeId) => {
   setVal('dc-edit-transport-allowance', emp.transport_allowance || 0);
   setVal('dc-edit-rating', emp.rating);
   setVal('dc-edit-kpi-score', emp.kpi_score);
-  // Update header
   const titleEl = document.getElementById('dc-modal-emp-name');
   if (titleEl) titleEl.textContent = emp.name + ' (' + emp.nip + ')';
-  // Show modal
   const modal = document.getElementById('modal-dc-edit-employee');
   if (modal) {
     modal.classList.add('active');
@@ -4770,7 +3899,6 @@ window.openEditEmployeeModal = (employeeId) => {
   }
 };
 
-// Submit edit form — calls PUT /api/employees/{id}
 window.submitEditEmployee = async (e) => {
   if (e && e.preventDefault) e.preventDefault();
   const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
@@ -4781,7 +3909,6 @@ window.submitEditEmployee = async (e) => {
   }
   const submitBtn = document.getElementById('btn-dc-save');
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Menyimpan...'; }
-
   const body = {
     name: getVal('dc-edit-name'),
     phone: getVal('dc-edit-phone'),
@@ -4797,7 +3924,6 @@ window.submitEditEmployee = async (e) => {
     rating: Number(getVal('dc-edit-rating')) || 0,
     kpi_score: Number(getVal('dc-edit-kpi-score')) || 0
   };
-
   try {
     const res = await fetch(`/api/employees/${empId}`, {
       method: 'PUT',
@@ -4807,10 +3933,8 @@ window.submitEditEmployee = async (e) => {
     const data = await res.json();
     if (res.ok && data.status === 'success') {
       showToast(data.message || `Data karyawan berhasil diupdate.`, 'success');
-      // Close modal
       const modal = document.getElementById('modal-dc-edit-employee');
       if (modal) modal.classList.remove('active');
-      // Reload employees
       await loadEmployees();
       renderDataCenterEmployeeList(document.getElementById('dc-search-input')?.value || '');
     } else {
@@ -4828,11 +3952,9 @@ window.submitEditEmployee = async (e) => {
   }
 };
 
-// Division dropdown options
 const DC_DIVISIONS_MGMT = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM", "PCD"];
 const DC_DIVISIONS_OPS = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
 
-// Populate division dropdown based on selected type
 window.dcSyncDivisions = () => {
   const typeSel = document.getElementById('dc-edit-type');
   const divSel = document.getElementById('dc-edit-division');
@@ -4840,30 +3962,22 @@ window.dcSyncDivisions = () => {
   const currentVal = divSel.value;
   const list = typeSel.value === 'Management' ? DC_DIVISIONS_MGMT : DC_DIVISIONS_OPS;
   divSel.innerHTML = list.map(d => `<option value="${d}">${d}</option>`).join('');
-  // Restore previous value if still valid
   if (list.indexOf(currentVal) >= 0) divSel.value = currentVal;
 };
 
-// ================= PROFIL SAYA (Edit Data Diri) =================
-// Semua karyawan bisa akses. Bisa ubah: nama, no. HP, foto profil, info bank, password, PIN.
-// Tidak bisa ubah sendiri: NIP, email, divisi, role, outlet, gaji, KPI (hanya admin via Data Center).
-
 const LOGO_URI_PROFILE = './icons/logo.png';
 
-// Render profil view dengan data user yang login
 const renderProfileView = () => {
   const u = AppState.currentUser;
   if (!u) {
     showToast('Sesi login tidak ditemukan. Silakan login kembali.', 'error');
     return;
   }
-  // Avatar preview
   const avatarImg = document.getElementById('profile-avatar-preview');
   if (avatarImg) {
     avatarImg.src = u.avatar_url || LOGO_URI_PROFILE;
     avatarImg.onerror = function() { this.onerror = null; this.src = LOGO_URI_PROFILE; };
   }
-  // Info badges
   const nipEl = document.getElementById('profile-nip');
   if (nipEl) nipEl.textContent = u.nip || '-';
   const emailEl = document.getElementById('profile-email');
@@ -4880,18 +3994,14 @@ const renderProfileView = () => {
   if (typeEl) typeEl.textContent = u.type || '-';
   const joinEl = document.getElementById('profile-join-date');
   if (joinEl) joinEl.textContent = u.join_date || '-';
-
-  // Form fields
   const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val !== undefined && val !== null ? val : ''; };
   setVal('profile-name', u.name);
   setVal('profile-email-input', u.email);
   setVal('profile-phone', u.phone);
   setVal('profile-bank-name', u.bank_name || '');
   setVal('profile-bank-account', u.bank_account || '');
-  // NIP display (read-only, ditampilkan di form utk reminder)
   const nipDisp = document.getElementById('profile-nip-display');
   if (nipDisp) nipDisp.textContent = u.nip || '-';
-  // v73: Kontrak kerja — tampilkan link kalau sudah upload, kalau kosong tampilkan pesan default
   const contractEmpty = document.getElementById('profile-contract-empty');
   const contractLinkWrap = document.getElementById('profile-contract-link-wrap');
   const contractLink = document.getElementById('profile-contract-link');
@@ -4906,8 +4016,6 @@ const renderProfileView = () => {
       contractLink.href = '#';
     }
   }
-
-  // Top bar avatar also update
   const topAvatar = document.getElementById('current-user-avatar');
   if (topAvatar) {
     topAvatar.src = u.avatar_url || LOGO_URI_PROFILE;
@@ -4918,24 +4026,19 @@ const renderProfileView = () => {
     sidebarAvatar.src = u.avatar_url || LOGO_URI_PROFILE;
     sidebarAvatar.onerror = function() { this.onerror = null; this.src = LOGO_URI_PROFILE; };
   }
-  // Also update display name in identity card
   const displayName = document.getElementById('profile-display-name');
   if (displayName) displayName.textContent = u.name || '-';
 };
-// Expose to window so switchView can call it
 window.renderProfileView = renderProfileView;
 
-// Upload avatar — convert file ke base64, kirim ke /api/profile/avatar
 window.uploadProfileAvatar = async (inputEl) => {
   if (!inputEl || !inputEl.files || inputEl.files.length === 0) return;
   const file = inputEl.files[0];
-  // Validate file type
   if (!file.type.startsWith('image/')) {
     showToast('File harus berupa gambar (JPG, PNG, atau WEBP).', 'warning');
     inputEl.value = '';
     return;
   }
-  // Validate file size (max 3MB)
   if (file.size > 3 * 1024 * 1024) {
     showToast('Ukuran foto maksimal 3MB.', 'warning');
     inputEl.value = '';
@@ -4944,9 +4047,7 @@ window.uploadProfileAvatar = async (inputEl) => {
   const submitBtn = document.getElementById('btn-upload-avatar');
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengupload...'; }
   const previewImg = document.getElementById('profile-avatar-preview');
-
   try {
-    // Read file as base64
     const base64Data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
@@ -4957,11 +4058,7 @@ window.uploadProfileAvatar = async (inputEl) => {
       reader.onerror = () => reject(new Error('Gagal membaca file'));
       reader.readAsDataURL(file);
     });
-
-    // Show preview immediately (optimistic)
     if (previewImg) previewImg.src = URL.createObjectURL(file);
-
-    // Upload to API
     const res = await fetch('/api/profile/avatar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -4970,22 +4067,17 @@ window.uploadProfileAvatar = async (inputEl) => {
     const data = await res.json();
     if (res.ok && data.status === 'success') {
       showToast(data.message || 'Foto profil berhasil diupload.', 'success');
-      // Update current user state
       if (AppState.currentUser) {
         AppState.currentUser.avatar_url = data.url;
-        // Also update localStorage
         try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(AppState.currentUser)); } catch (e) { /* ignore */ }
       }
-      // Update top bar & sidebar avatar
       const topAvatar = document.getElementById('current-user-avatar');
       if (topAvatar) topAvatar.src = data.url;
       const sidebarAvatar = document.getElementById('sidebar-user-avatar');
       if (sidebarAvatar) sidebarAvatar.src = data.url;
-      // Update preview with the real URL from server
       if (previewImg) previewImg.src = data.url;
     } else {
       showToast(data.detail || data.message || 'Gagal upload foto profil.', 'error');
-      // Revert preview
       if (previewImg && AppState.currentUser) {
         previewImg.src = AppState.currentUser.avatar_url || LOGO_URI_PROFILE;
       }
@@ -4993,7 +4085,6 @@ window.uploadProfileAvatar = async (inputEl) => {
   } catch (err) {
     showToast('Kesalahan koneksi saat upload foto.', 'error');
     console.error('Avatar upload error:', err);
-    // Revert preview
     if (previewImg && AppState.currentUser) {
       previewImg.src = AppState.currentUser.avatar_url || LOGO_URI_PROFILE;
     }
@@ -5007,18 +4098,15 @@ window.uploadProfileAvatar = async (inputEl) => {
   }
 };
 
-// v73: Upload kontrak kerja PDF di Profile panel
 window.uploadProfileContract = async (inputEl) => {
   if (!inputEl || !inputEl.files || !inputEl.files[0]) return;
   const file = inputEl.files[0];
-  // Validate file type — harus PDF
   const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
   if (!isPdf) {
     showToast('File kontrak harus berupa PDF.', 'warning');
     inputEl.value = '';
     return;
   }
-  // Validate file size (max 5MB)
   if (file.size > 5 * 1024 * 1024) {
     showToast('Ukuran file kontrak maksimal 5MB.', 'warning');
     inputEl.value = '';
@@ -5026,9 +4114,7 @@ window.uploadProfileContract = async (inputEl) => {
   }
   const submitBtn = document.getElementById('btn-upload-contract');
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Mengupload...'; }
-
   try {
-    // Read file as base64
     const base64Data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
@@ -5039,8 +4125,6 @@ window.uploadProfileContract = async (inputEl) => {
       reader.onerror = () => reject(new Error('Gagal membaca file'));
       reader.readAsDataURL(file);
     });
-
-    // Upload to API
     const res = await fetch('/api/profile/contract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5049,12 +4133,10 @@ window.uploadProfileContract = async (inputEl) => {
     const data = await res.json();
     if (res.ok && data.status === 'success') {
       showToast(data.message || 'Kontrak kerja berhasil diupload.', 'success');
-      // Update current user state
       if (AppState.currentUser) {
         AppState.currentUser.contract_url = data.url;
         try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(AppState.currentUser)); } catch (e) { /* ignore */ }
       }
-      // Re-render profile view supaya link kontrak muncul
       try { renderProfileView && renderProfileView(); } catch (e) { /* ignore */ }
       if (window.feather) feather.replace();
     } else {
@@ -5073,7 +4155,6 @@ window.uploadProfileContract = async (inputEl) => {
   }
 };
 
-// Submit profile update (nama, email, phone, bank info)
 window.submitProfileUpdate = async (e) => {
   if (e && e.preventDefault) e.preventDefault();
   const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
@@ -5084,7 +4165,6 @@ window.submitProfileUpdate = async (e) => {
   const bankAccount = getVal('profile-bank-account');
   if (!name || name.length < 2) { showToast('Nama minimal 2 karakter.', 'warning'); return; }
   if (!email || email.length < 5) { showToast('Email wajib diisi.', 'warning'); return; }
-  // Validasi format email sederhana di sisi klien (backend juga validasi lagi)
   if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
     showToast('Format email tidak valid. Contoh: nama@perusahaan.com', 'warning');
     return;
@@ -5101,13 +4181,10 @@ window.submitProfileUpdate = async (e) => {
     const data = await res.json();
     if (res.ok && data.status === 'success') {
       showToast(data.message || 'Profil berhasil diupdate.', 'success');
-      // Update current user state
       if (data.user) {
-        // Preserve avatar_url since profile update doesn't return it (use existing)
         const currentAvatar = AppState.currentUser ? AppState.currentUser.avatar_url : '';
         AppState.currentUser = Object.assign({}, AppState.currentUser, data.user, { avatar_url: data.user.avatar_url || currentAvatar });
         try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(AppState.currentUser)); } catch (e) { /* ignore */ }
-        // Update top bar display
         const nameEl = document.getElementById('current-user-name');
         if (nameEl) nameEl.textContent = AppState.currentUser.name;
         const roleEl = document.getElementById('current-user-role');
@@ -5116,7 +4193,6 @@ window.submitProfileUpdate = async (e) => {
         if (sName) sName.textContent = AppState.currentUser.name;
         const sRole = document.getElementById('sidebar-user-role');
         if (sRole) sRole.textContent = `${AppState.currentUser.role} (${AppState.currentUser.division})`;
-        // Re-render profile view supaya info badge email terupdate
         try { renderProfileView && renderProfileView(); } catch (err) { /* ignore */ }
       }
     } else {
@@ -5134,7 +4210,6 @@ window.submitProfileUpdate = async (e) => {
   }
 };
 
-// Change password
 window.submitChangePassword = async (e) => {
   if (e && e.preventDefault) e.preventDefault();
   const getVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
@@ -5155,7 +4230,6 @@ window.submitChangePassword = async (e) => {
     const data = await res.json();
     if (res.ok && data.status === 'success') {
       showToast(data.message || 'Password berhasil diganti.', 'success');
-      // Clear fields
       document.getElementById('profile-current-password').value = '';
       document.getElementById('profile-new-password').value = '';
       document.getElementById('profile-confirm-password').value = '';
@@ -5174,7 +4248,6 @@ window.submitChangePassword = async (e) => {
   }
 };
 
-// Change PIN
 window.submitChangePin = async (e) => {
   if (e && e.preventDefault) e.preventDefault();
   const getVal = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
@@ -5213,7 +4286,6 @@ window.submitChangePin = async (e) => {
   }
 };
 
-// Toggle password/PIN visibility
 window.toggleProfileFieldVisibility = (fieldId, btn) => {
   const field = document.getElementById(fieldId);
   if (!field) return;
@@ -5227,8 +4299,6 @@ window.toggleProfileFieldVisibility = (fieldId, btn) => {
   if (window.feather) feather.replace();
 };
 
-// === PWA NOTIFICATIONS ===
-// Local notifications (tidak butuh push server, jalan saat app terbuka)
 window.requestNotificationPermission = async () => {
   if (!('Notification' in window)) {
     showToast('Browser tidak mendukung notifikasi.', 'warning');
@@ -5242,7 +4312,6 @@ window.requestNotificationPermission = async () => {
     const result = await Notification.requestPermission();
     if (result === 'granted') {
       showToast('Notifikasi PWA berhasil diaktifkan!', 'success');
-      // Test notification
       new Notification('TERTIB DISIPLIN', {
         body: 'Notifikasi aktif. Anda akan mendapat reminder presensi & pesan chat.',
         icon: './icons/icon-192.png'
@@ -5255,7 +4324,6 @@ window.requestNotificationPermission = async () => {
   }
 };
 
-// Kirim local notification
 const sendNotification = (title, body) => {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   try {
@@ -5263,12 +4331,10 @@ const sendNotification = (title, body) => {
   } catch (e) { /* abaikan */ }
 };
 
-// Cek presensi harian — reminder kalau belum presensi
 const checkPresensiReminder = () => {
   if (!AppState.currentUser) return;
   const now = new Date();
   const hour = now.getHours();
-  // Reminder jam 9 pagi kalau belum presensi
   if (hour >= 9 && hour < 12) {
     const today = now.toISOString().split('T')[0];
     const alreadyCheckedIn = (AppState.attendanceLogs || []).some(a =>
@@ -5280,14 +4346,10 @@ const checkPresensiReminder = () => {
   }
 };
 
-// Cek chat baru — bandingkan jumlah pesan
 let lastChatCount = 0;
 const checkNewChatMessages = () => {
   if (!AppState.currentUser) return;
-  // Hanya cek kalau user tidak sedang di view chat
   if (AppState.currentView === 'chat') return;
-  // Hitung total pesan di channel yang bisa diakses
-  // (sederhana: cek badge chat)
   const badge = document.getElementById('badge-unread-chat');
   if (badge) {
     const count = parseInt(badge.textContent) || 0;
@@ -5298,19 +4360,15 @@ const checkNewChatMessages = () => {
   }
 };
 
-// Jalankan pengecekan periodik
 setInterval(() => {
   checkPresensiReminder();
   checkNewChatMessages();
-}, 60000); // cek setiap 1 menit
+}, 60000);
 
-// === END PWA NOTIFICATIONS ===
-
-// ================= PENGATURAN TITIK OUTLET =================
+// v81: renderOutletsTable uses debounced feather
 const renderOutletsTable = () => {
   const tbody = document.getElementById('outlets-table-tbody');
   if (!tbody) return;
-
   tbody.innerHTML = AppState.outlets.map(o => {
     return `
       <tr>
@@ -5335,23 +4393,20 @@ const renderOutletsTable = () => {
       </tr>
     `;
   }).join('');
+  // v81 FIX: debounced feather
+  window.debouncedFeatherReplace && window.debouncedFeatherReplace();
 };
 
 const promptEditOutletRadius = async (outletId, currentRadius) => {
   const newRadius = prompt('Masukkan toleransi radius geofence baru (meter):', currentRadius);
   if (!newRadius || isNaN(newRadius)) return;
-
   const outlet = AppState.outlets.find(o => o.id === outletId);
   if (!outlet) return;
-
   try {
     await fetch(`/api/outlets/${outletId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...outlet,
-        radius_meters: parseInt(newRadius)
-      })
+      body: JSON.stringify({ ...outlet, radius_meters: parseInt(newRadius) })
     });
     showToast('Radius geofence berhasil diperbarui!', 'success');
     await loadOutlets();
@@ -5360,9 +4415,7 @@ const promptEditOutletRadius = async (outletId, currentRadius) => {
   }
 };
 
-const openAddOutletModal = () => {
-  openModal('modal-add-outlet');
-};
+const openAddOutletModal = () => { openModal('modal-add-outlet'); };
 
 const fetchDeviceLocationForNewOutlet = () => {
   if (navigator.geolocation) {
@@ -5386,7 +4439,6 @@ const submitNewOutletForm = async (e) => {
     phone: '+62 21 0000 0000',
     manager: AppState.currentUser.name
   };
-
   try {
     const res = await fetch('/api/outlets', {
       method: 'POST',
@@ -5403,7 +4455,6 @@ const submitNewOutletForm = async (e) => {
   }
 };
 
-// ================= RBAC SIMULATOR / USER SWITCHER =================
 const toggleUserSwitchModal = () => {
   showToast('Untuk berganti akun, tekan tombol Keluar lalu login dengan akun lain.', 'info');
 };
@@ -5411,7 +4462,6 @@ const toggleUserSwitchModal = () => {
 const renderUserSwitchItems = (employees) => {
   const list = document.getElementById('switch-user-list');
   if (!list) return;
-
   list.innerHTML = employees.slice(0, 40).map(e => `
     <div style="display:flex; align-items:center; gap:12px; padding:8px 12px; border-radius:10px; background:#f8fafc; cursor:pointer;" onclick="selectSwitchUser('${e.id}')">
       <img src="${e.avatar_url}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
@@ -5430,16 +4480,9 @@ const filterUserSwitchList = (query) => {
 };
 
 const selectSwitchUser = (empId) => {
-  return; // dinonaktifkan: berganti akun harus lewat login
-  const user = AppState.employees.find(e => e.id === empId);
-  if (user) {
-    setCurrentUser(user);
-    showToast(`Beralih akun ke: ${user.name} (${user.role})`, 'success');
-    closeModal('modal-switch-user');
-  }
+  return;
 };
 
-// ================= MODAL HELPERS & LIGHTBOX =================
 const openModal = (id) => {
   const modal = document.getElementById(id);
   if (modal) modal.classList.add('active');
@@ -5450,14 +4493,12 @@ const closeModal = (id) => {
   if (modal) modal.classList.remove('active');
 };
 
-// Open the leave create modal — exposes to window so inline onclick can call it
 window.openCreateLeaveModal = () => {
   const modal = document.getElementById('modal-leave-create');
   if (!modal) {
     showToast('Form pengajuan cuti tidak ditemukan.', 'error');
     return;
   }
-  // Reset form fields
   const typeEl = document.getElementById('leave-form-type');
   const startEl = document.getElementById('leave-form-start');
   const endEl = document.getElementById('leave-form-end');
@@ -5468,11 +4509,9 @@ window.openCreateLeaveModal = () => {
   if (endEl) endEl.value = '';
   if (reasonEl) reasonEl.value = '';
   if (attachmentEl) attachmentEl.value = '';
-  // Set min date to today
   const today = new Date().toISOString().split('T')[0];
   if (startEl) startEl.min = today;
   if (endEl) endEl.min = today;
-  // Auto-update end date min when start date changes
   if (startEl && endEl) {
     startEl.onchange = () => { endEl.min = startEl.value || today; if (endEl.value && endEl.value < startEl.value) endEl.value = startEl.value; };
   }
@@ -5487,16 +4526,12 @@ const openLightbox = (imgUrl, caption) => {
   openModal('modal-lightbox');
 };
 
-// === NOTIFICATION CENTER (real data) ===
 window.showNotificationCenter = () => {
   const u = AppState.currentUser;
   if (!u) return;
-
   const notifications = [];
   const now = new Date();
   const today = now.toISOString().split('T')[0];
-
-  // 1. Cek laporan dengan status Hold
   const holdReports = (AppState.dailyReports || []).filter(r => r.status === 'Hold');
   if (holdReports.length > 0) {
     const myHold = isDashboardAdmin() ? holdReports : holdReports.filter(r => r.reporter_id === u.id);
@@ -5511,8 +4546,6 @@ window.showNotificationCenter = () => {
       });
     }
   }
-
-  // 2. Cek presensi hari ini — belum presensi masuk
   const todayLogs = (AppState.attendanceLogs || []).filter(a => a.date === today);
   const myTodayLog = todayLogs.find(a => a.employee_id === u.id);
   if (!myTodayLog) {
@@ -5528,7 +4561,6 @@ window.showNotificationCenter = () => {
       });
     }
   } else if (!myTodayLog.check_out_time) {
-    // Sudah presensi masuk tapi belum pulang
     const checkInTime = myTodayLog.check_in_time ? myTodayLog.check_in_time.split(' ')[1] : '';
     notifications.push({
       icon: '📍',
@@ -5539,8 +4571,6 @@ window.showNotificationCenter = () => {
       action: 'presensi'
     });
   }
-
-  // 3. Cek pengajuan cuti yang perlu di-approve (untuk approver)
   if (LEAVE_APPROVER_DIVISIONS.includes(u.division)) {
     const pendingLeaves = (AppState.leaveRequests || []).filter(l => l.status === 'Pending' && l.employee_id !== u.id);
     if (pendingLeaves.length > 0) {
@@ -5554,14 +4584,12 @@ window.showNotificationCenter = () => {
       });
     }
   }
-
-  // 4. Cek status pengajuan cuti sendiri yang baru di-approve/reject
   const myLeaves = (AppState.leaveRequests || []).filter(l => l.employee_id === u.id && (l.status === 'Approved' || l.status === 'Rejected'));
   const recentLeaves = myLeaves.filter(l => {
     if (!l.updated_at) return false;
     const updated = new Date(l.updated_at);
     const diff = (now - updated) / (1000 * 60 * 60 * 24);
-    return diff < 3; // dalam 3 hari terakhir
+    return diff < 3;
   });
   recentLeaves.slice(0, 3).forEach(l => {
     notifications.push({
@@ -5573,8 +4601,6 @@ window.showNotificationCenter = () => {
       action: 'leaves'
     });
   });
-
-  // 5. Cek slip gaji baru (yang belum dibaca — sederhana: tampilkan yang paid bulan ini)
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
   const newSlips = (AppState.payslips || []).filter(s =>
@@ -5590,8 +4616,6 @@ window.showNotificationCenter = () => {
       action: 'payroll'
     });
   }
-
-  // 6. Cek sisa cuti yang menipis
   if (AppState.leaveBalance && AppState.leaveBalance.remaining !== undefined) {
     if (AppState.leaveBalance.remaining <= 3 && AppState.leaveBalance.remaining > 0) {
       notifications.push({
@@ -5604,20 +4628,15 @@ window.showNotificationCenter = () => {
       });
     }
   }
-
-  // Render notification panel
   renderNotificationPanel(notifications);
 };
 
 const renderNotificationPanel = (notifications) => {
-  // Hapus panel lama kalau ada
   const oldPanel = document.getElementById('notification-panel');
   if (oldPanel) oldPanel.remove();
-
   const panel = document.createElement('div');
   panel.id = 'notification-panel';
   panel.style.cssText = 'position:fixed; top:70px; right:20px; width:380px; max-width:90vw; max-height:70vh; overflow-y:auto; background:#fff; border-radius:18px; box-shadow:0 16px 40px rgba(0,0,0,0.15); z-index:9999; animation:fadeInUp 0.3s ease; border:1px solid #e2e8f0;';
-
   if (notifications.length === 0) {
     panel.innerHTML = `
       <div style="padding:20px; text-align:center;">
@@ -5650,10 +4669,7 @@ const renderNotificationPanel = (notifications) => {
     html += '</div>';
     panel.innerHTML = html;
   }
-
   document.body.appendChild(panel);
-
-  // Close saat klik di luar panel
   setTimeout(() => {
     document.addEventListener('click', function closeNotif(e) {
       const p = document.getElementById('notification-panel');
@@ -5675,15 +4691,8 @@ const openSplModal = () => {
   }
 };
 
-// ==========================================
-// GLOBAL FILTERS (Topbar): Periode + Outlet + Search + Mode
-// Nilai dibaca dari topbar & diterapkan ke SEMUA panel:
-// dashboard (stream laporan, tabel presensi, stat cards), daily report board,
-// data center employee list, dan database karyawan.
-// ==========================================
 const fmtLocalDate_ = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
-// Kembalikan tanggal batas awal (yyyy-MM-dd) untuk periode terpilih, atau null jika "Semua Periode"
 const periodCutoffDate_ = (period) => {
   const today = new Date();
   if (period === 'today') return fmtLocalDate_(today);
@@ -5692,7 +4701,6 @@ const periodCutoffDate_ = (period) => {
   return null;
 };
 
-// Baca nilai semua filter global dari topbar
 const getGlobalFilters = () => {
   const period = document.getElementById('filter-period-select')?.value || 'all';
   const cutoff = periodCutoffDate_(period);
@@ -5707,38 +4715,31 @@ const getGlobalFilters = () => {
   };
 };
 
-// Apakah tanggal (yyyy-MM-dd atau yyyy-MM-dd HH:mm:ss) masuk rentang periode terpilih?
 const dateInPeriod_ = (dateStr, cutoff, todayStr) => {
-  if (!cutoff) return true;                 // Semua Periode
+  if (!cutoff) return true;
   if (!dateStr) return false;
-  const d = String(dateStr).slice(0, 10);   // ambil bagian tanggal saja
+  const d = String(dateStr).slice(0, 10);
   return d >= cutoff && d <= todayStr;
 };
 
-// Filter pencarian global: cocokkan kata kunci ke beberapa field
 const matchGlobalSearch_ = (search, fields) => {
   if (!search) return true;
   return fields.join('|').toLowerCase().includes(search);
 };
 
-// Apakah karyawan/baris data cocok dengan mode dashboard aktif (Management vs Tim Operasional)?
-// Prioritas: field `type` jika ada; kalau tidak ada, turunkan dari divisi (MANAGEMENT_DIVISIONS).
 const matchGlobalMode_ = (type, division) => {
   const mode = AppState.currentMode || '';
-  if (mode !== 'Management' && mode !== 'Operasional') return true;   // mode tidak dikenal = tampilkan semua
+  if (mode !== 'Management' && mode !== 'Operasional') return true;
   if (type) return String(type) === mode;
   const isMgmt = MANAGEMENT_DIVISIONS.indexOf(division) >= 0;
   return mode === 'Management' ? isMgmt : !isMgmt;
 };
 
-// Label mode aktif untuk pesan/empty-state, mis. "Mode: Management"
 const activeModeLabel_ = () => {
   const mode = AppState.currentMode || '';
   return (mode === 'Management' || mode === 'Operasional') ? mode : 'Semua';
 };
 
-// Baca status tab aktif di stream dashboard ("All"/"Proses"/"Hold"/"Selesai")
-// supaya re-render (ganti mode / filter global) tidak me-reset pilihan user.
 const currentStreamStatus_ = () => {
   const active = document.querySelector('.reviews-tabs-nav .tab-pill-btn.active');
   if (!active) return 'All';
@@ -5746,7 +4747,6 @@ const currentStreamStatus_ = () => {
   return m ? m[1] : 'All';
 };
 
-// Isi dropdown "Semua Outlet" di topbar dengan daftar outlet dari AppState
 const populateGlobalOutletFilter = () => {
   const sel = document.getElementById('filter-outlet-select');
   if (!sel) return;
@@ -5758,11 +4758,9 @@ const populateGlobalOutletFilter = () => {
   }
   sel.innerHTML = '<option value="all">Semua Outlet</option>' +
     list.map(o => `<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`).join('');
-  // Pertahankan pilihan sebelumnya jika masih valid
   if (Array.from(sel.options).some(op => op.value === cur)) sel.value = cur;
 };
 
-// Isi dropdown "Semua Periode" di topbar (statis — jaga-jaga bila HTML berubah)
 const populateGlobalPeriodFilter = () => {
   const sel = document.getElementById('filter-period-select');
   if (!sel || sel.options.length > 0) return;
@@ -5774,10 +4772,6 @@ const populateGlobalPeriodFilter = () => {
 window.populateGlobalOutletFilter = populateGlobalOutletFilter;
 window.populateGlobalPeriodFilter = populateGlobalPeriodFilter;
 
-// Render ulang SEMUA panel yang menampilkan data karyawan sesuai filter global aktif
-// (mode Management/Operasional + outlet + periode + pencarian).
-// Dipakai oleh switchDashboardMode & applyGlobalFilters. Setiap render aman dipanggil
-// walau panelnya tidak sedang terbuka (fungsi render punya guard tbody sendiri).
 const rerenderAllPanels_ = () => {
   const safe = (label, fn) => {
     try { fn(); } catch (err) { console.error(`rerenderAllPanels_ [${label}]:`, err); }
@@ -5795,13 +4789,11 @@ const rerenderAllPanels_ = () => {
   safe('stats', () => updateDashboardStats && updateDashboardStats());
 };
 
-// Terapkan semua filter global: render ulang semua panel yang datanya sudah ada di AppState
 const applyGlobalFilters = () => {
   rerenderAllPanels_();
 };
 window.applyGlobalFilters = applyGlobalFilters;
 
-// Wire kolom pencarian global di topbar (debounce 250ms)
 const initGlobalSearch = () => {
   const input = document.getElementById('global-search-input');
   if (!input) return;
@@ -5812,9 +4804,6 @@ const initGlobalSearch = () => {
   });
 };
 
-// ==========================================
-// Database & Backup Controller
-// ==========================================
 AppState.dbState = {
   currentTable: 'employees',
   page: 1,
@@ -5829,7 +4818,6 @@ const loadDatabaseOverview = async () => {
     const res = await fetch('/api/database/overview');
     if (!res.ok) throw new Error('Gagal mengambil overview database');
     const data = await res.json();
-
     const pathEl = document.getElementById('db-path-display');
     if (pathEl) {
       pathEl.innerHTML = `Lokasi File Fisik: <code style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-weight:600; color:var(--burgundy-primary);">${data.db_path}</code>`;
@@ -5838,7 +4826,6 @@ const loadDatabaseOverview = async () => {
     if (sizeEl) sizeEl.textContent = data.file_size_formatted;
     const tableEl = document.getElementById('db-table-count');
     if (tableEl) tableEl.textContent = `${data.tables.length} Tabel Aktif`;
-
     const totalRecords = data.tables.reduce((acc, t) => acc + t.rows, 0);
     const recEl = document.getElementById('db-record-count');
     if (recEl) recEl.textContent = `${totalRecords.toLocaleString('id-ID')} Baris`;
@@ -5856,24 +4843,17 @@ const loadDatabaseTableData = async () => {
   const countLabel = document.getElementById('db-inspector-count-label');
   const prevBtn = document.getElementById('db-btn-prev');
   const nextBtn = document.getElementById('db-btn-next');
-
   if (!tbody) return;
   tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:24px; color:#64748b;">⏳ Memuat data tabel <code>${currentTable}</code>...</td></tr>`;
-
   try {
     const url = `/api/database/table-data?table=${encodeURIComponent(currentTable)}&page=${page}&page_size=${pageSize}&search=${encodeURIComponent(search)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Gagal mengambil data tabel');
     const data = await res.json();
-
     AppState.dbState.totalPages = data.total_pages;
-
-    // Render Table Headers
     if (thead) {
       thead.innerHTML = `<tr>` + data.columns.map(c => `<th style="white-space:nowrap; background:#f8fafc; color:#475569; padding:10px 14px;">${c}</th>`).join('') + `</tr>`;
     }
-
-    // Render Table Rows
     if (data.rows.length === 0) {
       tbody.innerHTML = `<tr><td colspan="${data.columns.length}" style="text-align:center; padding:24px; color:#94a3b8;">Tidak ada data yang cocok dengan kriteria pencarian.</td></tr>`;
     } else {
@@ -5887,21 +4867,17 @@ const loadDatabaseTableData = async () => {
         }).join('') + `</tr>`;
       }).join('');
     }
-
-    // Update Pagination & Counter
     const startIdx = data.total_records === 0 ? 0 : (page - 1) * pageSize + 1;
     const endIdx = Math.min(page * pageSize, data.total_records);
     if (countLabel) {
       countLabel.textContent = `Menampilkan ${startIdx} - ${endIdx} dari ${data.total_records.toLocaleString('id-ID')} data (Halaman ${data.page} dari ${data.total_pages})`;
     }
-
     if (prevBtn && nextBtn) {
       prevBtn.disabled = (page <= 1);
       nextBtn.disabled = (page >= data.total_pages);
       prevBtn.style.opacity = (page <= 1) ? '0.5' : '1';
       nextBtn.style.opacity = (page >= data.total_pages) ? '0.5' : '1';
     }
-
   } catch (err) {
     console.error('Error loadDatabaseTableData:', err);
     tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:24px; color:#ef4444;">❌ Terjadi kesalahan: ${err.message}</td></tr>`;
@@ -5976,7 +4952,6 @@ const openDatabaseSheet = async (ev) => {
 const confirmResetDatabase = async () => {
   const confirmMsg = "⚠️ PERINGATAN:\nReset akan MENGHAPUS SEMUA data (karyawan, presensi, laporan, slip gaji) dan membuat akun admin baru.\nLanjutkan?";
   if (!confirm(confirmMsg)) return;
-
   try {
     const typed = prompt('Ketik RESET (huruf besar) untuk benar-benar menghapus semua data:');
     if (typed !== 'RESET') { showToast('Reset dibatalkan.', 'info'); return; }
@@ -6013,25 +4988,15 @@ const escapeHtml = (str) => {
     .replace(/'/g, '&#039;');
 };
 
-// ============================================================
-// PANEL SUPER ADMIN — kelola seluruh sistem aplikasi
-// Hanya tampil untuk akun role "SUPER ADMIN" (atau divisi OM/PCD).
-// Fitur: ringkasan sistem, manajemen pengguna (edit data, ubah akses,
-// reset password/PIN, aktif/nonaktif), dan pengaturan sistem.
-// ============================================================
-
 AppState.saUsers = [];
 AppState.saSettingsLoaded = false;
 
-// ---- Shortcut dari panel Cuti & Ijin: buka Panel SUPER ADMIN langsung ke tab Pengguna ----
-// Berguna agar SUPER ADMIN cepat mengatur Penyesuaian Cuti Tahunan (±hari) per-karyawan.
 window.openSaUsersPanel = () => {
   if (!isFullAccess()) {
     showToast('Hanya Super Admin (OM/PCD) yang dapat mengatur Penyesuaian Cuti karyawan.', 'error');
     return;
   }
   if (typeof switchView === 'function') switchView('superadmin');
-  // Setelah view terbuka, aktifkan tab "users" & scroll ke tabel pengguna
   setTimeout(() => {
     if (typeof window.saSwitchTab === 'function') window.saSwitchTab('users');
     const tbl = document.getElementById('sa-tab-users');
@@ -6040,19 +5005,14 @@ window.openSaUsersPanel = () => {
   }, 250);
 };
 
-// ================= v67: ATUR TANGGAL BERGABUNG KARYAWAN =================
-// Modal khusus utk SUPER ADMIN + PCD — tidak perlu buka Panel SUPER ADMIN.
-// Langsung pilih karyawan + input tanggal + save → PUT /api/employees/:id { join_date }.
 AppState.__joinDate = { employees: [], selectedId: null };
 
 window.openJoinDateModal = async () => {
-  // Guard: hanya SUPER ADMIN atau PCD
   const u = AppState.currentUser;
   if (!u || (!isSuperAdminUser(u) && u.division !== 'PCD')) {
     showToast('Hanya Super Admin atau PCD yang dapat mengatur Tanggal Bergabung.', 'error');
     return;
   }
-  // Reset form
   const sel = document.getElementById('join-date-emp-select');
   const inpGroup = document.getElementById('join-date-input-group');
   const inp = document.getElementById('join-date-input');
@@ -6062,8 +5022,6 @@ window.openJoinDateModal = async () => {
   if (inpGroup) inpGroup.style.display = 'none';
   if (info) { info.style.display = 'none'; info.innerHTML = ''; }
   AppState.__joinDate.selectedId = null;
-
-  // Load employees list
   if (sel) {
     sel.innerHTML = '<option value="">— Memuat daftar karyawan... —</option>';
     try {
@@ -6082,7 +5040,6 @@ window.openJoinDateModal = async () => {
       showToast('Gagal memuat daftar karyawan: ' + (err.message || 'kesalahan'), 'error');
     }
   }
-
   openModal('modal-join-date');
   if (window.feather) setTimeout(() => feather.replace(), 50);
 };
@@ -6125,11 +5082,9 @@ window.saveJoinDate = async () => {
     showToast('Format tanggal tidak valid. Gunakan YYYY-MM-DD.', 'error');
     return;
   }
-
   const btn = document.getElementById('btn-save-join-date');
   const origText = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
-
   try {
     const res = await fetch(`/api/employees/${empId}`, {
       method: 'PUT',
@@ -6139,7 +5094,6 @@ window.saveJoinDate = async () => {
     const data = await res.json();
     if (res.ok && (data.status === 'success' || data.employee)) {
       showToast('Tanggal bergabung berhasil disimpan.', 'success');
-      // Update local cache
       const emp = AppState.__joinDate.employees.find(e => e.id === empId);
       if (emp) emp.join_date = jd;
       closeModal('modal-join-date');
@@ -6153,7 +5107,6 @@ window.saveJoinDate = async () => {
   }
 };
 
-// ---- Tab switching ----
 window.saSwitchTab = (tab) => {
   ['overview', 'users', 'settings'].forEach(t => {
     const panel = document.getElementById('sa-tab-' + t);
@@ -6166,7 +5119,6 @@ window.saSwitchTab = (tab) => {
   if (tab === 'settings') window.loadSaSettings && window.loadSaSettings();
 };
 
-// ---- TAB 1: RINGKASAN SISTEM ----
 window.loadSaOverview = async () => {
   const wrap = document.getElementById('sa-overview-stats');
   if (!wrap) return;
@@ -6174,7 +5126,6 @@ window.loadSaOverview = async () => {
     const res = await fetch('/api/admin/overview');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      // 404 = backend belum di-deploy ulang. Tampilkan panduan jelas (bukan pesan redup).
       if (res.status === 404) {
         wrap.innerHTML = `<div class="modern-card" style="padding:20px; text-align:left; color:#991b1b; grid-column:1/-1; background:#fef2f2; border:1px solid #fecaca;">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
@@ -6194,9 +5145,6 @@ window.loadSaOverview = async () => {
             <li>Set <strong>"Version"</strong> ke <strong>New version</strong> &rarr; klik <strong>Deploy</strong></li>
             <li>Tunggu 30 detik, lalu refresh PWA. Cek versi harus <code style="background:#fee2e2; padding:1px 6px; border-radius:4px;">v45-leave-fix</code> atau lebih baru.</li>
           </ol>
-          <p style="font-size:11px; color:#7f1d1d; margin:8px 0 0 0; padding-top:8px; border-top:1px solid #fecaca;">
-            Cek versi backend: buka link <code style="background:#fee2e2; padding:1px 6px; border-radius:4px;">/exec</code> di browser (URL Apps Script Anda). Harus muncul <code>"version":"v45-leave-fix"</code> atau lebih baru.
-          </p>
         </div>`;
         if (window.feather) feather.replace();
         return;
@@ -6221,8 +5169,6 @@ window.loadSaOverview = async () => {
         <div style="font-size:11px; color:#64748b; font-weight:600; margin-top:4px; text-transform:uppercase;">${s.label}</div>
       </div>
     `).join('');
-
-    // Presensi hari ini ringkas
     const attBox = document.getElementById('sa-overview-attendance');
     if (attBox) {
       attBox.innerHTML = `
@@ -6233,7 +5179,6 @@ window.loadSaOverview = async () => {
           <div style="display:flex; justify-content:space-between; padding:10px 14px; background:#fefce8; border-radius:10px;"><span>Laporan status Hold</span><strong style="color:#a16207;">${data.hold_reports}</strong></div>
         </div>`;
     }
-    // Divisi ringkas — mode-aware (Management vs Tim Operasional), di-render oleh helper
     AppState.saOverview = data;
     renderSaOverviewDivisions();
   } catch (err) {
@@ -6242,7 +5187,6 @@ window.loadSaOverview = async () => {
   }
 };
 
-// Kotak "Distribusi Divisi" di Ringkasan Super Admin — ikut filter mode topbar
 const renderSaOverviewDivisions = () => {
   const divBox = document.getElementById('sa-overview-divisions');
   if (!divBox || !AppState.saOverview) return;
@@ -6261,14 +5205,12 @@ const renderSaOverviewDivisions = () => {
           </div>`).join('');
 };
 
-// ---- TAB 2: MANAJEMEN PENGGUNA ----
 window.loadSaUsers = async () => {
   try {
     const res = await fetch('/api/admin/users');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 404) {
-        // Backend belum di-deploy ulang — tampilkan panduan deploy di tabel
         const tbody = document.getElementById('sa-users-tbody');
         if (tbody) {
           tbody.innerHTML = `<tr><td colspan="8" style="padding:24px; text-align:left; background:#fef2f2; color:#991b1b;">
@@ -6297,18 +5239,16 @@ window.loadSaUsers = async () => {
   }
 };
 
+// v81: renderSaUsers uses debounced feather
 const renderSaUsers = (filterText = '') => {
   const tbody = document.getElementById('sa-users-tbody');
   if (!tbody) return;
   const me = AppState.currentUser;
   let list = AppState.saUsers || [];
-
-  // Filter global topbar: mode Management / Tim Operasional (berdasarkan tipe akun)
   const gf = getGlobalFilters();
   if (gf.mode === 'Management' || gf.mode === 'Operasional') {
     list = list.filter(e => (e.type || '') === gf.mode);
   }
-
   const q = (filterText || '').toLowerCase().trim();
   if (q) {
     list = list.filter(e =>
@@ -6319,8 +5259,6 @@ const renderSaUsers = (filterText = '') => {
       (e.role || '').toLowerCase().includes(q)
     );
   }
-
-  // Catatan filter aktif di atas tabel (feedback visual bahwa tombol mode berfungsi)
   const note = document.getElementById('sa-users-filter-note');
   if (note) {
     const parts = [];
@@ -6332,7 +5270,6 @@ const renderSaUsers = (filterText = '') => {
     if (gf.search) parts.push(`Pencarian: "<b>${escapeHtml(gf.search)}</b>"`);
     note.innerHTML = `🔍 Menampilkan <b>${list.length}</b> pengguna • ${parts.join(' • ')}`;
   }
-
   if (list.length === 0) {
     const modeFiltered = gf.mode === 'Management' || gf.mode === 'Operasional';
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">Tidak ada pengguna${modeFiltered ? ` untuk Mode ${activeModeLabel_()}` : ' yang cocok'}.</td></tr>`;
@@ -6384,11 +5321,11 @@ const renderSaUsers = (filterText = '') => {
       </tr>
     `;
   }).join('');
-  if (window.feather) feather.replace();
+  // v81 FIX: debounced feather
+  window.debouncedFeatherReplace && window.debouncedFeatherReplace();
 };
 window.saSearchUsers = (input) => renderSaUsers((input && input.value) || '');
 
-// ---- Dropdown helpers untuk modal user ----
 const SA_DIVISIONS_MGMT = ["HRD", "BM", "Finance", "QC", "Creative", "DOS", "Logistik", "Produksi", "Driver", "HRGA", "Security", "OM", "PCD"];
 const SA_DIVISIONS_OPS = ["SPV", "Head Kitchen", "Head Bar", "Kasir", "Server", "Kitchen", "Bar", "PA", "CS"];
 window.saSyncDivisions = () => {
@@ -6425,8 +5362,6 @@ const populateSaOutlets = (selectedId) => {
   if (selectedId) sel.value = selectedId;
 };
 
-// ---- Buka modal EDIT pengguna ----
-// ---- Info sisa cuti LIVE di modal user (diambil dari /api/leaves/balance) ----
 window.saLoadLeaveInfo = async (userId) => {
   const box = document.getElementById('sa-user-leave-info');
   if (!box || !userId) return;
@@ -6459,7 +5394,6 @@ window.openSaEditUser = (userId) => {
   setVal('sa-user-type', emp.type);
   window.saSyncDivisions && window.saSyncDivisions();
   setVal('sa-user-division', emp.division);
-  // Kalau divisi tidak ada di daftar (mis. divisi kustom), tambahkan manual
   const divSel = document.getElementById('sa-user-division');
   if (divSel && emp.division) {
     let exists = false;
@@ -6481,12 +5415,9 @@ window.openSaEditUser = (userId) => {
   setVal('sa-user-rating', emp.rating);
   setVal('sa-user-kpi-score', emp.kpi_score);
   setVal('sa-user-leave-adjustment', Number(emp.leave_adjustment) || 0);
-  // v67: populate join_date (Tanggal Bergabung)
   setVal('sa-user-join-date', emp.join_date || '');
-  // v73: populate tunjangan_jabatan & tunjangan_bonus
   setVal('sa-user-tunjangan-jabatan', Number(emp.tunjangan_jabatan) || 0);
   setVal('sa-user-tunjangan-bonus', Number(emp.tunjangan_bonus) || 0);
-  // v73: tampilkan link kontrak kalau ada
   const saContractLink = document.getElementById('sa-user-contract-link');
   const saContractStatus = document.getElementById('sa-user-contract-status');
   if (saContractLink && saContractStatus) {
@@ -6500,28 +5431,24 @@ window.openSaEditUser = (userId) => {
       saContractStatus.textContent = 'Belum ada file kontrak';
     }
   }
-  // v74: set checkbox geofence_exempt (utk Operasional dgn pengecualian; Management auto-bypass jadi checkbox disabled)
   const geoExemptChk = document.getElementById('sa-user-geofence-exempt');
   if (geoExemptChk) {
     geoExemptChk.checked = Number(emp.geofence_exempt) === 1;
     const isMgmt = MANAGEMENT_DIVISIONS.indexOf(emp.division) >= 0;
     if (isMgmt) {
-      geoExemptChk.checked = true; // auto-bypass
-      geoExemptChk.disabled = true; // tidak bisa diubah (memang sudah auto)
+      geoExemptChk.checked = true;
+      geoExemptChk.disabled = true;
     } else {
       geoExemptChk.disabled = false;
     }
   }
-  // Simpan employee ID yg sedang diedit utk upload kontrak
   AppState.__saEditingUserId = emp.id;
-  // Password/PIN awal hanya untuk mode TAMBAH
   const pwGroup = document.getElementById('sa-user-password-group');
   const pinGroup = document.getElementById('sa-user-pin-group');
   if (pwGroup) pwGroup.style.display = 'none';
   if (pinGroup) pinGroup.style.display = 'none';
   const pwInput = document.getElementById('sa-user-password'); if (pwInput) pwInput.value = '';
   const pinInput = document.getElementById('sa-user-pin'); if (pinInput) pinInput.value = '';
-  // Perlindungan diri sendiri: tidak bisa ubah role khusus / status akun sendiri
   const me = AppState.currentUser;
   const isSelf = me && emp.id === me.id;
   if (superSel) superSel.disabled = isSelf;
@@ -6529,11 +5456,9 @@ window.openSaEditUser = (userId) => {
   if (statusSel) statusSel.disabled = isSelf;
   openModal('modal-sa-user');
   if (window.feather) feather.replace();
-  // Tampilkan sisa cuti karyawan ini secara live di dalam modal
   window.saLoadLeaveInfo(userId);
 };
 
-// ---- Buka modal TAMBAH pengguna ----
 window.openSaAddUser = () => {
   const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = (val !== undefined && val !== null) ? val : ''; };
   document.getElementById('sa-user-mode').value = 'create';
@@ -6544,12 +5469,10 @@ window.openSaAddUser = () => {
    'sa-user-base-salary', 'sa-user-daily-allowance', 'sa-user-meal-allowance', 'sa-user-transport-allowance',
    'sa-user-rating', 'sa-user-kpi-score', 'sa-user-leave-adjustment', 'sa-user-join-date',
    'sa-user-tunjangan-jabatan', 'sa-user-tunjangan-bonus'].forEach(id => setVal(id, ''));
-  // v73: reset contract display
   const saContractLink = document.getElementById('sa-user-contract-link');
   const saContractStatus = document.getElementById('sa-user-contract-status');
   if (saContractLink) { saContractLink.href = '#'; saContractLink.style.display = 'none'; }
   if (saContractStatus) saContractStatus.textContent = 'Belum ada file kontrak (akun baru)';
-  // v74: reset geofence_exempt checkbox
   const geoExemptChk = document.getElementById('sa-user-geofence-exempt');
   if (geoExemptChk) { geoExemptChk.checked = false; geoExemptChk.disabled = false; }
   AppState.__saEditingUserId = null;
@@ -6575,7 +5498,6 @@ window.openSaAddUser = () => {
   if (window.feather) feather.replace();
 };
 
-// ---- Simpan (create/edit) pengguna ----
 window.submitSaUser = async (e) => {
   if (e && e.preventDefault) e.preventDefault();
   const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
@@ -6583,7 +5505,6 @@ window.submitSaUser = async (e) => {
   const userId = getVal('sa-user-id');
   const btn = document.getElementById('btn-sa-user-save');
   const roleVal = getVal('sa-user-superrole') === SUPER_ADMIN_ROLE ? SUPER_ADMIN_ROLE : getVal('sa-user-role');
-
   const body = {
     name: getVal('sa-user-name'),
     nip: getVal('sa-user-nip'),
@@ -6602,12 +5523,9 @@ window.submitSaUser = async (e) => {
     rating: getVal('sa-user-rating') === '' ? undefined : Number(getVal('sa-user-rating')),
     kpi_score: getVal('sa-user-kpi-score') === '' ? undefined : Number(getVal('sa-user-kpi-score')),
     leave_adjustment: getVal('sa-user-leave-adjustment') === '' ? 0 : Number(getVal('sa-user-leave-adjustment')),
-    // v67: kirim join_date utk integrasi cuti prorata
     join_date: getVal('sa-user-join-date') || '',
-    // v73: kirim tunjangan_jabatan & tunjangan_bonus
     tunjangan_jabatan: getVal('sa-user-tunjangan-jabatan') === '' ? 0 : Number(getVal('sa-user-tunjangan-jabatan')),
     tunjangan_bonus: getVal('sa-user-tunjangan-bonus') === '' ? 0 : Number(getVal('sa-user-tunjangan-bonus')),
-    // v74: kirim geofence_exempt (checkbox state)
     geofence_exempt: (() => {
       const chk = document.getElementById('sa-user-geofence-exempt');
       return chk && chk.checked ? 1 : 0;
@@ -6617,7 +5535,6 @@ window.submitSaUser = async (e) => {
     body.password = getVal('sa-user-password') || '';
     body.pin_code = getVal('sa-user-pin') || '';
   }
-
   if (btn) { btn.disabled = true; btn.textContent = 'Menyimpan...'; }
   try {
     const res = await fetch(mode === 'create' ? '/api/admin/users' : `/api/admin/users/${userId}`, {
@@ -6627,7 +5544,6 @@ window.submitSaUser = async (e) => {
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.status === 'success') {
-      // Mode edit: tunjukkan dampak langsung ke sisa cuti (feedback "pengaturan berjalan")
       let extraMsg = '';
       if (mode !== 'create' && userId) {
         try {
@@ -6668,7 +5584,6 @@ window.submitSaUser = async (e) => {
   }
 };
 
-// v73: Upload kontrak kerja per karyawan dari Panel SUPER ADMIN (admin upload untuk karyawan lain)
 window.uploadSaUserContract = async (inputEl) => {
   if (!inputEl || !inputEl.files || !inputEl.files[0]) return;
   const userId = AppState.__saEditingUserId;
@@ -6689,11 +5604,8 @@ window.uploadSaUserContract = async (inputEl) => {
     inputEl.value = '';
     return;
   }
-
-  // Tampilkan status loading
   const statusEl = document.getElementById('sa-user-contract-status');
   if (statusEl) statusEl.textContent = 'Mengupload...';
-
   try {
     const base64Data = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -6705,7 +5617,6 @@ window.uploadSaUserContract = async (inputEl) => {
       reader.onerror = () => reject(new Error('Gagal membaca file'));
       reader.readAsDataURL(file);
     });
-
     const res = await fetch(`/api/employees/${userId}/contract`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -6714,7 +5625,6 @@ window.uploadSaUserContract = async (inputEl) => {
     const data = await res.json();
     if (res.ok && data.status === 'success') {
       showToast(data.message || 'Kontrak kerja berhasil diupload.', 'success');
-      // Update link display
       const linkEl = document.getElementById('sa-user-contract-link');
       if (linkEl) {
         linkEl.href = data.url;
@@ -6735,7 +5645,6 @@ window.uploadSaUserContract = async (inputEl) => {
   }
 };
 
-// ---- Reset password / PIN ----
 window.saResetPassword = async (userId) => {
   const emp = (AppState.saUsers || []).find(e => e.id === userId);
   if (!emp) return;
@@ -6774,7 +5683,6 @@ window.saResetPin = async (userId) => {
   } catch (err) { showToast('Kesalahan koneksi saat reset PIN.', 'error'); }
 };
 
-// ---- Aktifkan / Nonaktifkan akun ----
 window.saToggleStatus = async (userId) => {
   const emp = (AppState.saUsers || []).find(e => e.id === userId);
   if (!emp) return;
@@ -6799,7 +5707,6 @@ window.saToggleStatus = async (userId) => {
   } catch (err) { showToast('Kesalahan koneksi saat mengubah status akun.', 'error'); }
 };
 
-// ---- Modal kredensial ----
 const showSaCredential = (title, rows, note) => {
   const tEl = document.getElementById('sa-credential-title');
   const bEl = document.getElementById('sa-credential-body');
@@ -6818,7 +5725,6 @@ const showSaCredential = (title, rows, note) => {
   openModal('modal-sa-credential');
 };
 
-// ---- TAB 3: PENGATURAN SISTEM ----
 const SA_SETTING_KEYS = ['geofence_tolerance_m', 'default_radius_m', 'gps_max_accuracy_m', 'late_grace_min', 'late_deduction_per_min', 'late_deduction_cap', 'annual_leave_days', 'allow_self_registration', 'app_name', 'app_tagline'];
 
 window.loadSaSettings = async () => {
@@ -6877,4 +5783,3 @@ window.submitSaSettings = async (e) => {
     }
   }
 };
-
