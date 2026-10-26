@@ -425,6 +425,9 @@ const setSidebarOpen = (open) => {
   const sb = document.getElementById('sidebar');
   const bd = document.getElementById('sidebar-backdrop');
   if (!sb) return;
+  // v77: Guard — skip jika state tidak berubah (no redundant DOM mutation → no flicker)
+  const isOpen = sb.classList.contains('open');
+  if (isOpen === open) return;
   sb.classList.toggle('open', open);
   if (bd) bd.classList.toggle('show', open);
   document.body.classList.toggle('sidebar-locked', open);
@@ -1085,6 +1088,9 @@ const switchView = (viewName) => {
     showToast('Anda tidak memiliki akses ke panel ini.', 'warning');
     viewName = 'dashboard';
   }
+  // v77: Guard — jika user klik nav item yang sama dgn view yg sudah active,
+  // skip view-specific logic (no re-render, no re-load, no flicker).
+  const isSameView = AppState.currentView === viewName;
   setSidebarOpen(false);
   AppState.currentView = viewName;
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -1123,7 +1129,7 @@ const switchView = (viewName) => {
     subEl.textContent = 'Slip gaji pribadi Anda. Dibuka dengan PIN 6 digit.';
   }
 
-  if (viewName === 'presensi') {
+  if (viewName === 'presensi' && !isSameView) {
     // v68: Kamera OTOMATIS terbuka saat masuk panel Presensi (tanpa tombol Buka Kamera).
     // SetFaceStatus('loading') dipanggil di dalam startCamera. Kalau permission denied,
     // indikator berubah jadi "Kamera ditolak" + toast instruksi — user tetap bisa
@@ -1140,7 +1146,7 @@ const switchView = (viewName) => {
     }
     window.checkGpsDistance && window.checkGpsDistance();
     loadAttendanceLogs && loadAttendanceLogs();
-  } else if (viewName === 'leaves') {
+  } else if (viewName === 'leaves' && !isSameView) {
     // Refresh leave data when entering the leaves view
     stopCamera();
     loadLeaveBalance && loadLeaveBalance();
@@ -1151,7 +1157,7 @@ const switchView = (viewName) => {
     // v67: SUPER ADMIN + PCD: tampilkan banner shortcut "Atur Tanggal Bergabung"
     const jdBanner = document.getElementById('leaves-join-date-banner');
     if (jdBanner) jdBanner.style.display = (isSuperAdminUser() || (AppState.currentUser && AppState.currentUser.division === 'PCD')) ? '' : 'none';
-  } else if (viewName === 'chat') {
+  } else if (viewName === 'chat' && !isSameView) {
     // Auto-load chat messages saat masuk view chat
     stopCamera();
     // Reset signature agar tidak skip pertama kali
@@ -1166,7 +1172,7 @@ const switchView = (viewName) => {
     }));
     // Mulai polling real-time
     window.startChatPolling && window.startChatPolling();
-  } else if (viewName === 'data-center') {
+  } else if (viewName === 'data-center' && !isSameView) {
     // Input Data Center — load employees & outlets
     stopCamera();
     // Stop chat polling kalau keluar dari view chat (hemat network)
@@ -1174,19 +1180,19 @@ const switchView = (viewName) => {
     loadEmployees && loadEmployees();
     loadDataCenterOutlets && loadDataCenterOutlets();
     renderDataCenterEmployeeList && renderDataCenterEmployeeList();
-  } else if (viewName === 'profile') {
+  } else if (viewName === 'profile' && !isSameView) {
     // Profile view — render current user data
     stopCamera();
     window.stopChatPolling && window.stopChatPolling();
     renderProfileView && renderProfileView();
-  } else if (viewName === 'superadmin') {
+  } else if (viewName === 'superadmin' && !isSameView) {
     // Panel Super Admin — muat ringkasan + daftar pengguna + pengaturan
     stopCamera();
     window.stopChatPolling && window.stopChatPolling();
     window.loadSaOverview && window.loadSaOverview();
     window.loadSaUsers && window.loadSaUsers();
     window.loadSaSettings && window.loadSaSettings();
-  } else {
+  } else if (!isSameView) {
     stopCamera();
     // Stop chat polling kalau keluar dari view chat (hemat network)
     window.stopChatPolling && window.stopChatPolling();
@@ -1195,7 +1201,8 @@ const switchView = (viewName) => {
   if (window.feather) feather.replace();
 
   // Modern UI: animate stat cards & stagger view cards
-  if (activePanel) {
+  // v77: Skip stagger & animate jika same view (no re-animate → no flicker)
+  if (activePanel && !isSameView) {
     staggerViewCards(activePanel);
     if (viewName === 'dashboard') {
       animateStatCards();
@@ -1865,7 +1872,20 @@ const renderDashboardReportsStream = (filterStatus = 'All') => {
   const container = document.getElementById('dashboard-reports-stream');
   if (!container) return;
 
+  // v77: Cache check — skip re-render jika tidak ada perubahan
   const gf = getGlobalFilters();
+  const cacheKey = JSON.stringify({
+    filterStatus,
+    count: (AppState.dailyReports || []).length,
+    ids: (AppState.dailyReports || []).map(r => r.id + ':' + r.status).join('|'),
+    mode: AppState.currentMode,
+    outlet: gf.outlet, period: gf.period, search: gf.search,
+    userId: AppState.currentUser ? AppState.currentUser.id : '',
+    isAdmin: isDashboardAdmin()
+  });
+  if (container.__lastStreamCache === cacheKey) return;
+  container.__lastStreamCache = cacheKey;
+
   let reports = AppState.dailyReports;
   // Filter by current mode (Management / Operasional) untuk Super Admin
   if (isDashboardAdmin() && AppState.currentMode) {
@@ -2000,6 +2020,10 @@ const renderStaffRatingsCards = (staffList) => {
 };
 
 // ================= DAILY REPORT BOARD (PROSES - HOLD - SELESAI) =================
+// v77: Render cache — skip re-render jika data + filter tidak berubah.
+// Ini mencegah flicker jika renderDailyReportBoard dipanggil berulang (mis. dari
+// rerenderAllPanels_ saat applyGlobalFilters) tapi tidak ada perubahan data.
+let __dailyReportBoardCache_ = null;
 const renderDailyReportBoard = () => {
   const colProses = document.getElementById('kanban-col-proses');
   const colHold = document.getElementById('kanban-col-hold');
@@ -2010,6 +2034,20 @@ const renderDailyReportBoard = () => {
   const statusFilter = document.getElementById('report-filter-status')?.value || 'all';
   const search = document.getElementById('report-search-box')?.value?.toLowerCase() || '';
   const gf = getGlobalFilters();
+
+  // v77: Cache check — skip re-render jika data + filter tidak berubah
+  const cacheKey = JSON.stringify({
+    count: (AppState.dailyReports || []).length,
+    ids: (AppState.dailyReports || []).map(r => r.id + ':' + r.status).join('|'),
+    divFilter, statusFilter, search,
+    mode: AppState.currentMode,
+    outlet: gf.outlet, period: gf.period, gfSearch: gf.search
+  });
+  if (__dailyReportBoardCache_ === cacheKey) {
+    // Data & filter tidak berubah — skip re-render (no flicker)
+    return;
+  }
+  __dailyReportBoardCache_ = cacheKey;
 
   let list = AppState.dailyReports;
   // Filter by current mode (Management / Operasional)

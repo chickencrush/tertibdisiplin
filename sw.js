@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v76';  // Daily Report flicker fix (lanjutan v75): hapus 3 sumber animation re-trigger (1) .view-panel.active animation fadeInUp, (2) .view-panel animation fadeIn, (3) .stat-card animation fadeInUp — semua dihandle oleh staggerViewCards (app.js) dgn cache flag, no flicker
+const CACHE_NAME = 'tertib-disiplin-v77';  // Anti-flicker defense: (1) renderDailyReportBoard cache — skip re-render jika data+filter tidak berubah; (2) renderDashboardReportsStream cache; (3) switchView same-view guard — skip view-specific logic & stagger animate jika view sudah active; (4) setSidebarOpen guard — skip jika state tidak berubah (no redundant DOM mutation)
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
