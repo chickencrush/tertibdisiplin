@@ -1312,7 +1312,7 @@
               <div class="card-title-row">
                 <div>
                   <h3>Data Diri</h3>
-                  <p style="font-size:12px; color:#64748b;">Ubah nama, no. HP, dan informasi bank Anda</p>
+                  <p style="font-size:12px; color:#64748b;">Ubah nama, email, no. HP, dan informasi bank Anda</p>
                 </div>
                 <span class="card-badge-tag">Dapat Diedit Sendiri</span>
               </div>
@@ -1323,8 +1323,21 @@
                     <input type="text" class="form-control" id="profile-name" required minlength="2" maxlength="100">
                   </div>
                   <div class="form-group">
+                    <label class="form-label required">Email</label>
+                    <input type="email" class="form-control" id="profile-email-input" required minlength="5" maxlength="120" placeholder="nama@perusahaan.com" autocomplete="email">
+                    <p style="font-size:10px; color:#64748b; margin:4px 0 0 0;">Email dipakai untuk login. Pastikan email aktif & unik.</p>
+                  </div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                  <div class="form-group">
                     <label class="form-label required">No. HP / WhatsApp</label>
                     <input type="tel" class="form-control" id="profile-phone" required minlength="5" maxlength="20">
+                  </div>
+                  <div class="form-group" style="display:flex; align-items:flex-end;">
+                    <div style="background:#f1f5f9; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0; width:100%;">
+                      <p style="margin:0; color:#94a3b8; font-weight:700; text-transform:uppercase; font-size:9px;">NIP (tidak bisa diubah)</p>
+                      <p style="margin:2px 0 0 0; color:var(--text-dark); font-weight:700; font-size:13px;" id="profile-nip-display">-</p>
+                    </div>
                   </div>
                 </div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -1339,7 +1352,7 @@
                 </div>
                 <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:10px 12px; font-size:11.5px; color:#92400e; margin-bottom:12px;">
                   <i data-feather="info" style="width:12px; height:12px; vertical-align:middle;"></i>
-                  NIP, email, divisi, jabatan, dan outlet tidak bisa diubah sendiri. Hubungi Super Admin (OM) via menu <strong>Input Data Center</strong>.
+                  NIP, divisi, jabatan, dan outlet tidak bisa diubah sendiri. Hubungi Super Admin (OM) via menu <strong>Input Data Center</strong>.
                 </div>
                 <button type="submit" class="btn-primary" id="btn-save-profile">
                   <i data-feather="save" style="width:13px; height:13px;"></i> Simpan Profil

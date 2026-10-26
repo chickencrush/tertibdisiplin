@@ -4554,9 +4554,13 @@ const renderProfileView = () => {
   // Form fields
   const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val !== undefined && val !== null ? val : ''; };
   setVal('profile-name', u.name);
+  setVal('profile-email-input', u.email);
   setVal('profile-phone', u.phone);
   setVal('profile-bank-name', u.bank_name || '');
   setVal('profile-bank-account', u.bank_account || '');
+  // NIP display (read-only, ditampilkan di form utk reminder)
+  const nipDisp = document.getElementById('profile-nip-display');
+  if (nipDisp) nipDisp.textContent = u.nip || '-';
 
   // Top bar avatar also update
   const topAvatar = document.getElementById('current-user-avatar');
@@ -4658,15 +4662,22 @@ window.uploadProfileAvatar = async (inputEl) => {
   }
 };
 
-// Submit profile update (nama, phone, bank info)
+// Submit profile update (nama, email, phone, bank info)
 window.submitProfileUpdate = async (e) => {
   if (e && e.preventDefault) e.preventDefault();
   const getVal = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
   const name = getVal('profile-name');
+  const email = getVal('profile-email-input');
   const phone = getVal('profile-phone');
   const bankName = getVal('profile-bank-name');
   const bankAccount = getVal('profile-bank-account');
   if (!name || name.length < 2) { showToast('Nama minimal 2 karakter.', 'warning'); return; }
+  if (!email || email.length < 5) { showToast('Email wajib diisi.', 'warning'); return; }
+  // Validasi format email sederhana di sisi klien (backend juga validasi lagi)
+  if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)) {
+    showToast('Format email tidak valid. Contoh: nama@perusahaan.com', 'warning');
+    return;
+  }
   if (!phone || phone.length < 5) { showToast('No. HP minimal 5 karakter.', 'warning'); return; }
   const submitBtn = document.getElementById('btn-save-profile');
   if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Menyimpan...'; }
@@ -4674,7 +4685,7 @@ window.submitProfileUpdate = async (e) => {
     const res = await fetch('/api/profile', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, phone, bank_name: bankName, bank_account: bankAccount })
+      body: JSON.stringify({ name, email, phone, bank_name: bankName, bank_account: bankAccount })
     });
     const data = await res.json();
     if (res.ok && data.status === 'success') {
@@ -4694,6 +4705,8 @@ window.submitProfileUpdate = async (e) => {
         if (sName) sName.textContent = AppState.currentUser.name;
         const sRole = document.getElementById('sidebar-user-role');
         if (sRole) sRole.textContent = `${AppState.currentUser.role} (${AppState.currentUser.division})`;
+        // Re-render profile view supaya info badge email terupdate
+        try { renderProfileView && renderProfileView(); } catch (err) { /* ignore */ }
       }
     } else {
       showToast(data.detail || data.message || 'Gagal update profil.', 'error');

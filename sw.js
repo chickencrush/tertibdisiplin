@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v69';  // SCH + UII shifts: tambah 3 shift UII (08-16, 16-24, 00-08) + perkuat deteksi outlet SCH/UII (cek outlet code/name/id dgn word-boundary) + fix bug SCH shifts tidak muncul akibat Code.gs belum re-deploy
+const CACHE_NAME = 'tertib-disiplin-v70';  // Profile: user bisa edit email sendiri (PUT /api/profile support email field + validasi format + cek duplikat di backend; frontend tambah input email di form Data Diri + validasi format)
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
