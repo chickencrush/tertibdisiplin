@@ -107,6 +107,24 @@ const animateCountUp = (el, target, duration = 800) => {
   requestAnimationFrame(step);
 };
 
+// v80: Debounced feather.replace — batch multiple calls jadi satu scan di next frame.
+// feather.replace() scan SELURUH dokumen untuk [data-feather] elements. Dipanggil di
+// 54 tempat dlm app.js — kalau beberapa render functions jalan di frame yg sama,
+// feather.replace() dipanggil berkali-kali → layout shift → flicker.
+// Dengan debouncing: hanya 1 scan per frame (rAF), multiple calls digabung.
+let __featherReplaceScheduled_ = false;
+const debouncedFeatherReplace = () => {
+  if (__featherReplaceScheduled_) return; // sudah scheduled di frame ini
+  __featherReplaceScheduled_ = true;
+  requestAnimationFrame(() => {
+    __featherReplaceScheduled_ = false;
+    if (window.feather) {
+      try { window.feather.replace(); } catch (e) { /* abaikan */ }
+    }
+  });
+};
+window.debouncedFeatherReplace = debouncedFeatherReplace;
+
 // Auto-animate stat numbers when view becomes active
 const animateStatCards = () => {
   setTimeout(() => {
@@ -1217,6 +1235,18 @@ const switchView = (viewName) => {
     window.loadSaOverview && window.loadSaOverview();
     window.loadSaUsers && window.loadSaUsers();
     window.loadSaSettings && window.loadSaSettings();
+  } else if (viewName === 'daily-report' && !isSameView) {
+    // v80: Daily Report — render board saat masuk panel (karena renderDailyReportBoard
+    // sekarang skip jika panel tidak aktif — v80 guard).
+    stopCamera();
+    window.stopChatPolling && window.stopChatPolling();
+    // Jika data belum di-load (fresh login langsung ke daily-report), load dulu
+    if (!AppState.dailyReports || AppState.dailyReports.length === 0) {
+      loadDailyReports && loadDailyReports();
+    } else {
+      // Data sudah ada — hanya render (cache check di dalam)
+      renderDailyReportBoard && renderDailyReportBoard();
+    }
   } else if (!isSameView) {
     stopCamera();
     // Stop chat polling kalau keluar dari view chat (hemat network)
@@ -2053,14 +2083,22 @@ const renderStaffRatingsCards = (staffList) => {
 
 // ================= DAILY REPORT BOARD (PROSES - HOLD - SELESAI) =================
 // v77: Render cache — skip re-render jika data + filter tidak berubah.
-// Ini mencegah flicker jika renderDailyReportBoard dipanggil berulang (mis. dari
-// rerenderAllPanels_ saat applyGlobalFilters) tapi tidak ada perubahan data.
+// v80: SKIP render jika panel TIDAK aktif (user di panel lain). Sebelumnya,
+// loadDailyReports & rerenderAllPanels_ tetap render ke panel yang hidden —
+// innerHTML rewrite + feather.replace() global scan menyebabkan layout shift
+// yang terlihat sbg flicker saat user masuk panel. Sekarang: render hanya
+// jika panel aktif, atau kalau panel baru jadi aktif (dari switchView).
 let __dailyReportBoardCache_ = null;
 const renderDailyReportBoard = () => {
   const colProses = document.getElementById('kanban-col-proses');
   const colHold = document.getElementById('kanban-col-hold');
   const colSelesai = document.getElementById('kanban-col-selesai');
   if (!colProses) return;
+
+  // v80: Skip jika panel Daily Report tidak aktif (user sedang di panel lain).
+  // Panel hidden tidak perlu di-render — akan di-render saat switchView masuk panel.
+  const viewEl = document.getElementById('view-daily-report');
+  if (viewEl && !viewEl.classList.contains('active')) return;
 
   const divFilter = document.getElementById('report-filter-division')?.value || 'all';
   const statusFilter = document.getElementById('report-filter-status')?.value || 'all';
@@ -2147,7 +2185,11 @@ const renderDailyReportBoard = () => {
   colHold.innerHTML = holdItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada kendala tertunda.</p>';
   colSelesai.innerHTML = selesaiItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Belum ada tugas selesai.</p>';
 
-  if (window.feather) feather.replace();
+  // v80: Debounced feather.replace — jangan replace global scan langsung di sini.
+  // feather.replace() scan SELURUH dokumen & replace semua [data-feather] — kalau dipanggil
+  // di setiap render, icons di panel lain juga diganti → layout shift → flicker.
+  // DebouncedFeatherReplace batch multiple calls jadi satu (next frame).
+  window.debouncedFeatherReplace && window.debouncedFeatherReplace();
 };
 
 const filterDailyReportBoard = () => {

@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v79';  // Fix checkBackendVersion: fetch '/api/' instead of '/' (root URL 404). v78 reload loop fix confirmed working — no more "Sesi berakhir" spam or page reload loop.
+const CACHE_NAME = 'tertib-disiplin-v80';  // Daily Report flicker ONLY fix: (1) renderDailyReportBoard SKIP jika panel tidak aktif — sebelumnya loadDailyReports & rerenderAllPanels_ render ke hidden panel → innerHTML rewrite + feather.replace() global scan → layout shift → flicker saat masuk panel; (2) debouncedFeatherReplace (rAF) — batch multiple calls jadi 1 scan per frame; (3) switchView daily-report: load/render board saat masuk panel
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
