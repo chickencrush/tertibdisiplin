@@ -474,6 +474,28 @@ body {
   transition: all 0.2s;
 }
 
+/* v72: Topbar Install Button — selalu visible di semua device (Android/iOS/desktop) */
+/* Compound selector utk menang specificity atas .icon-action-btn modern refresh */
+.icon-action-btn.topbar-install-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #fff !important;
+  border-color: #059669 !important;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+}
+.icon-action-btn.topbar-install-btn:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
+  color: #fff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+}
+@keyframes install-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+  50% { transform: scale(1.15); opacity: 0.9; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .install-pulse-dot { animation: none; }
+}
+
 .icon-action-btn:hover {
   background: #f8fafc;
   color: var(--burgundy-primary);

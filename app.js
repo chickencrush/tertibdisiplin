@@ -614,6 +614,9 @@ const handleAuthLogin = async (e) => {
       await loadAllAppData();
       // Cek versi backend — tampilkan banner peringatan jika outdated
       window.checkBackendVersion && window.checkBackendVersion();
+      // v72: tampilkan tombol install di topbar + auto-open modal di mobile first visit
+      window.updateTopbarInstallButton && window.updateTopbarInstallButton();
+      window.maybeAutoOpenInstallModal && window.maybeAutoOpenInstallModal();
     } else {
       const msg = data.detail || 'Login gagal. Periksa kembali NIP/Email dan password Anda.';
       showLoginError(msg);
@@ -842,6 +845,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadAllAppData();
     // Cek versi backend — tampilkan banner peringatan jika outdated
     window.checkBackendVersion && window.checkBackendVersion();
+    // v72: tampilkan tombol install di topbar + auto-open modal di mobile (page reload dgn session aktif)
+    window.updateTopbarInstallButton && window.updateTopbarInstallButton();
+    window.maybeAutoOpenInstallModal && window.maybeAutoOpenInstallModal();
   }
 
   // Initialize mockup charts (di background, tidak block UI)
@@ -1007,6 +1013,45 @@ const showPwaBannerIfNeeded = () => {
     if (banner) banner.style.display = 'flex';
   }, 3000);
 };
+
+// v72: Tampilkan tombol install di topbar (selalu visible di semua device).
+// Auto-hide jika app sudah terinstall (standalone mode).
+// Dipanggil setelah login sukses.
+const updateTopbarInstallButton = () => {
+  const btn = document.getElementById('btn-topbar-install');
+  if (!btn) return;
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  if (isStandalone) {
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = 'flex';
+  if (window.feather) feather.replace();
+};
+window.updateTopbarInstallButton = updateTopbarInstallButton;
+
+// v72: Auto-open install modal di mobile (Android/iOS) pada first visit setelah login.
+// Sekali per sesi (sessionStorage flag). Desktop tidak auto-open (hanya tampilkan tombol).
+const maybeAutoOpenInstallModal = () => {
+  try {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    if (isStandalone) return; // sudah terinstall
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && !window.MSStream;
+    if (!isMobile) return; // desktop: tidak auto-open, user klik sendiri
+    const shown = sessionStorage.getItem('td_install_modal_shown');
+    if (shown) return; // sudah pernah tampil sesi ini
+    // Tampilkan setelah 2.5 detik (biar user selesai lihat dashboard dulu)
+    setTimeout(() => {
+      try {
+        sessionStorage.setItem('td_install_modal_shown', '1');
+      } catch (e) { /* ignore */ }
+      if (window.triggerPwaPrompt) window.triggerPwaPrompt();
+    }, 2500);
+  } catch (e) {
+    console.warn('Auto-open install modal gagal:', e);
+  }
+};
+window.maybeAutoOpenInstallModal = maybeAutoOpenInstallModal;
 
 const dismissPwaBanner = () => {
   const banner = document.getElementById('pwa-banner');

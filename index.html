@@ -343,6 +343,12 @@
           <span class="dot-badge"></span>
         </button>
 
+        <!-- Install App (v72) — selalu visible di topbar, auto-hide jika sudah terinstall -->
+        <button class="icon-action-btn topbar-install-btn" id="btn-topbar-install" title="Install Aplikasi" onclick="window.triggerPwaPrompt && window.triggerPwaPrompt()" style="display:none; position:relative;">
+          <i data-feather="download"></i>
+          <span class="install-pulse-dot" style="position:absolute; top:2px; right:2px; width:8px; height:8px; background:#10b981; border-radius:50%; border:1.5px solid #fff; animation:install-pulse 1.6s infinite;"></span>
+        </button>
+
         <!-- User Profile Pill — klik untuk membuka Profil Saya -->
         <div class="user-profile-pill" id="user-profile-btn" title="Buka Profil Saya" onclick="switchView('profile')">
           <img src="./icons/logo.png" onerror="this.onerror=null;this.src=window.LOGO_FALLBACK" alt="Avatar" class="user-avatar-circle" id="current-user-avatar">

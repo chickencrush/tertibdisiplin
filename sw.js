@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v71';  // PWA Install fix: tombol #btn-install-pwa sebelumnya tidak ter-wire -> sekarang terhubung ke triggerPwaPrompt + modal install informatif (instruksi spesifik iOS Safari / Android Chrome / desktop) + dismissPwaBanner exposed ke window + handler error-safe
+const CACHE_NAME = 'tertib-disiplin-v72';  // PWA Install v2: tombol install topbar selalu visible di semua device (Android/iOS/desktop) + auto-hide saat standalone + auto-open modal di mobile first visit (sekali per sesi) + pulse dot indikator + style.css topbar-install-btn gradient hijau
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
