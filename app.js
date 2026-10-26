@@ -1300,9 +1300,16 @@ window.checkBackendVersion = async () => {
   if (AppState.backendVersionChecked) return AppState.backendVersion;
   AppState.backendVersionChecked = true;
   try {
-    // Fetch root doGet — response: { ok:true, app:..., version:..., time:... }
-    // Pakai URL relatif → api-client akan resolve ke API_URL/exec
-    const res = await fetch('/');
+    // v79: Fetch /api/health (akan di-redirect oleh api-client.js ke API_URL/exec)
+    // Sebelumnya fetch('/') yang hit GitHub Pages root → 404.
+    // /api/health tidak ada di backend, tapi api-client.js akan resolve ke API_URL/exec
+    // yang return { ok:true, app:..., version:..., time:... } dari doGet().
+    // Kalau /api/health tidak dikenali backend, return 404 — fallback ke fetch('/') 
+    // tapi via api-client (POST ke API_URL).
+    // Simplest fix: langsung fetch via api-client dengan path yang dikenali backend.
+    // Backend doGet() handle GET / → return version info. Jadi pakai '/api/' prefix
+    // supaya api-client.js intercept & route ke API_URL.
+    const res = await fetch('/api/');
     if (!res.ok) return null;
     const data = await res.json().catch(() => ({}));
     const ver = (data && data.body && data.body.version) || data.version || null;
