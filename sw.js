@@ -1,14 +1,12 @@
 // TERTIB DISIPLIN - Service Worker
-// Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v80';  // Daily Report flicker ONLY fix: (1) renderDailyReportBoard SKIP jika panel tidak aktif — sebelumnya loadDailyReports & rerenderAllPanels_ render ke hidden panel → innerHTML rewrite + feather.replace() global scan → layout shift → flicker saat masuk panel; (2) debouncedFeatherReplace (rAF) — batch multiple calls jadi 1 scan per frame; (3) switchView daily-report: load/render board saat masuk panel
-// Pre-cache hanya file critical (bukan semua icons)
+// v81: FLICKER FIX di Daily Report panel
+const CACHE_NAME = 'tertib-disiplin-v81';
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
   './manifest.json', './icons/logo.png'
 ];
 
 self.addEventListener('install', (event) => {
-  // Skip waiting agar SW baru langsung aktif
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => Promise.allSettled(SHELL.map((u) => cache.add(u))))
   );
@@ -16,7 +14,6 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  // Hapus cache lama + klaim client langsung
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
   );
@@ -26,11 +23,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  // Hanya cache GET request dari same-origin
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  // Strategy: Network-first untuk HTML/JS/CSS (selalu ambil versi terbaru)
-  // Cache-first untuk gambar & font
   if (req.destination === 'document' || req.destination === 'script' || req.destination === 'style') {
     event.respondWith(
       fetch(req, { cache: 'no-cache' })
@@ -46,7 +40,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first untuk gambar/icon/font
   event.respondWith(
     caches.match(req).then((cached) => {
       const fetchPromise = fetch(req).then((response) => {
