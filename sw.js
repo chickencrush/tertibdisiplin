@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v74';  // Geofence bypass: Management division auto-bypass + per-user flag geofence_exempt utk Operasional (mis. Syandi) — presensi IN/OUT bebas dari lokasi manapun; backend h_checkIn_ + h_checkOut_ skip radius check utk bypass user; frontend checkGpsDistance tampilkan "Mode Presensi Fleksibel" + skip check-out same-outlet guard; Panel SA: checkbox "Bebas Geofence" (disabled utk Management krn auto)
+const CACHE_NAME = 'tertib-disiplin-v75';  // Bug fixes: (1) Daily report flicker — staggerViewCards hanya animate sekali per view (cache dataset flag); (2) Dashboard sync — updateDashboardStats dipanggil setelah loadDailyReports + loadAttendanceLogs + loadEmployees (auto-refresh stats); (3) Akses tidak semestinya — isDashboardAdmin konsisten dgn strict RBAC v60 (hanya SUPER ADMIN role atau PCD division, bukan semua OM/PCD)
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

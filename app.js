@@ -136,9 +136,15 @@ const animateStatCards = () => {
   }, 200);
 };
 
-// Stagger animation for cards in active view
+// Stagger animation for cards in active view.
+// v75: Hanya animate SEKALI per view (pakai dataset flag). Sebelumnya, setiap switchView
+// me-reset animation ke 'none' lalu re-apply — ini menyebabkan cards "berkedip" (flicker)
+// dari opacity 0 setiap kali user pindah panel & balik lagi.
 const staggerViewCards = (view) => {
   if (!view) return;
+  // Skip stagger kalau view ini sudah pernah di-animate (cache per view id)
+  if (view.dataset.staggered === '1') return;
+  view.dataset.staggered = '1';
   const cards = view.querySelectorAll('.modern-card, .stat-card');
   cards.forEach((card, idx) => {
     card.style.animation = 'none';
@@ -1480,6 +1486,8 @@ const loadEmployees = async () => {
     const data = await res.json();
     AppState.employees = Array.isArray(data) ? data : [];
     renderEmployeesTable(AppState.employees);
+    // v75: Sync dashboard stats (rating rata-rata, jumlah karyawan) setelah data employees di-update.
+    if (typeof updateDashboardStats === 'function') updateDashboardStats();
   } catch (err) {
     console.error('Failed loading employees:', err);
   }
@@ -1494,6 +1502,9 @@ const loadDailyReports = async () => {
     AppState.dailyReports = Array.isArray(data) ? data : [];
     renderDashboardReportsStream();
     renderDailyReportBoard();
+    // v75: Sync dashboard stats (reports count, etc.) setelah data daily reports di-update.
+    // Sebelumnya dashboard stats tetap stale sampai user pindah ke dashboard & trigger updateDashboardStats.
+    if (typeof updateDashboardStats === 'function') updateDashboardStats();
   } catch (err) {
     console.error('Failed loading reports:', err);
   }
@@ -1608,6 +1619,9 @@ const loadAttendanceLogs = async () => {
     const data = await res.json();
     AppState.attendanceLogs = Array.isArray(data) ? data : [];
     renderAttendanceTable(AppState.attendanceLogs);
+    // v75: Sync dashboard attendance stats setelah data presensi di-update.
+    // Sebelumnya dashboard "hari presensi" tetap stale sampai user pindah ke dashboard.
+    if (typeof updateDashboardStats === 'function') updateDashboardStats();
   } catch (err) {
     console.error('Failed loading attendance:', err);
   }
@@ -1767,7 +1781,12 @@ const initMockupCharts = () => {
 
 // ================= DASHBOARD STREAM & STAFF RATINGS =================
 // Helper: apakah user saat ini bisa lihat semua data di dashboard (Super Admin)
-const isDashboardAdmin = (user = AppState.currentUser) => !!user && FULL_ACCESS_DIVISIONS.includes(user.division);
+// v75: isDashboardAdmin konsisten dgn strict RBAC v60 — HANYA SUPER ADMIN (role) atau PCD division.
+// Sebelumnya: FULL_ACCESS_DIVISIONS.includes(user.division) — ini menyebabkan SEMUA user dgn
+// division OM/PCD (walau role-nya bukan SUPER ADMIN) diperlakukan sbg dashboard admin & lihat
+// semua data karyawan (reports, attendance, KPI). Inkonsisten dgn v60 strict role check.
+// Setelah fix: BM/HRD/SPV/dll dgn role biasa TIDAK lihat dashboard admin view (hanya data sendiri).
+const isDashboardAdmin = (user = AppState.currentUser) => !!user && (isSuperAdminUser(user) || user.division === 'PCD');
 
 // Update stat cards berdasarkan data user (pribadi untuk non-admin, semua untuk admin)
 const updateDashboardStats = () => {
