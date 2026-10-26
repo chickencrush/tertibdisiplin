@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v75';  // Bug fixes: (1) Daily report flicker — staggerViewCards hanya animate sekali per view (cache dataset flag); (2) Dashboard sync — updateDashboardStats dipanggil setelah loadDailyReports + loadAttendanceLogs + loadEmployees (auto-refresh stats); (3) Akses tidak semestinya — isDashboardAdmin konsisten dgn strict RBAC v60 (hanya SUPER ADMIN role atau PCD division, bukan semua OM/PCD)
+const CACHE_NAME = 'tertib-disiplin-v76';  // Daily Report flicker fix (lanjutan v75): hapus 3 sumber animation re-trigger (1) .view-panel.active animation fadeInUp, (2) .view-panel animation fadeIn, (3) .stat-card animation fadeInUp — semua dihandle oleh staggerViewCards (app.js) dgn cache flag, no flicker
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

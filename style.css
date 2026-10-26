@@ -565,7 +565,9 @@ body {
 /* Section Views */
 .view-panel {
   display: none;
-  animation: fadeIn 0.25s ease forwards;
+  /* v76: HAPUS animation: fadeIn — re-trigger setiap switchView menyebabkan flicker.
+     staggerViewCards (app.js) sudah handle card animations dgn cache flag.
+     Panel muncul instant (no animation) — lebih clean, no flicker. */
 }
 
 .view-panel.active {
@@ -2273,7 +2275,9 @@ body { overflow: hidden; }
   position: relative;
   overflow: hidden;
   transition: transform var(--t-base), box-shadow var(--t-base);
-  animation: fadeInUp 0.5s var(--ease-smooth) backwards;
+  /* v76: animation dihapus dari sini — staggerViewCards (app.js) handle animasi
+     card dgn cache flag (sekali per view). Animation default di sini re-trigger
+     setiap switchView & reflow, menyebabkan flicker. */
 }
 .stat-card:hover {
   transform: translateY(-4px);
@@ -2738,8 +2742,13 @@ select.form-control {
 }
 
 /* === VIEW PANEL ANIMATION === */
+/* v76: HAPUS animation fadeInUp di .view-panel.active — ini penyebab utama flicker.
+   Setiap switchView add/remove class 'active' me-trigger animation ulang, padahal
+   staggerViewCards (di app.js) sudah animate cards secara terkontrol (sekali per view).
+   Animation di sini double-up dgn staggerViewCards, menyebabkan cards "kedip" dari opacity 0.
+   .view-panel { animation: fadeIn } di line 568 cukup utk fade-in halus saat panel muncul. */
 .view-panel.active {
-  animation: fadeInUp 0.4s var(--ease-smooth);
+  /* no animation — staggerViewCards handles card animations */
 }
 
 /* === CONTENT BODY (modern padding) === */
