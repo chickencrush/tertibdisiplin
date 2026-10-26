@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v77';  // Anti-flicker defense: (1) renderDailyReportBoard cache — skip re-render jika data+filter tidak berubah; (2) renderDashboardReportsStream cache; (3) switchView same-view guard — skip view-specific logic & stagger animate jika view sudah active; (4) setSidebarOpen guard — skip jika state tidak berubah (no redundant DOM mutation)
+const CACHE_NAME = 'tertib-disiplin-v78';  // CRITICAL FIX: Stop infinite reload loop — (1) api-client.js: skip td-session-expired dispatch for /api/auth/me, (2) app.js: cooldown 10s on td-session-expired handler (anti-reload-spam), (3) initAuthSession: if /api/auth/me returns 401, show login screen WITHOUT reload (no more reload loop)
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

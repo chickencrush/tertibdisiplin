@@ -521,7 +521,21 @@ const initAuthSession = () => {
       // 'SUPER ADMIN'), perubahan langsung efek setelah reload tanpa perlu logout.
       // Re-fetch dilakukan async (tidak block UI), dan hanya update kalau berhasil.
       if (user && user.id) {
-        fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(freshUser => {
+        fetch('/api/auth/me').then(r => {
+          // v78: Jika 401 (token expired/invalid), jangan reload — tampilkan login screen.
+          // Return null supaya freshUser check di then-chain skip update.
+          if (r.status === 401) {
+            console.warn('Token expired/invalid (401 dari /api/auth/me). Clearing session, showing login screen (NO reload).');
+            // Clear stale token & user data
+            try { localStorage.removeItem('td_token'); } catch (e) { /* ignore */ }
+            try { localStorage.removeItem('tertib_disiplin_auth_user'); } catch (e) { /* ignore */ }
+            AppState.currentUser = null;
+            const authScreen = document.getElementById('auth-gate-screen');
+            if (authScreen) authScreen.classList.remove('hidden');
+            return null;
+          }
+          return r.ok ? r.json() : null;
+        }).then(freshUser => {
           if (freshUser && freshUser.id) {
             // Hapus field sensitif yg tidak dikembalikan oleh auth_
             AppState.currentUser = freshUser;
@@ -843,7 +857,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   detectDeviceGPS();
 
   // Sesi berakhir -> kembali ke layar login
+  // v78: Cooldown 10 detik antar reload — mencegah INFINITE RELOAD LOOP kalau
+  // multiple API call return 401 secara bersamaan (mis. loadAllAppData fetch 5 endpoint
+  // paralel, semua 401 → dispatch 5x td-session-expired → reload 5x).
+  let __lastSessionExpiredReload_ = 0;
   window.addEventListener('td-session-expired', () => {
+    const now = Date.now();
+    if (now - __lastSessionExpiredReload_ < 10000) {
+      // Sudah reload dalam 10 detik terakhir — skip (anti-loop)
+      console.warn('td-session-expired di-skip (cooldown 10s, anti-reload-loop)');
+      return;
+    }
+    __lastSessionExpiredReload_ = now;
     clearSessionData();
     setSidebarOpen(false);
     const authScreen = document.getElementById('auth-gate-screen');

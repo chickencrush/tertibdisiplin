@@ -89,7 +89,12 @@
           return new Response(b.__csv, { status: 200, headers: { 'Content-Type': 'text/csv', 'X-Filename': b.filename || 'export.csv' } });
         }
       }
-      if (r.status === 401 && path.indexOf('/api/auth/login') !== 0 && path.indexOf('/api/auth/register') !== 0 && path.indexOf('/verify-pin') < 0) {
+      if (r.status === 401 && path.indexOf('/api/auth/login') !== 0 && path.indexOf('/api/auth/register') !== 0 && path.indexOf('/api/auth/me') !== 0 && path.indexOf('/verify-pin') < 0) {
+        // v78: Jangan dispatch td-session-expired untuk /api/auth/me — itu dipakai
+        // oleh initAuthSession utk cek session validity. Kalau 401, biarkan
+        // initAuthSession handle (show login screen, NO reload). Dispatch event di sini
+        // akan trigger restartToLogin → window.location.reload → initAuthSession lagi
+        // → 401 lagi → INFINITE RELOAD LOOP.
         lsSet('td_token', null); ssSet('td_payslip_token', null);
         window.dispatchEvent(new Event('td-session-expired'));
       }
