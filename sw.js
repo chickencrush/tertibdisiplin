@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v68';  // Presensi upgrade: kamera auto-open saat buka panel + indikator wajah hijau saat posisi sesuai (FaceDetector API + fallback skin-tone) + tombol Buka Kamera dihapus
+const CACHE_NAME = 'tertib-disiplin-v69';  // SCH + UII shifts: tambah 3 shift UII (08-16, 16-24, 00-08) + perkuat deteksi outlet SCH/UII (cek outlet code/name/id dgn word-boundary) + fix bug SCH shifts tidak muncul akibat Code.gs belum re-deploy
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

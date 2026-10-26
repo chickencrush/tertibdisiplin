@@ -207,35 +207,62 @@ const SHIFT_OPTIONS_SCH = [
   { value: 'Shift SCH 2 Tetap',   label: 'SCH 2 Tetap (14:30 - 22:30)' }
 ];
 
+// === Shift khusus outlet UII (v69) ===
+// 3 shift rotasi 24 jam:
+//   - Shift 1 (08:00-16:00) — pagi
+//   - Shift 2 (16:00-24:00) — sore/malam (lintas hari)
+//   - Shift 3 (00:00-08:00) — malam/dini hari
+// Hanya muncul di dropdown karyawan yg outlet code-nya 'UII'.
+const SHIFT_OPTIONS_UII = [
+  { value: 'Shift UII 1', label: 'UII Shift 1 (08:00 - 16:00) — Pagi' },
+  { value: 'Shift UII 2', label: 'UII Shift 2 (16:00 - 24:00) — Sore/Malam' },
+  { value: 'Shift UII 3', label: 'UII Shift 3 (00:00 - 08:00) — Malam/Dini Hari' }
+];
+
 // Hari kerja utk auto-pick SCH Reguler (1=Senin ... 0=Minggu, format getDay() JS).
 // Reguler A: Senin(1), Rabu(3), Kamis(4), Sabtu(6), Minggu(0)
 // Reguler B: Selasa(2), Jumat(5)
 const SCH_REGULER_A_DAYS = [1, 3, 4, 6, 0];
 const SCH_REGULER_B_DAYS = [2, 5];
 
+// Helper umum: cek apakah string (outlet code/name/id) mengandung token tertentu
+// dgn word boundary. Cocokkan 'SCH' / 'UII' tanpa false-positive (mis. 'SCHOLL' tidak match 'SCH').
+const outletTokenMatch_ = (str, token) => {
+  if (!str) return false;
+  const s = String(str).toUpperCase().trim();
+  if (s === token) return true;
+  if (s.indexOf(token) === 0) return true; // 'SCH-01', 'UII-OUT'
+  // Word-boundary match: 'SCH' / 'UII' sebagai token terpisah
+  const re = new RegExp('(^|\\s|_|-|\\.)(' + token + ')(\\s|$|_|-|\\.)');
+  return re.test(s);
+};
+
 // Deteksi apakah akun yg login berada di outlet SCH.
 // Match berdasarkan outlet code (paling akurat) atau nama outlet (fallback).
+// Catatan: tidak cek outlet_id langsung karena ID biasanya opaque (mis. 'o-sch')
+// dan bisa false-positive (token 'SCH' muncul di ID yg bukan outlet SCH sebenarnya).
 const isSchOutletUser_ = () => {
   const u = AppState.currentUser;
   if (!u) return false;
   const outlets = AppState.outlets || [];
   const o = outlets.find(x => x.id === u.outlet_id);
-  if (o && o.code) {
-    const c = String(o.code).toUpperCase().trim();
-    if (c === 'SCH' || c.indexOf('SCH') === 0) return true; // 'SCH', 'SCH-01', dst
-  }
-  if (o && o.name) {
-    // Fallback: nama outlet diawali 'SCH' atau mengandung token 'SCH' (word boundary)
-    const n = String(o.name).toUpperCase().trim();
-    if (n.indexOf('SCH') === 0) return true;
-    if (/(^|\s|_|-|\.)(SCH)(\s|$|_|-|\.)/.test(n)) return true;
-  }
-  // Fallback terakhir: cek outlet_name langsung dari user (tanpa lookup)
-  if (u.outlet_name) {
-    const un = String(u.outlet_name).toUpperCase().trim();
-    if (un.indexOf('SCH') === 0) return true;
-    if (/(^|\s|_|-|\.)(SCH)(\s|$|_|-|\.)/.test(un)) return true;
-  }
+  if (o && o.code && outletTokenMatch_(o.code, 'SCH')) return true;
+  if (o && o.name && outletTokenMatch_(o.name, 'SCH')) return true;
+  // Fallback terakhir: cek outlet_name langsung dari user (tanpa lookup outlet)
+  if (u.outlet_name && outletTokenMatch_(u.outlet_name, 'SCH')) return true;
+  return false;
+};
+
+// Deteksi apakah akun yg login berada di outlet UII (v69).
+// Sama seperti SCH — cek outlet code/name utk token 'UII'.
+const isUiiOutletUser_ = () => {
+  const u = AppState.currentUser;
+  if (!u) return false;
+  const outlets = AppState.outlets || [];
+  const o = outlets.find(x => x.id === u.outlet_id);
+  if (o && o.code && outletTokenMatch_(o.code, 'UII')) return true;
+  if (o && o.name && outletTokenMatch_(o.name, 'UII')) return true;
+  if (u.outlet_name && outletTokenMatch_(u.outlet_name, 'UII')) return true;
   return false;
 };
 
@@ -255,6 +282,7 @@ const pickDefaultSchShift_ = () => {
 //
 // Khusus karyawan outlet SCH: 4 shift SCH ditambahkan di atas daftar standar,
 // dan shift SCH Reguler A/B (sesuai hari) dijadikan pilihan default otomatis.
+// Khusus karyawan outlet UII: 3 shift UII ditambahkan di atas daftar standar (v69).
 window.populateShiftOptions = () => {
   const shiftSelect = document.getElementById('presensi-shift-select');
   if (!shiftSelect) return;
@@ -264,9 +292,11 @@ window.populateShiftOptions = () => {
   else if (OPERASIONAL_DIVISIONS.indexOf(div) >= 0) opts = SHIFT_OPTIONS_OPERASIONAL.slice();
   else opts = SHIFT_OPTIONS_MANAGEMENT.concat(SHIFT_OPTIONS_OPERASIONAL);
 
-  // Sisipkan shift SCH di atas daftar standar jika user berada di outlet SCH.
+  // Sisipkan shift SCH/UII di atas daftar standar jika user berada di outlet tsb.
   const isSch = isSchOutletUser_();
+  const isUii = isUiiOutletUser_();
   if (isSch) opts = SHIFT_OPTIONS_SCH.concat(opts);
+  if (isUii) opts = SHIFT_OPTIONS_UII.concat(opts);
 
   const prev = shiftSelect.value;
   shiftSelect.innerHTML = opts.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
@@ -276,6 +306,9 @@ window.populateShiftOptions = () => {
   } else if (isSch) {
     // Auto-pick SCH Reguler A/B sesuai hari ini
     shiftSelect.value = pickDefaultSchShift_();
+  } else if (isUii) {
+    // Default UII: Shift 1 (pagi)
+    shiftSelect.value = 'Shift UII 1';
   }
 };
 const populateShiftOptions = window.populateShiftOptions;
