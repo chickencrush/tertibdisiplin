@@ -2391,6 +2391,25 @@
   </div>
 </div>
 
+<!-- 12. Modal: Install Aplikasi PWA (v71) -->
+<div class="modal-overlay" id="modal-install-app">
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>Install Aplikasi TERTIB DISIPLIN</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-install-app')">&times;</button>
+    </div>
+    <div class="modal-body" id="install-app-body">
+      <!-- Populated dynamically by window.openInstallModal() -->
+    </div>
+    <div class="modal-footer" style="justify-content:center; flex-wrap:wrap; gap:8px;">
+      <button type="button" class="btn-secondary" onclick="closeModal('modal-install-app')">Tutup</button>
+      <button type="button" class="btn-primary" id="btn-install-action" style="display:none;">
+        <i data-feather="download" style="width:13px; height:13px;"></i> <span id="btn-install-action-text">Install Sekarang</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 

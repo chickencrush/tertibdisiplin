@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v70';  // Profile: user bisa edit email sendiri (PUT /api/profile support email field + validasi format + cek duplikat di backend; frontend tambah input email di form Data Diri + validasi format)
+const CACHE_NAME = 'tertib-disiplin-v71';  // PWA Install fix: tombol #btn-install-pwa sebelumnya tidak ter-wire -> sekarang terhubung ke triggerPwaPrompt + modal install informatif (instruksi spesifik iOS Safari / Android Chrome / desktop) + dismissPwaBanner exposed ke window + handler error-safe
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',

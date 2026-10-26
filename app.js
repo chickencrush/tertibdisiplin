@@ -792,6 +792,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (f) f.addEventListener('input', () => showLoginError(''));
   });
 
+  // Wire tombol Install PWA di sidebar (id='btn-install-pwa').
+  // Tombol ini sebelumnya tidak punya event listener -> tidak bisa diklik. Fix v71.
+  const btnInstallPwa = document.getElementById('btn-install-pwa');
+  if (btnInstallPwa) {
+    btnInstallPwa.addEventListener('click', (e) => {
+      e.preventDefault();
+      try { window.triggerPwaPrompt && window.triggerPwaPrompt(); } catch (err) {
+        console.error('PWA install trigger error:', err);
+        showToast('Gagal memulai instalasi. Coba refresh halaman lalu tekan lagi.', 'error');
+      }
+    });
+  }
+
   // Setup Navigation listeners
   document.querySelectorAll('.nav-item').forEach(item => {
     item.addEventListener('click', (e) => {
@@ -850,10 +863,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.feather) feather.replace();
 });
 
-// PWA Trigger — handle Android (beforeinstallprompt) + iOS (manual instructions)
+// PWA Install — handle Android (beforeinstallprompt) + iOS (manual instructions modal).
+// v71: tombol #btn-install-pwa sebelumnya tidak ter-wire -> sekarang terhubung & buka modal informatif.
 window.triggerPwaPrompt = () => {
-  // Deteksi iOS
+  // Deteksi platform
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isAndroid = /Android/i.test(navigator.userAgent);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
   if (isStandalone) {
@@ -862,29 +877,121 @@ window.triggerPwaPrompt = () => {
     return;
   }
 
-  if (AppState.deferredPwaPrompt) {
-    // Android/Chrome — pakai native prompt
-    AppState.deferredPwaPrompt.prompt();
-    AppState.deferredPwaPrompt.userChoice.then((choice) => {
-      if (choice.outcome === 'accepted') {
-        showToast('Aplikasi berhasil dipasang di perangkat Anda!', 'success');
-      }
-      AppState.deferredPwaPrompt = null;
-      dismissPwaBanner();
-    });
-  } else if (isIOS) {
-    // iOS tidak support beforeinstallprompt — tampilkan instruksi manual
-    showToast('iOS: Tap tombol Share (⬆️) di Safari → "Add to Home Screen" → Add', 'info');
-    // Tampilkan banner dengan instruksi iOS
-    const banner = document.getElementById('pwa-banner');
-    if (banner) {
-      banner.style.display = 'flex';
-      const hint = banner.querySelector('.ios-install-hint');
-      if (hint) hint.style.display = 'block';
+  // Sembunyikan banner floating kalau ada (modal yg tampil jadi sumber info utama)
+  dismissPwaBanner();
+
+  // Body modal — instruksi spesifik per platform
+  const body = document.getElementById('install-app-body');
+  if (!body) {
+    // Fallback kalau modal tidak ada (defensive) — pakai toast lama
+    if (AppState.deferredPwaPrompt) {
+      AppState.deferredPwaPrompt.prompt();
+      AppState.deferredPwaPrompt.userChoice.then((choice) => {
+        if (choice.outcome === 'accepted') {
+          showToast('Aplikasi berhasil dipasang di perangkat Anda!', 'success');
+        }
+        AppState.deferredPwaPrompt = null;
+      });
+    } else if (isIOS) {
+      showToast('iOS: Tap tombol Share (⬆️) di Safari → "Add to Home Screen" → Add', 'info');
+    } else {
+      showToast('Klik menu titik tiga (⋮) di browser → "Install App" / "Tambahkan ke Layar Utama"', 'info');
     }
-  } else {
-    showToast('Klik menu titik tiga (⋮) di browser → "Install App" / "Tambahkan ke Layar Utama"', 'info');
+    return;
   }
+
+  // Build instruksi sesuai platform
+  let html = '';
+  if (isIOS) {
+    html = `
+      <div style="text-align:center; padding:8px 0 12px 0;">
+        <div style="font-size:48px; line-height:1; margin-bottom:8px;">📲</div>
+        <p style="margin:0 0 14px 0; color:var(--text-dark); font-size:13px;">iPhone/iPad tidak mendukung instalasi otomatis. Ikuti langkah berikut untuk memasang aplikasi:</p>
+      </div>
+      <ol style="margin:0; padding-left:20px; color:var(--text-dark); font-size:13px; line-height:1.9;">
+        <li>Buka aplikasi ini di <strong>Safari</strong> (bukan Chrome di iPhone).</li>
+        <li>Tap tombol <strong>Share</strong> <span style="display:inline-block; transform:translateY(2px);">⬆️</span> di toolbar bawah Safari (ikon kotak dgn panah ke atas).</li>
+        <li>Scroll ke bawah, pilih <strong>"Add to Home Screen"</strong> / "Tambah ke Layar Utama".</li>
+        <li>Tap <strong>Add</strong> (kanan atas) — ikon aplikasi muncul di home screen iPhone.</li>
+      </ol>
+      <div style="background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:10px 12px; margin-top:14px; font-size:11.5px; color:#92400e;">
+        <strong>Catatan:</strong> Wajib pakai <strong>Safari</strong>. Chrome/Firefox di iPhone tidak mendukung Add to Home Screen dgn benar.
+      </div>
+    `;
+  } else if (isAndroid && AppState.deferredPwaPrompt) {
+    html = `
+      <div style="text-align:center; padding:8px 0 12px 0;">
+        <div style="font-size:48px; line-height:1; margin-bottom:8px;">🤖</div>
+        <p style="margin:0; color:var(--text-dark); font-size:13px;">Perangkat Android Anda siap untuk instalasi. Klik tombol <strong>"Install Sekarang"</strong> di bawah, lalu konfirmasi prompt instalasi dari browser.</p>
+      </div>
+      <div style="background:#ecfdf5; border:1px solid #10b981; border-radius:10px; padding:10px 12px; margin-top:8px; font-size:11.5px; color:#065f46;">
+        <strong>Tip:</strong> Setelah install, aplikasi bisa diakses dari home screen tanpa buka browser. Notifikasi presensi otomatis aktif.
+      </div>
+    `;
+  } else {
+    // Android tanpa deferredPrompt, atau desktop
+    html = `
+      <div style="text-align:center; padding:8px 0 12px 0;">
+        <div style="font-size:48px; line-height:1; margin-bottom:8px;">💻</div>
+        <p style="margin:0 0 14px 0; color:var(--text-dark); font-size:13px;">Browser Anda tidak mendukung instalasi otomatis. Ikuti langkah manual:</p>
+      </div>
+      ${isAndroid ? `
+        <ol style="margin:0; padding-left:20px; color:var(--text-dark); font-size:13px; line-height:1.9;">
+          <li>Tap menu <strong>titik tiga (⋮)</strong> di kanan atas browser Chrome.</li>
+          <li>Pilih <strong>"Install app"</strong> / "Install aplikasi" / "Add to Home screen".</li>
+          <li>Konfirmasi dgn tap <strong>Install</strong>.</li>
+        </ol>
+      ` : `
+        <ol style="margin:0; padding-left:20px; color:var(--text-dark); font-size:13px; line-height:1.9;">
+          <li>Di Chrome/Edge: klik icon <strong>Install</strong> di address bar (kanan URL), atau buka menu <strong>⋮</strong> → "Install ... as app".</li>
+          <li>Konfirmasi instalasi.</li>
+        </ol>
+      `}
+      <div style="background:#eff6ff; border:1px solid #93c5fd; border-radius:10px; padding:10px 12px; margin-top:14px; font-size:11.5px; color:#1e40af;">
+        <strong>Tidak menemukan opsi install?</strong> Pastikan pakai <strong>Chrome/Edge</strong> terbaru, dan sudah login. Refresh halaman lalu coba lagi.
+      </div>
+    `;
+  }
+  body.innerHTML = html;
+
+  // Tombol aksi: tampil hanya utk Android dgn deferredPrompt
+  const actionBtn = document.getElementById('btn-install-action');
+  const actionBtnText = document.getElementById('btn-install-action-text');
+  if (actionBtn) {
+    if (isAndroid && AppState.deferredPwaPrompt) {
+      actionBtn.style.display = 'inline-flex';
+      if (actionBtnText) actionBtnText.textContent = 'Install Sekarang';
+      // Re-wire handler (hindari double-bind)
+      actionBtn.onclick = null;
+      actionBtn.onclick = async () => {
+        try {
+          if (!AppState.deferredPwaPrompt) {
+            showToast('Prompt instalasi sudah tidak tersedia. Refresh halaman lalu coba lagi.', 'warning');
+            closeModal('modal-install-app');
+            return;
+          }
+          AppState.deferredPwaPrompt.prompt();
+          const choice = await AppState.deferredPwaPrompt.userChoice;
+          if (choice.outcome === 'accepted') {
+            showToast('Aplikasi berhasil dipasang di perangkat Anda!', 'success');
+          } else {
+            showToast('Instalasi dibatalkan. Anda bisa coba lagi kapan saja.', 'info');
+          }
+          AppState.deferredPwaPrompt = null;
+          dismissPwaBanner();
+          closeModal('modal-install-app');
+        } catch (err) {
+          console.error('PWA install error:', err);
+          showToast('Gagal memulai instalasi. Coba refresh halaman lalu tekan lagi.', 'error');
+        }
+      };
+    } else {
+      actionBtn.style.display = 'none';
+    }
+  }
+
+  if (window.feather) feather.replace();
+  openModal('modal-install-app');
 };
 const triggerPwaPrompt = window.triggerPwaPrompt;
 
@@ -904,8 +1011,9 @@ const showPwaBannerIfNeeded = () => {
 const dismissPwaBanner = () => {
   const banner = document.getElementById('pwa-banner');
   if (banner) banner.style.display = 'none';
-  sessionStorage.setItem('td_pwa_dismissed', '1');
+  try { sessionStorage.setItem('td_pwa_dismissed', '1'); } catch (e) { /* ignore */ }
 };
+window.dismissPwaBanner = dismissPwaBanner;
 
 // Navigation View Switcher
 const switchView = (viewName) => {
