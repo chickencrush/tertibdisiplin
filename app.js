@@ -2327,13 +2327,29 @@ const renderDailyReportBoard = () => {
     `;
   };
 
-  // v81: Per-column no-op diff — hanya assign innerHTML jika konten benar-benar berubah.
-  // Cache key (v77) bisa miss karena perubahan urutan/fetch baru, padahal HTML akhir identik.
-  // Assign innerHTML yang sama pun me-recreate seluruh subtree DOM → layout shift → flicker.
-  const setColHtml_ = (col, html) => { if (col.innerHTML !== html) col.innerHTML = html; };
-  setColHtml_(colProses, prosesItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada tugas aktif.</p>');
-  setColHtml_(colHold, holdItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada kendala tertunda.</p>');
-  setColHtml_(colSelesai, selesaiItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Belum ada tugas selesai.</p>');
+  // v82.3: Per-column no-op diff v2 — bandingkan GENERATED HTML vs LAST-GENERATED HTML
+  // (disimpan di variabel), BUKAN vs DOM innerHTML.
+  //
+  // ⚠️ BUG v81 (ditemukan via analisis video user Super Admin + test Playwright):
+  // v81 membandingkan `col.innerHTML !== html`. Padahal setelah render, feather.replace()
+  // mengubah <i data-feather="check"> (di tombol "Bukti Terlampir") menjadi <svg> di DOM.
+  // Render berikutnya: generated HTML (ada <i>) vs DOM innerHTML (sudah <svg>) → SELALU BEDA
+  // → kolom SELALU di-rewrite → repaint masif → FLICKER.
+  // Super Admin kena parah karena lihat SEMUA laporan — laporan Hold/Selesai WAJIB ada bukti
+  // → kolom penuh feather icons → setiap render = rewrite 3 kolom penuh.
+  // Karyawan biasa jarang punya bukti → jarang kena.
+  //
+  // Solusi: simpan HTML yang terakhir DI-GENERATE per kolom. Bandingkan generated-baru vs
+  // generated-lama. Identik → skip DOM write sepenuhnya (DOM tidak disentuh, feather SVG aman).
+  window.__lastKanbanHtml_ = window.__lastKanbanHtml_ || {};
+  const setColHtml_ = (col, key, html) => {
+    if (window.__lastKanbanHtml_[key] === html) return; // generated sama → DOM pasti sudah benar → SKIP
+    window.__lastKanbanHtml_[key] = html;
+    col.innerHTML = html;
+  };
+  setColHtml_(colProses, 'proses', prosesItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada tugas aktif.</p>');
+  setColHtml_(colHold, 'hold', holdItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada kendala tertunda.</p>');
+  setColHtml_(colSelesai, 'selesai', selesaiItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Belum ada tugas selesai.</p>');
 
   // v80: Debounced feather.replace — jangan replace global scan langsung di sini.
   // feather.replace() scan SELURUH dokumen & replace semua [data-feather] — kalau dipanggil
