@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v82.2';  // v82.2: Anti-flicker Super Admin Daily Report — CSS containment (view-panel, topbar, mode-switcher, kanban cards), GPU compositing (translateZ), ganti transition:all ke specific props, hapus backdrop-filter dari mode-switcher
+const CACHE_NAME = 'tertib-disiplin-v82.3';  // v82.3: FIX AKAR BUG flicker Super Admin — feather.replace() mengubah <i data-feather> jadi <svg> di DOM sehingga no-op diff v81 (bandingkan vs DOM innerHTML) SELALU gagal utk cards dgn bukti → kolom selalu di-rewrite. Sekarang: bandingkan generated HTML vs last-generated (bukan DOM). + revert will-change layer explosion v82.2 + content-visibility: auto utk cards offscreen
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
