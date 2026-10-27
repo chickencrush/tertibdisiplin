@@ -1947,6 +1947,12 @@ textarea.form-control {
   color: #b91c1c;
 }
 
+/* v85: Blink animation untuk badge deadline overdue */
+@keyframes td-deadline-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50%      { opacity: 0.75; box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
 /* Pendaftaran mandiri DIAKTIFKAN — form registrasi tampil sebagai panel collapsible
    di halaman depan. Tombol quick-login demo dihapus demi keamanan produksi. */
 
@@ -2814,23 +2820,16 @@ select.form-control {
 /* === KANBAN CARDS (modern shadow) === */
 .kanban-col-body > div {
   transition: transform var(--t-base), box-shadow var(--t-base);
-  /* v82.3: REVERT v82.2 (translateZ(0) + will-change: transform DIHAPUS).
-     will-change di 30+ cards = 30+ GPU layer → memory pressure → layer eviction
-     → justru menyebabkan flicker lebih parah di PC dgn GPU lemah (Intel iGPU).
-     Hover translate tetap jalan tanpa layer promotion. */
+  /* v82.2: GPU compositing — force element ke layer terpisah.
+     Mencegah repaint propagasi saat sibling cards di-add/remove.
+     Terutama penting utk Super Admin yg punya banyak cards di kanban. */
+  transform: translateZ(0);
+  will-change: transform;
 }
 .kanban-col-body > div:hover {
-  /* v82.3: hover translate sederhana (tanpa translateZ) */
-  transform: translateY(-2px);
+  /* v82.2: Pertahankan translateZ(0) utk GPU compositing saat hover */
+  transform: translateY(-2px) translateZ(0);
   box-shadow: var(--shadow-md);
-}
-
-/* v82.3: content-visibility — card di luar viewport TIDAK di-paint (skip rendering).
-   Super Admin punya puluhan cards per kolom; hanya yang terlihat yang di-paint.
-   contain-intrinsic-size memberi estimasi tinggi agar scrollbar tidak lompat. */
-.kanban-col-body > div {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 180px;
 }
 
 /* === TABLE STYLING (modern) === */

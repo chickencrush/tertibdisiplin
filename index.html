@@ -1797,6 +1797,31 @@
           </div>
         </div>
 
+        <!-- v85: Deadline Pekerjaan — WAJIB untuk status Proses & Selesai -->
+        <div class="form-group" id="group-deadline" style="display:none;">
+          <label class="form-label required" style="color:#1e40af;">
+            <i data-feather="calendar" style="width:13px; height:13px; vertical-align:middle; margin-right:3px;"></i>
+            Deadline Pekerjaan
+            <span style="font-size:10px; color:#64748b; font-weight:500; margin-left:6px;">(Wajib untuk Proses &amp; Selesai)</span>
+          </label>
+          <select class="form-control" id="rep-form-deadline">
+            <option value="">— Pilih Deadline —</option>
+            <option value="1 hari">1 Hari</option>
+            <option value="2 hari">2 Hari</option>
+            <option value="3 hari">3 Hari</option>
+            <option value="4 hari">4 Hari</option>
+            <option value="5 hari">5 Hari</option>
+            <option value="6 hari">6 Hari</option>
+            <option value="1 minggu">1 Minggu</option>
+            <option value="2 minggu">2 Minggu</option>
+            <option value="3 minggu">3 Minggu</option>
+            <option value="1 bulan">1 Bulan</option>
+          </select>
+          <p style="font-size:11px; color:#64748b; margin-top:6px;" id="deadline-helper-text">
+            Deadline dihitung otomatis dari waktu pembuatan laporan. Sistem akan mengirim notifikasi otomatis saat mendekati tenggat.
+          </p>
+        </div>
+
         <div class="form-group">
           <label class="form-label required">Deskripsi / Detail Aktivitas</label>
           <textarea class="form-control" id="rep-form-desc" placeholder="Tuliskan kronologi, tindakan, atau rincian pekerjaan..." required></textarea>

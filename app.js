@@ -57,6 +57,93 @@ const formatRupiah = (val) => {
   }).format(val || 0);
 };
 
+// v84: Format durasi pekerjaan dari menit → "1j 23m" / "45m" / "30d"
+// Accepts: number (minutes) OR string like "2026-10-27 14:30:00" (will diff with now)
+const formatWorkDuration = (minutes) => {
+  if (minutes === null || minutes === undefined || minutes === '') return '•';
+  let mins = Number(minutes);
+  if (Number.isNaN(mins)) return '•';
+  if (mins < 0) mins = 0;
+  if (mins < 1) return '<1m';
+  if (mins < 60) return Math.floor(mins) + 'm';
+  const h = Math.floor(mins / 60);
+  const m = Math.floor(mins % 60);
+  if (h < 24) return h + 'j' + (m > 0 ? ' ' + m + 'm' : '');
+  const d = Math.floor(h / 24);
+  const hRem = h % 24;
+  return d + 'h' + (hRem > 0 ? ' ' + hRem + 'j' : '');
+};
+
+window.formatWorkDuration = formatWorkDuration;
+
+// v85: Helper — parse datetime string "yyyy-MM-dd HH:mm:ss" ke timestamp
+const _tdParseDt = (s) => {
+  if (!s) return NaN;
+  // Replace dash with slash for Safari/iOS, but format "yyyy-MM-dd HH:mm:ss" works in modern browsers
+  // Try native Date first
+  let d = new Date(String(s).replace(/-/g, '/'));
+  if (isNaN(d.getTime())) d = new Date(s);
+  return d.getTime();
+};
+
+// v85: Helper — info deadline untuk renderCard & notifikasi
+// Return: { status: 'overdue'|'critical'|'soon'|'normal'|'none',
+//           label: string, color: hex, bg: hex, hoursLeft: number, isOverdue: bool }
+const getDeadlineInfo = (r) => {
+  if (!r || !r.deadline_at || r.status === 'Selesai') {
+    return { status: 'none', label: '', color: '', bg: '', hoursLeft: null, isOverdue: false };
+  }
+  const dlMs = _tdParseDt(r.deadline_at);
+  if (isNaN(dlMs)) return { status: 'none', label: '', color: '', bg: '', hoursLeft: null, isOverdue: false };
+  const nowMs = Date.now();
+  const diffMs = dlMs - nowMs;
+  const hoursLeft = diffMs / (1000 * 60 * 60);
+  const isOverdue = diffMs < 0;
+
+  // Helper untuk format sisa waktu
+  const fmtLeft = (ms) => {
+    const abs = Math.abs(ms);
+    const days = Math.floor(abs / (1000 * 60 * 60 * 24));
+    const hrs = Math.floor((abs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const mins = Math.floor((abs % (1000 * 60 * 60)) / (1000 * 60));
+    if (days > 0) return days + 'h ' + hrs + 'j';
+    if (hrs > 0) return hrs + 'j ' + mins + 'm';
+    return mins + 'm';
+  };
+
+  if (isOverdue) {
+    return {
+      status: 'overdue',
+      label: 'TERLAMBAT ' + fmtLeft(diffMs),
+      color: '#991b1b', bg: '#fef2f2',
+      hoursLeft, isOverdue: true
+    };
+  }
+  if (hoursLeft < 24) {
+    return {
+      status: 'critical',
+      label: 'Sisa ' + fmtLeft(diffMs) + ' (URGENT)',
+      color: '#c2410c', bg: '#fff7ed',
+      hoursLeft, isOverdue: false
+    };
+  }
+  if (hoursLeft < 72) { // < 3 hari
+    return {
+      status: 'soon',
+      label: 'Sisa ' + fmtLeft(diffMs),
+      color: '#a16207', bg: '#fefce8',
+      hoursLeft, isOverdue: false
+    };
+  }
+  return {
+    status: 'normal',
+    label: 'Sisa ' + fmtLeft(diffMs),
+    color: '#1e40af', bg: '#eff6ff',
+    hoursLeft, isOverdue: false
+  };
+};
+window.getDeadlineInfo = getDeadlineInfo;
+
 const showToast = (message, type = 'info') => {
   const container = document.getElementById('toast-container');
   if (!container) return;
@@ -1244,7 +1331,7 @@ const switchView = (viewName) => {
 
   const titles = {
     'dashboard': ['Dashboard', 'Pusat Kontrol Operasional & Manajemen Multi-Outlet'],
-    'daily-report': ['Daily Report Operasional', 'Alur Tugas: Proses ➔ Hold (Wajib Bukti) ➔ Selesai (Wajib Bukti)'],
+    'daily-report': ['Daily Report Operasional', 'Alur Tugas: Proses ➔ Hold (Wajib Bukti) ➔ Selesai (Wajib Bukti — Final/Terkunci)'],
     'presensi': ['Presensi GPS & Selfie', 'Verifikasi Titik Lokasi Geofence & Kamera Langsung'],
     'employees': ['Database Karyawan', 'Manajemen Personel, Skala Upah Permenaker 1/2017 & Struktur Organisasi'],
     'payroll': ['Kompensasi & Payroll Autopilot', 'Perhitungan Upah Harian, BPJS, PPh 21 TER, & Slip Gaji Online'],
@@ -1417,6 +1504,8 @@ const setCurrentUser = (user) => {
   if (sRole) sRole.textContent = `${user.role} (${user.division})`;
   if (sAv) sAv.src = user.avatar_url || LOGO_URI;
   localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(user));
+  // v85: Start auto-check deadline notifikasi setelah login
+  window.startDeadlineAutoCheck && window.startDeadlineAutoCheck();
 };
 
 // ============ BACKEND VERSION CHECK (warn user jika backend outdated) ============
@@ -1704,6 +1793,8 @@ const loadDailyReports = async () => {
     // v75: Sync dashboard stats (reports count, etc.) setelah data daily reports di-update.
     // Sebelumnya dashboard stats tetap stale sampai user pindah ke dashboard & trigger updateDashboardStats.
     if (typeof updateDashboardStats === 'function') updateDashboardStats();
+    // v85: Trigger pengecekan deadline setelah data ter-update
+    if (window.checkDeadlineNotifications) window.checkDeadlineNotifications();
   } catch (err) {
     console.error('Failed loading reports:', err);
   }
@@ -2300,6 +2391,43 @@ const renderDailyReportBoard = () => {
       </div>
     ` : '';
 
+    // v84: Badge durasi pekerjaan
+    // - Selesai: durasi final (started_at → completed_at) — badge hijau
+    // - Proses/Hold: durasi live (started_at → now, update tiap re-render) — badge biru/oren
+    const durMins = Number(r.work_duration_minutes) || 0;
+    const durLabel = formatWorkDuration(durMins);
+    const durBadge = durMins > 0 ? (
+      r.status === 'Selesai'
+        ? `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-weight:700; color:#047857; background:#ecfdf5; border:1px solid #a7f3d0; padding:2px 8px; border-radius:10px;" title="Durasi total pekerjaan (started → completed)"><i data-feather="check-circle" style="width:11px; height:11px;"></i> ⏱ ${durLabel}</span>`
+        : r.status === 'Hold'
+          ? `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-weight:700; color:#b45309; background:#fffbeb; border:1px solid #fde68a; padding:2px 8px; border-radius:10px;" title="Durasi sejak mulai (live)"><i data-feather="pause-circle" style="width:11px; height:11px;"></i> ⏱ ${durLabel}</span>`
+          : `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-weight:700; color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; padding:2px 8px; border-radius:10px;" title="Durasi sejak mulai (live)"><i data-feather="clock" style="width:11px; height:11px;"></i> ⏱ ${durLabel}</span>`
+    ) : '';
+
+    // v85: Badge deadline pekerjaan (hanya untuk Proses & Hold, bukan Selesai)
+    const dl = getDeadlineInfo(r);
+    const dlIcon = dl.status === 'overdue' ? 'alert-octagon' : dl.status === 'critical' ? 'alert-triangle' : 'calendar';
+    const deadlineBadge = dl.status !== 'none' ? (
+      `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-weight:700; color:${dl.color}; background:${dl.bg}; border:1px solid ${dl.color}33; padding:2px 8px; border-radius:10px;${dl.status === 'overdue' ? ' animation: td-deadline-blink 1.2s ease-in-out infinite;' : ''}" title="Deadline: ${r.deadline_at || ''}"><i data-feather="${dlIcon}" style="width:11px; height:11px;"></i> 📅 ${dl.label}</span>`
+    ) : '';
+
+    // v84: Selesai = LOCKED — tidak ada tombol Hold/Proses, hanya badge "Final"
+    const isLocked = r.status === 'Selesai';
+    const lockedBadge = isLocked
+      ? `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:700; color:#6b7280; background:#f3f4f6; border:1px solid #e5e7eb; padding:2px 8px; border-radius:10px;" title="Status final — tidak dapat diubah"><i data-feather="lock" style="width:10px; height:10px;"></i> Locked</span>`
+      : '';
+
+    const actionButtons = isLocked
+      ? `<div style="display:flex; gap:6px; margin-top:10px; align-items:center; justify-content:space-between;">
+          <span style="font-size:10.5px; color:#10b981; font-weight:600;">✓ Pekerjaan tuntas & terkunci</span>
+          ${lockedBadge}
+        </div>`
+      : `<div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
+          ${r.status !== 'Proses' ? `<button class="btn-secondary" style="font-size:10.5px; padding:3px 8px;" onclick="quickUpdateReportStatus('${r.id}', 'Proses')">Ke Proses</button>` : ''}
+          ${r.status !== 'Hold' ? `<button class="btn-secondary" style="font-size:10.5px; padding:3px 8px; color:#b45309;" onclick="promptHoldWithProof('${r.id}')">Hold (Wajib Bukti)</button>` : ''}
+          ${r.status !== 'Selesai' ? `<button class="btn-primary" style="font-size:10.5px; padding:3px 8px; background:#10b981;" onclick="promptSelesaiWithProof('${r.id}')">Selesai (Wajib Bukti)</button>` : ''}
+        </div>`;
+
     return `
       <div style="background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:14px; box-shadow:var(--shadow-sm);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
@@ -2311,6 +2439,8 @@ const renderDailyReportBoard = () => {
         
         ${r.hold_reason ? `<div style="font-size:11px; color:#b45309; background:#fffbeb; padding:6px 8px; border-radius:6px; margin-bottom:8px;"><strong>Kendala:</strong> ${r.hold_reason}</div>` : ''}
 
+        ${(durBadge || deadlineBadge) ? `<div style="margin-bottom:8px; display:flex; flex-wrap:wrap; gap:6px;">${durBadge}${deadlineBadge}</div>` : ''}
+
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8; border-top:1px dashed #f1f5f9; padding-top:8px;">
           <span>👤 ${r.reporter_name || '-'}</span>
           <span>📍 ${((r.outlet_name || '').split(' ')[1]) || 'Outlet'}</span>
@@ -2318,38 +2448,18 @@ const renderDailyReportBoard = () => {
 
         ${proofTag}
 
-        <div style="display:flex; gap:6px; margin-top:10px;">
-          ${r.status !== 'Proses' ? `<button class="btn-secondary" style="font-size:10.5px; padding:3px 8px;" onclick="quickUpdateReportStatus('${r.id}', 'Proses')">Ke Proses</button>` : ''}
-          ${r.status !== 'Hold' ? `<button class="btn-secondary" style="font-size:10.5px; padding:3px 8px; color:#b45309;" onclick="promptHoldWithProof('${r.id}')">Hold (Wajib Bukti)</button>` : ''}
-          ${r.status !== 'Selesai' ? `<button class="btn-primary" style="font-size:10.5px; padding:3px 8px; background:#10b981;" onclick="promptSelesaiWithProof('${r.id}')">Selesai (Wajib Bukti)</button>` : ''}
-        </div>
+        ${actionButtons}
       </div>
     `;
   };
 
-  // v82.3: Per-column no-op diff v2 — bandingkan GENERATED HTML vs LAST-GENERATED HTML
-  // (disimpan di variabel), BUKAN vs DOM innerHTML.
-  //
-  // ⚠️ BUG v81 (ditemukan via analisis video user Super Admin + test Playwright):
-  // v81 membandingkan `col.innerHTML !== html`. Padahal setelah render, feather.replace()
-  // mengubah <i data-feather="check"> (di tombol "Bukti Terlampir") menjadi <svg> di DOM.
-  // Render berikutnya: generated HTML (ada <i>) vs DOM innerHTML (sudah <svg>) → SELALU BEDA
-  // → kolom SELALU di-rewrite → repaint masif → FLICKER.
-  // Super Admin kena parah karena lihat SEMUA laporan — laporan Hold/Selesai WAJIB ada bukti
-  // → kolom penuh feather icons → setiap render = rewrite 3 kolom penuh.
-  // Karyawan biasa jarang punya bukti → jarang kena.
-  //
-  // Solusi: simpan HTML yang terakhir DI-GENERATE per kolom. Bandingkan generated-baru vs
-  // generated-lama. Identik → skip DOM write sepenuhnya (DOM tidak disentuh, feather SVG aman).
-  window.__lastKanbanHtml_ = window.__lastKanbanHtml_ || {};
-  const setColHtml_ = (col, key, html) => {
-    if (window.__lastKanbanHtml_[key] === html) return; // generated sama → DOM pasti sudah benar → SKIP
-    window.__lastKanbanHtml_[key] = html;
-    col.innerHTML = html;
-  };
-  setColHtml_(colProses, 'proses', prosesItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada tugas aktif.</p>');
-  setColHtml_(colHold, 'hold', holdItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada kendala tertunda.</p>');
-  setColHtml_(colSelesai, 'selesai', selesaiItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Belum ada tugas selesai.</p>');
+  // v81: Per-column no-op diff — hanya assign innerHTML jika konten benar-benar berubah.
+  // Cache key (v77) bisa miss karena perubahan urutan/fetch baru, padahal HTML akhir identik.
+  // Assign innerHTML yang sama pun me-recreate seluruh subtree DOM → layout shift → flicker.
+  const setColHtml_ = (col, html) => { if (col.innerHTML !== html) col.innerHTML = html; };
+  setColHtml_(colProses, prosesItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada tugas aktif.</p>');
+  setColHtml_(colHold, holdItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Tidak ada kendala tertunda.</p>');
+  setColHtml_(colSelesai, selesaiItems.map(renderCard).join('') || '<p style="font-size:11.5px; color:#94a3b8; text-align:center;">Belum ada tugas selesai.</p>');
 
   // v80: Debounced feather.replace — jangan replace global scan langsung di sini.
   // feather.replace() scan SELURUH dokumen & replace semua [data-feather] — kalau dipanggil
@@ -2380,6 +2490,9 @@ const openCreateReportModal = () => {
   document.getElementById('rep-form-status').value = 'Proses';
   document.getElementById('rep-form-hold-reason').value = '';
   document.getElementById('rep-form-proof-url').value = '';
+  // v85: Reset deadline
+  const deadlineSel = document.getElementById('rep-form-deadline');
+  if (deadlineSel) deadlineSel.value = '';
   // Reset juga input file (kamera + reguler) supaya tidak tersisa file lama
   const f1 = document.getElementById('rep-form-file'); if (f1) f1.value = '';
   const f2 = document.getElementById('rep-form-file-camera'); if (f2) f2.value = '';
@@ -2392,18 +2505,31 @@ const handleReportStatusChange = (status) => {
   const section = document.getElementById('proof-upload-section');
   const holdGroup = document.getElementById('group-hold-reason');
   const label = document.getElementById('proof-instruction-label');
+  // v85: Deadline wajib untuk Proses & Selesai, hidden untuk Hold
+  const deadlineGroup = document.getElementById('group-deadline');
+  const deadlineHelper = document.getElementById('deadline-helper-text');
 
   if (status === 'Hold') {
     section.style.display = 'block';
     holdGroup.style.display = 'block';
     label.textContent = 'WAJIB Sertakan Bukti Foto/Dokumen & Alasan Kendala (Hold)!';
+    if (deadlineGroup) deadlineGroup.style.display = 'none';
   } else if (status === 'Selesai') {
     section.style.display = 'block';
     holdGroup.style.display = 'none';
     label.textContent = 'WAJIB Sertakan Bukti Foto Dokumentasi Hasil Pekerjaan (Selesai)!';
+    if (deadlineGroup) {
+      deadlineGroup.style.display = 'block';
+      if (deadlineHelper) deadlineHelper.textContent = 'Tetapkan deadline untuk dokumentasi & evaluasi. Pekerjaan sudah selesai — deadline hanya untuk arsip.';
+    }
   } else {
+    // Proses
     section.style.display = 'none';
     holdGroup.style.display = 'none';
+    if (deadlineGroup) {
+      deadlineGroup.style.display = 'block';
+      if (deadlineHelper) deadlineHelper.textContent = 'Deadline dihitung otomatis dari waktu pembuatan laporan. Sistem akan mengirim notifikasi otomatis saat mendekati tenggat.';
+    }
   }
 };
 
@@ -2454,6 +2580,7 @@ const submitDailyReportForm = async (e) => {
   const status = document.getElementById('rep-form-status').value;
   const proofUrl = document.getElementById('rep-form-proof-url').value;
   const holdReason = document.getElementById('rep-form-hold-reason').value;
+  const deadlineDuration = document.getElementById('rep-form-deadline')?.value || '';
 
   // STRICT VALIDATION
   if ((status === 'Hold' || status === 'Selesai') && !proofUrl) {
@@ -2463,6 +2590,12 @@ const submitDailyReportForm = async (e) => {
 
   if (status === 'Hold' && !holdReason.trim()) {
     alert('Status "Hold" wajib mencantumkan alasan kendala atau penundaan!');
+    return;
+  }
+
+  // v85: Validasi Deadline WAJIB untuk Proses & Selesai
+  if ((status === 'Proses' || status === 'Selesai') && !deadlineDuration) {
+    alert('Deadline Pekerjaan WAJIB dipilih untuk status Proses & Selesai! Pilih tenggat waktu: 1 hari s/d 1 bulan.');
     return;
   }
 
@@ -2479,7 +2612,8 @@ const submitDailyReportForm = async (e) => {
     proof_notes: document.getElementById('rep-form-proof-notes').value || null,
     hold_reason: status === 'Hold' ? holdReason : null,
     priority: document.getElementById('rep-form-priority').value,
-    assigned_to: AppState.currentUser.name
+    assigned_to: AppState.currentUser.name,
+    deadline_duration: deadlineDuration || null
   };
 
   try {
@@ -2490,9 +2624,11 @@ const submitDailyReportForm = async (e) => {
     });
     const result = await res.json();
     if (res.ok) {
-      showToast(`Laporan ${result.report_number} berhasil disimpan dengan status ${status}!`, 'success');
+      showToast(`Laporan ${result.report_number} berhasil disimpan dengan status ${status}!${deadlineDuration ? ' Deadline: ' + deadlineDuration : ''}`, 'success');
       closeModal('modal-report');
       await loadDailyReports();
+      // v85: Trigger pengecekan deadline notifikasi setelah buat laporan baru
+      if (window.checkDeadlineNotifications) window.checkDeadlineNotifications();
     } else {
       alert(result.detail || 'Gagal menyimpan laporan.');
     }
@@ -2512,6 +2648,16 @@ AppState.__quickProof = { reportId: null, status: null };
 const openQuickProofModal = (reportId, status) => {
   const r = (AppState.dailyReports || []).find(x => x.id === reportId);
   if (!r) { showToast('Laporan tidak ditemukan.', 'error'); return; }
+  // v84: Guard — jika laporan sudah Selesai, tolak buka modal Hold
+  if (r.status === 'Selesai' && status !== 'Selesai') {
+    showToast('Tugas sudah SELESAI dan terkunci. Tidak dapat diubah kembali.', 'warning');
+    return;
+  }
+  // v84: Guard — tidak perlu buka modal Selesai jika sudah Selesai
+  if (r.status === 'Selesai' && status === 'Selesai') {
+    showToast('Tugas sudah berstatus Selesai.', 'info');
+    return;
+  }
   AppState.__quickProof = { reportId: reportId, status: status };
 
   // Reset form
@@ -2642,10 +2788,24 @@ const promptSelesaiWithProof = (reportId) => {
 window.promptSelesaiWithProof = promptSelesaiWithProof;
 
 const quickUpdateReportStatus = (reportId, newStatus) => {
+  // v84: Client-side guard — Selesai tidak dapat dikembalikan ke Proses/Hold
+  const r = (AppState.dailyReports || []).find(x => x.id === reportId);
+  if (r && r.status === 'Selesai' && newStatus !== 'Selesai') {
+    showToast('Tugas sudah SELESAI dan terkunci. Tidak dapat dikembalikan ke Proses atau Hold.', 'warning');
+    return;
+  }
   updateReportStatusDirect(reportId, newStatus, null, null, null);
 };
+window.quickUpdateReportStatus = quickUpdateReportStatus;
 
 const updateReportStatusDirect = async (reportId, status, proofUrl, proofNotes, holdReason) => {
+  // v84: Client-side guard — Selesai tidak dapat dikembalikan ke Proses/Hold
+  const existing = (AppState.dailyReports || []).find(x => x.id === reportId);
+  if (existing && existing.status === 'Selesai' && status !== 'Selesai') {
+    showToast('Tugas sudah SELESAI dan terkunci. Tidak dapat dikembalikan ke Proses atau Hold.', 'warning');
+    return;
+  }
+
   try {
     const res = await fetch(`/api/daily-reports/${reportId}/status`, {
       method: 'PUT',
@@ -2662,7 +2822,9 @@ const updateReportStatusDirect = async (reportId, status, proofUrl, proofNotes, 
       showToast(`Status tugas diubah menjadi ${status}!`, 'success');
       await loadDailyReports();
     } else {
-      alert(data.detail || 'Gagal mengubah status');
+      // v84: Tampilkan pesan backend yang lebih informatif (terutama untuk lock Selesai)
+      const msg = data.detail || data.message || 'Gagal mengubah status';
+      showToast(msg, 'error');
     }
   } catch (err) {
     showToast('Gagal menghubungi server', 'error');
@@ -5691,6 +5853,71 @@ window.showNotificationCenter = () => {
     }
   }
 
+  // v85: 1b. Cek laporan dengan deadline OVERDUE (lewat tenggat, belum Selesai)
+  const activeReports = (AppState.dailyReports || []).filter(r => r.status === 'Proses' || r.status === 'Hold');
+  const overdueReports = activeReports.filter(r => {
+    const info = getDeadlineInfo(r);
+    return info.isOverdue;
+  });
+  if (overdueReports.length > 0) {
+    const myOverdue = isDashboardAdmin() ? overdueReports : overdueReports.filter(r => r.reporter_id === u.id);
+    if (myOverdue.length > 0) {
+      notifications.push({
+        icon: '🚨',
+        title: myOverdue.length + ' Tugas TERLAMBAT Deadline!',
+        desc: myOverdue.slice(0, 3).map(r => {
+          const info = getDeadlineInfo(r);
+          return '• ' + r.title + ' (' + (r.report_number || r.id) + ')\n  Status: ' + r.status + ' — ' + info.label + '\n  Detail: ' + (r.description || '').substring(0, 80) + (r.description && r.description.length > 80 ? '...' : '');
+        }).join('\n\n') + (myOverdue.length > 3 ? '\n\n• ... dan ' + (myOverdue.length - 3) + ' tugas lainnya' : ''),
+        time: 'Sekarang',
+        color: '#dc2626',
+        action: 'daily-report'
+      });
+    }
+  }
+
+  // v85: 1c. Cek laporan dengan deadline mendekati (<=3 hari, belum Selesai & belum overdue)
+  const approachingReports = activeReports.filter(r => {
+    const info = getDeadlineInfo(r);
+    return info.status === 'critical' || info.status === 'soon';
+  });
+  if (approachingReports.length > 0) {
+    const myApproaching = isDashboardAdmin() ? approachingReports : approachingReports.filter(r => r.reporter_id === u.id);
+    if (myApproaching.length > 0) {
+      // Group by severity
+      const critical = myApproaching.filter(r => getDeadlineInfo(r).status === 'critical');
+      const soon = myApproaching.filter(r => getDeadlineInfo(r).status === 'soon');
+
+      if (critical.length > 0) {
+        notifications.push({
+          icon: '⏰',
+          title: critical.length + ' Tugas Mendekati Deadline (< 24 Jam)!',
+          desc: critical.slice(0, 3).map(r => {
+            const info = getDeadlineInfo(r);
+            return '• ' + r.title + ' (' + (r.report_number || r.id) + ')\n  ' + info.label + '\n  Detail: ' + (r.description || '').substring(0, 80) + (r.description && r.description.length > 80 ? '...' : '');
+          }).join('\n\n') + (critical.length > 3 ? '\n\n• ... dan ' + (critical.length - 3) + ' tugas lainnya' : ''),
+          time: 'Sekarang',
+          color: '#c2410c',
+          action: 'daily-report'
+        });
+      }
+
+      if (soon.length > 0) {
+        notifications.push({
+          icon: '📅',
+          title: soon.length + ' Tugas Akan Jatuh Tempo (1–3 Hari)',
+          desc: soon.slice(0, 3).map(r => {
+            const info = getDeadlineInfo(r);
+            return '• ' + r.title + ' (' + (r.report_number || r.id) + ')\n  ' + info.label + '\n  Detail: ' + (r.description || '').substring(0, 80) + (r.description && r.description.length > 80 ? '...' : '');
+          }).join('\n\n') + (soon.length > 3 ? '\n\n• ... dan ' + (soon.length - 3) + ' tugas lainnya' : ''),
+          time: 'Sekarang',
+          color: '#a16207',
+          action: 'daily-report'
+        });
+      }
+    }
+  }
+
   // 2. Cek presensi hari ini — belum presensi masuk
   const todayLogs = (AppState.attendanceLogs || []).filter(a => a.date === today);
   const myTodayLog = todayLogs.find(a => a.employee_id === u.id);
@@ -5844,6 +6071,90 @@ const renderNotificationPanel = (notifications) => {
   }, 100);
 };
 const showNotificationCenter = window.showNotificationCenter;
+
+// ==========================================
+// v85: AUTO DEADLINE NOTIFICATION CHECKER
+// - Jalan tiap 60 detik setelah login
+// - Cek laporan Proses/Hold yang overdue atau mendekati deadline
+// - Tampilkan toast proaktif (sekali per laporan, tidak spam)
+// - Update badge count di bell icon topbar
+// ==========================================
+window.__tdDeadlineAlerted_ = new Set(); // laporan id yang sudah di-toast
+
+window.checkDeadlineNotifications = () => {
+  if (!AppState.currentUser || !AppState.dailyReports) return;
+
+  const u = AppState.currentUser;
+  const active = AppState.dailyReports.filter(r =>
+    (r.status === 'Proses' || r.status === 'Hold') &&
+    (isDashboardAdmin() || r.reporter_id === u.id)
+  );
+
+  let overdueCount = 0, criticalCount = 0, soonCount = 0;
+  const newOverdue = [];
+
+  active.forEach(r => {
+    const info = getDeadlineInfo(r);
+    if (info.isOverdue) {
+      overdueCount++;
+      // Toast hanya untuk yang belum pernah di-alert
+      if (!window.__tdDeadlineAlerted_.has(r.id + ':overdue')) {
+        newOverdue.push(r);
+        window.__tdDeadlineAlerted_.add(r.id + ':overdue');
+      }
+    } else if (info.status === 'critical') {
+      criticalCount++;
+      if (!window.__tdDeadlineAlerted_.has(r.id + ':critical')) {
+        // Toast untuk critical (jarang — hanya sekali per laporan)
+        showToast('⏰ "' + r.title + '" mendekati deadline! ' + info.label, 'warning');
+        window.__tdDeadlineAlerted_.add(r.id + ':critical');
+      }
+    } else if (info.status === 'soon') {
+      soonCount++;
+    }
+  });
+
+  // Toast untuk overdue (tampilkan max 3 sekaligus untuk hindari spam)
+  newOverdue.slice(0, 3).forEach(r => {
+    const info = getDeadlineInfo(r);
+    showToast('🚨 TERLAMBAT: "' + r.title + '" — ' + info.label + '. Segera selesaikan!', 'error');
+  });
+  if (newOverdue.length > 3) {
+    showToast('🚨 +' + (newOverdue.length - 3) + ' tugas lainnya juga TERLAMBAT deadline. Buka Daily Report untuk detail.', 'error');
+  }
+
+  // Update badge count di tombol bell topbar
+  const totalAlerts = overdueCount + criticalCount;
+  const bellBtn = document.getElementById('btn-notification-trigger');
+  if (bellBtn) {
+    let badge = bellBtn.querySelector('.td-deadline-badge');
+    if (totalAlerts > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'td-deadline-badge';
+        badge.style.cssText = 'position:absolute; top:-4px; right:-4px; background:#dc2626; color:#fff; font-size:9px; font-weight:700; min-width:16px; height:16px; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:0 4px; box-shadow:0 2px 4px rgba(0,0,0,0.2); border:1.5px solid #fff;';
+        bellBtn.style.position = 'relative';
+        bellBtn.appendChild(badge);
+      }
+      badge.textContent = totalAlerts > 9 ? '9+' : totalAlerts;
+      badge.style.display = 'flex';
+    } else if (badge) {
+      badge.style.display = 'none';
+    }
+  }
+};
+
+// Start auto-check deadline setiap 60 detik (hanya jika user login)
+let _tdDeadlineTimer = null;
+const startDeadlineAutoCheck = () => {
+  if (_tdDeadlineTimer) clearInterval(_tdDeadlineTimer);
+  _tdDeadlineTimer = setInterval(() => {
+    window.checkDeadlineNotifications();
+  }, 60000); // 60s
+  // Run pertama kali 5s after start
+  setTimeout(() => window.checkDeadlineNotifications(), 5000);
+};
+window.startDeadlineAutoCheck = startDeadlineAutoCheck;
 
 const openSplModal = () => {
   const hours = prompt('Jumlah Jam Lembur yang diajukan:', '2');

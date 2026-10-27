@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v82.3';  // v82.3: FIX AKAR BUG flicker Super Admin — feather.replace() mengubah <i data-feather> jadi <svg> di DOM sehingga no-op diff v81 (bandingkan vs DOM innerHTML) SELALU gagal utk cards dgn bukti → kolom selalu di-rewrite. Sekarang: bandingkan generated HTML vs last-generated (bukan DOM). + revert will-change layer explosion v82.2 + content-visibility: auto utk cards offscreen
+const CACHE_NAME = 'tertib-disiplin-v85';  // v85: Daily Report — deadline pekerjaan (1 hari s/d 1 bulan) + notifikasi otomatis (overdue/critical/soon) + badge deadline di card + auto-check tiap 60s
 // Pre-cache hanya file critical (bukan semua icons)
 const SHELL = [
   './', './index.html', './style.css', './app.js', './api-client.js', './config.js',
