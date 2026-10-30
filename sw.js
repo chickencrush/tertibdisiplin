@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v87-geofence-off';  // v85.2: CRITICAL FIX — tambah api-client.js ke zip (sebelumnya hilang → fetch /api/ tidak di-intercept → login gagal) + fix config.js pakai TD_CONFIG.API_URL (sebelumnya APP_CONFIG.GAS_WEBAPP_URL yang salah)
+const CACHE_NAME = 'tertib-disiplin-v88-geofence-role';  // v88: Aturan presensi per role — Management presensi di semua titik terdaftar (Kantor+Outlet), Tim Operasional hanya di outlet penugasannya. Geofence radius AKTIF utk semua. Banner "Mode Presensi Fleksibel" dihapus.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',

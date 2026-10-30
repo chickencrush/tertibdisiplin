@@ -1,7 +1,5 @@
 <!DOCTYPE html>
 <html lang="id">
-  <link rel="stylesheet" href="./anti-flicker-patch.css">
-<script src="./anti-flicker-patch.js" defer></script>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
@@ -577,9 +575,9 @@
 
             <!-- Outlet Selector for GPS Check -->
             <div class="form-group">
-              <label class="form-label required">Pilih Lokasi Outlet Presensi</label>
+              <label class="form-label required">Pilih Titik Lokasi Presensi (Kantor / Outlet)</label>
               <select class="form-control" id="presensi-outlet-select" onchange="window.checkGpsDistance && window.checkGpsDistance()">
-                <option value="">— Pilih outlet —</option>
+                <option value="">— Pilih titik lokasi —</option>
                 <!-- Populated dynamically -->
               </select>
             </div>
@@ -2585,15 +2583,16 @@
           </p>
         </div>
 
-        <!-- v74: Toggle Bebas Geofence (presensi fleksibel) — utk kasus khusus mis. Syandi -->
+        <!-- v74/v88: Toggle Presensi Semua Titik Lokasi — utk kasus khusus mis. Syandi -->
         <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:12px; margin-bottom:14px;">
           <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
             <input type="checkbox" id="sa-user-geofence-exempt" style="width:18px; height:18px; cursor:pointer;">
             <div>
-              <strong style="color:#065f46; font-size:13px;">Bebas Geofence (Presensi Fleksibel)</strong>
+              <strong style="color:#065f46; font-size:13px;">Presensi Semua Titik Lokasi (Kantor & Outlet)</strong>
               <p style="font-size:10px; color:#065f46; margin:4px 0 0 0;">
-                Centang utk mengizinkan karyawan presensi dari lokasi manapun (kantor pusat, outlet manapun, dll) tanpa cek radius GPS.
-                Management division otomatis bebas geofence (tidak perlu centang). Centang hanya utk kasus khusus Operasional (mis. area luas, tugas lapangan).
+                Centang utk mengizinkan karyawan Operasional presensi di SEMUA titik lokasi terdaftar (Kantor & Outlet) — tetap wajib di dalam radius titik.
+                Tanpa centang, karyawan Operasional HANYA bisa presensi di outlet penugasannya sendiri.
+                Divisi Management otomatis dapat akses semua titik (tidak perlu centang).
               </p>
             </div>
           </label>

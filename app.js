@@ -410,12 +410,54 @@ const isFullAccess = (user = AppState.currentUser) => isSuperAdminUser(user);
 const MANAGEMENT_DIVISIONS = ['HRD', 'BM', 'Finance', 'QC', 'Creative', 'DOS', 'Logistik', 'Produksi', 'Driver', 'HRGA', 'Security', 'OM', 'PCD'];
 const OPERASIONAL_DIVISIONS = ['SPV', 'Head Kitchen', 'Head Bar', 'Kasir', 'Server', 'Kitchen', 'Bar', 'PA', 'CS'];
 
-// v74: Deteksi apakah user boleh presensi fleksibel (bypass geofence).
-// v87: SEMUA user bisa presensi dari lokasi manapun (tanpa batasan radius outlet).
-// Fungsi ini selalu return true — geofence validation dimatikan untuk semua user.
-// Jarak ke outlet masih dihitung untuk informasi record, tapi tidak memblokir presensi.
-const isGeofenceExemptUser_ = () => true;
+// v88: Deteksi apakah user boleh presensi di SEMUA titik lokasi terdaftar
+// (Kantor & Outlet) — TETAP harus di dalam radius titik tsb.
+// Yang termasuk: divisi Management, role SUPER ADMIN, dan flag geofence_exempt=1
+// (Panel Super Admin > kasus khusus). Tim Operasional TIDAK termasuk →
+// mereka hanya bisa presensi di outlet tempat mereka ditugaskan.
+const isGeofenceExemptUser_ = () => {
+  const u = AppState.currentUser;
+  if (!u) return false;
+  if (Number(u.geofence_exempt) === 1) return true;
+  if (String(u.role || '').trim().toUpperCase() === SUPER_ADMIN_ROLE) return true;
+  return MANAGEMENT_DIVISIONS.indexOf(u.division) >= 0;
+};
 window.isGeofenceExemptUser_ = isGeofenceExemptUser_;
+
+// v88: Daftar titik lokasi yang BOLEH dipakai user untuk presensi.
+// Management/SUPER ADMIN/geofence_exempt → semua titik terdaftar (Kantor + Outlet)
+// Tim Operasional → hanya outlet penugasannya sendiri (outlet_id di akun)
+window.getAllowedPresensiOutlets = () => {
+  const all = AppState.outlets || [];
+  if (isGeofenceExemptUser_()) return all;
+  const u = AppState.currentUser || {};
+  const myId = String(u.outlet_id || '');
+  if (!myId) return [];
+  return all.filter(o => String(o.id) === myId);
+};
+const getAllowedPresensiOutlets = window.getAllowedPresensiOutlets;
+
+// v88: Isi ulang dropdown titik lokasi presensi sesuai role user aktif.
+// - Management / SUPER ADMIN / geofence_exempt : semua titik terdaftar (Kantor + Outlet)
+// - Tim Operasional : hanya outlet penugasannya (otomatis terpilih & tidak bisa ganti)
+// Dipanggil dari loadOutlets() & setelah login sukses.
+window.refreshPresensiOutletOptions = () => {
+  const pSelect = document.getElementById('presensi-outlet-select');
+  if (!pSelect) return;
+  const allowed = getAllowedPresensiOutlets() || [];
+  const u = AppState.currentUser || {};
+  if (allowed.length === 0) {
+    pSelect.innerHTML = '<option value="">— Tidak ada titik lokasi untuk Anda —</option>';
+    return;
+  }
+  pSelect.innerHTML = '<option value="">— Pilih titik lokasi —</option>' +
+    allowed.map(o => `<option value="${o.id}">${o.name}${o.radius_meters ? ' (Radius: ' + o.radius_meters + 'm)' : ''}</option>`).join('');
+  // Tim Operasional: pre-select outlet penugasan mereka
+  if (!isGeofenceExemptUser_()) {
+    const myId = String(u.outlet_id || '');
+    if (myId && allowed.some(o => String(o.id) === myId)) pSelect.value = myId;
+  }
+};
 const SHIFT_OPTIONS_MANAGEMENT = [
   { value: 'Shift Management', label: 'Shift Management (08:30 - 16:30)' },
   { value: 'Shift Security', label: 'Shift Security (07:00 - 19:00)' }
@@ -1626,6 +1668,9 @@ const setCurrentUser = (user) => {
   AppState.currentUser = user;
   // Isi ulang dropdown shift sesuai divisi akun yang login
   window.populateShiftOptions && window.populateShiftOptions();
+  // v88: Isi ulang dropdown titik lokasi presensi sesuai role
+  // (Tim Operasional hanya melihat outlet penugasannya sendiri)
+  window.refreshPresensiOutletOptions && window.refreshPresensiOutletOptions();
   const nameEl = document.getElementById('current-user-name');
   const roleEl = document.getElementById('current-user-role');
   const avatarEl = document.getElementById('current-user-avatar');
@@ -1766,12 +1811,13 @@ const loadOutlets = async () => {
     window.populateShiftOptions && window.populateShiftOptions();
 
     // Populate presensi outlet select
+    // v88: dropdown titik lokasi presensi difilter per role —
+    // Tim Operasional hanya melihat & memilih outlet penugasannya sendiri.
     const pSelect = document.getElementById('presensi-outlet-select');
     const rSelect = document.getElementById('rep-form-outlet');
     if (pSelect && outletList.length > 0) {
-      pSelect.innerHTML = '<option value="">— Pilih outlet —</option>' + 
-        outletList.map(o => `<option value="${o.id}">${o.name}${o.radius_meters ? ' (Radius: ' + o.radius_meters + 'm)' : ''}</option>`).join('');
-      console.log('Dropdown presensi terisi dengan', outletList.length, 'outlet');
+      window.refreshPresensiOutletOptions();
+      console.log('Dropdown presensi terisi dengan', outletList.length, 'outlet (difilter per role)');
     } else if (pSelect) {
       pSelect.innerHTML = '<option value="">— Belum ada outlet —</option>';
       AppState.outletsLoadError = 'Tidak ada outlet di database. Jalankan setupBaru di Apps Script, atau tambah outlet via menu "Titik Lokasi Outlet".';
@@ -3328,29 +3374,30 @@ const setPresensiButtonsEnabled = window.setPresensiButtonsEnabled;
 // Helper: hitung state lokasi presensi SAAT INI berdasarkan outlet terpilih + GPS device.
 // Returns { ok: true, outlet, dist, radius, effectiveLimit } ketika dalam radius,
 // atau { ok: false, reason, outlet, dist, radius, nearestOutlet } ketika tidak.
-// reason: 'no_outlet' | 'gps_not_ready' | 'outlet_no_coords' | 'out_of_radius'
+// reason: 'no_outlet' | 'gps_not_ready' | 'wrong_outlet' | 'outlet_no_coords' | 'out_of_radius'
+// v88: Geofence berlaku utk SEMUA user. Tim Operasional hanya boleh di outlet
+// penugasannya sendiri; Management/SUPER ADMIN boleh di titik terdaftar manapun.
 window.getPresensiLocationState = () => {
-  // v74: Bypass geofence utk Management & geofence_exempt users.
-  // Mereka boleh presensi dari lokasi manapun — return ok=true tanpa cek outlet/GPS.
-  if (isGeofenceExemptUser_()) {
-    const outletSelect = document.getElementById('presensi-outlet-select');
-    const outletId = outletSelect ? outletSelect.value : '';
-    const outlet = (AppState.outlets || []).find(o => String(o.id) === String(outletId));
-    return { ok: true, outlet: outlet || null, dist: 0, radius: 0, effectiveLimit: 0, bypass: true };
-  }
   const outletSelect = document.getElementById('presensi-outlet-select');
   const outletId = outletSelect ? outletSelect.value : '';
   const outlet = (AppState.outlets || []).find(o => String(o.id) === String(outletId));
   if (!outlet) return { ok: false, reason: 'no_outlet' };
   if (!AppState.gpsOk) return { ok: false, reason: 'gps_not_ready' };
+  // v88: Tim Operasional — outlet yang dipilih HARUS outlet penugasannya sendiri
+  if (!isGeofenceExemptUser_()) {
+    const u = AppState.currentUser || {};
+    if (String(outletId) !== String(u.outlet_id || '')) {
+      return { ok: false, reason: 'wrong_outlet', outlet, ownOutletId: u.outlet_id, ownOutletName: u.outlet_name };
+    }
+  }
   const oLat = parseFloat(outlet.lat), oLon = parseFloat(outlet.lon);
   if (isNaN(oLat) || isNaN(oLon)) return { ok: false, reason: 'outlet_no_coords', outlet };
   const radius = Number(outlet.radius_meters) || 100;
   const effectiveLimit = radius + GEOFENCE_TOLERANCE_METERS;
   const dist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, oLat, oLon);
-  // Cari outlet terdekat yang dalam radius (untuk saran pindah outlet)
+  // Cari titik terdekat yang BOLEH dipakai user (untuk saran pindah titik)
   let nearestOutlet = null, nearestDist = Infinity;
-  (AppState.outlets || []).forEach(function (o) {
+  (getAllowedPresensiOutlets() || []).forEach(function (o) {
     const nLat = parseFloat(o.lat), nLon = parseFloat(o.lon);
     if (isNaN(nLat) || isNaN(nLon)) return;
     const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, nLat, nLon);
@@ -3373,16 +3420,16 @@ window.checkGpsDistance = () => {
   // DEFAULT: tombol presensi di-disable sampai dibuktikan user berada di dalam radius.
   setPresensiButtonsEnabled(false);
 
-  // v74: Bypass geofence utk Management & geofence_exempt users.
-  // v87: SEMUA user bypass geofence — banner "Mode Presensi Fleksibel" DIHAPUS,
-  //      diganti status normal "Presensi Aktif" tanpa teks khusus.
-  if (isGeofenceExemptUser_()) {
-    banner.className = 'geofence-alert geofence-valid';
-    text.innerHTML = `<strong>✅ Presensi Aktif</strong>
-      <br><span style="font-size:12px; opacity:0.9;">Jam presensi mengikuti shift terpilih. Pilih outlet untuk informasi record.</span>`;
-    setPresensiButtonsEnabled(true);
-    if (window.feather) feather.replace();
-    return;
+  // v88: TIDAK ADA bypass geofence — semua role wajib presensi di titik lokasi
+  // terdaftar & di dalam radius. Banner "Mode Presensi Fleksibel" DIHAPUS.
+  // Tim Operasional: auto-pilih outlet penugasan mereka di dropdown.
+  if (!isGeofenceExemptUser_()) {
+    const u = AppState.currentUser || {};
+    const ownId = String(u.outlet_id || '');
+    if (ownId && String(outletSelect.value || '') !== ownId) {
+      const ownExists = (AppState.outlets || []).some(o => String(o.id) === ownId);
+      if (ownExists) outletSelect.value = ownId;
+    }
   }
 
   // === STATE: Outlet gagal dimuat — tampilkan error + tombol retry + diagnosa ===
@@ -3411,6 +3458,24 @@ window.checkGpsDistance = () => {
     banner.className = 'geofence-alert geofence-invalid';
     text.innerHTML = '<strong>Tidak ada outlet.</strong> Hubungi admin untuk menambahkan outlet.';
     return;
+  }
+
+  // v88: Tim Operasional — hanya boleh presensi di outlet penugasannya sendiri.
+  // Jika outlet terpilih bukan outlet mereka (atau akun belum punya outlet), tolak.
+  if (!isGeofenceExemptUser_()) {
+    const uOwn = AppState.currentUser || {};
+    const ownId = String(uOwn.outlet_id || '');
+    if (!ownId || String(outlet.id) !== ownId) {
+      const ownOutlet = (AppState.outlets || []).find(o => String(o.id) === ownId);
+      banner.className = 'geofence-alert geofence-invalid';
+      text.innerHTML = ownOutlet
+        ? `<strong>🚫 Presensi Ditolak</strong> — Anda hanya dapat presensi di outlet penugasan Anda: <strong>${ownOutlet.name}</strong>.
+           <br><span style="font-size:11px; opacity:0.8;">Datanglah ke outlet tersebut lalu lakukan deteksi lokasi.</span>`
+        : `<strong>🚫 Presensi Ditolak</strong> — Akun Anda belum terhubung ke outlet manapun.
+           <br><span style="font-size:11px; opacity:0.8;">Hubungi admin untuk menetapkan outlet penugasan Anda.</span>`;
+      if (window.feather) feather.replace();
+      return;
+    }
   }
 
   // GPS still loading
@@ -3459,11 +3524,11 @@ window.checkGpsDistance = () => {
   outlet.lat = parseLat;
   outlet.lon = parseLon;
 
-  // === AUTO-DETECT: Cari outlet terdekat yang dalam radius ===
+  // === AUTO-DETECT: Cari titik terdekat yang dalam radius (hanya titik yang BOLEH dipakai user) ===
   let nearestOutlet = null;
   let nearestDist = Infinity;
   let nearestValid = false;
-  AppState.outlets.forEach(function (o) {
+  (getAllowedPresensiOutlets() || []).forEach(function (o) {
     const oLat = parseFloat(o.lat);
     const oLon = parseFloat(o.lon);
     if (isNaN(oLat) || isNaN(oLon)) return;
@@ -3496,10 +3561,10 @@ window.checkGpsDistance = () => {
   const isValid = dist <= (radiusLimit + GEOFENCE_TOLERANCE_METERS);
 
   if (isValid) {
-    // Cek apakah ada outlet lain yang lebih dekat
+    // Cek apakah ada titik lain yang BOLEH dipakai user & lebih dekat
     let closerOutlet = null;
     let closerDist = dist;
-    AppState.outlets.forEach(function (o) {
+    (getAllowedPresensiOutlets() || []).forEach(function (o) {
       if (typeof o.lat !== 'number' || typeof o.lon !== 'number') return;
       if (o.id === outlet.id) return;
       const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, o.lat, o.lon);
@@ -3641,13 +3706,19 @@ window.submitAttendanceCheckIn = async () => {
 
   // === GEOFENCING KETAT: Client-side guard — TOLAK sebelum upload kalau di luar radius ===
   // Backend juga akan menolak, tapi guard ini menghemat upload selfie & lock.
+  // v88: berlaku utk SEMUA user (tidak ada bypass).
   const locState = getPresensiLocationState();
   if (locState.reason === 'no_outlet') {
-    showToast('Pilih outlet presensi terlebih dahulu.', 'warning');
+    showToast('Pilih titik lokasi presensi terlebih dahulu.', 'warning');
     return;
   }
   if (locState.reason === 'gps_not_ready') {
     showToast('GPS belum siap. Tekan tombol "Deteksi Lokasi GPS" lalu coba lagi.', 'warning');
+    return;
+  }
+  if (locState.reason === 'wrong_outlet') {
+    showToast(`Presensi hanya dapat dilakukan di outlet Anda: ${locState.ownOutletName || locState.ownOutletId || '-'}. Presensi di outlet lain tidak diizinkan.`, 'error');
+    window.checkGpsDistance && window.checkGpsDistance();
     return;
   }
   if (locState.reason === 'outlet_no_coords') {
@@ -3656,8 +3727,8 @@ window.submitAttendanceCheckIn = async () => {
   }
   if (locState.reason === 'out_of_radius' || !locState.ok) {
     const msg = locState.outlet
-      ? `Presensi DITOLAK. Anda berada ${locState.dist}m dari ${locState.outlet.name} (batas radius: ${locState.radius}m). Mendekatlah ke outlet lalu coba lagi.`
-      : 'Presensi DITOLAK. Anda berada di luar radius outlet. Mendekatlah ke lokasi outlet lalu coba lagi.';
+      ? `Presensi DITOLAK. Anda berada ${locState.dist}m dari ${locState.outlet.name} (batas radius: ${locState.radius}m). Mendekatlah ke titik lokasi lalu coba lagi.`
+      : 'Presensi DITOLAK. Anda berada di luar radius titik lokasi. Mendekatlah ke titik lokasi terdaftar lalu coba lagi.';
     showToast(msg, 'error');
     // Update banner biar pesan di luar radius konsisten dengan toast
     window.checkGpsDistance && window.checkGpsDistance();
@@ -3774,21 +3845,38 @@ window.submitAttendanceCheckOut = async () => {
   }
 
   // === GEOFENCING KETAT: Client-side guard untuk check-out ===
-  // Validasi jarak ke outlet tempat user check-in (myCheckInToday.outlet_id).
-  // Backend juga akan menolak, tapi guard ini menghemat upload selfie.
-  // v74: Skip utk Management & geofence_exempt users (presensi pulang fleksibel).
-  if (!isGeofenceExemptUser_()) {
-    const checkInOutlet = (AppState.outlets || []).find(o => String(o.id) === String(myCheckInToday.outlet_id));
-    if (checkInOutlet) {
-      const coLat = parseFloat(checkInOutlet.lat), coLon = parseFloat(checkInOutlet.lon);
-      const coRadius = Number(checkInOutlet.radius_meters) || 100;
-      if (!isNaN(coLat) && !isNaN(coLon)) {
-        const coDist = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, coLat, coLon);
-        if (coDist > (coRadius + GEOFENCE_TOLERANCE_METERS)) {
-          showToast(`Presensi pulang DITOLAK. Anda berada ${coDist}m dari ${checkInOutlet.name} (batas radius: ${coRadius}m). Mendekatlah ke outlet tempat Anda presensi masuk lalu coba lagi.`, 'error');
-          return;
-        }
+  // v88: berlaku utk SEMUA user (tidak ada bypass).
+  // - Tim Operasional : harus di dalam radius outlet penugasannya sendiri.
+  // - Management / SUPER ADMIN / geofence_exempt : cukup berada di dalam radius
+  //   SALAH SATU titik lokasi terdaftar (Kantor/Outlet) — mis. masuk di Kantor,
+  //   pulang di Outlet.
+  {
+    const allowedList = getAllowedPresensiOutlets() || [];
+    let coValid = false, coBest = null; // { outlet, dist }
+    allowedList.forEach(o => {
+      const aLat = parseFloat(o.lat), aLon = parseFloat(o.lon);
+      if (isNaN(aLat) || isNaN(aLon)) return;
+      const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, aLat, aLon);
+      if (d <= ((Number(o.radius_meters) || 100) + GEOFENCE_TOLERANCE_METERS)) {
+        coValid = true;
+        if (!coBest || d < coBest.dist) coBest = { outlet: o, dist: d };
       }
+    });
+    if (!coValid) {
+      // Susun pesan error informatif dgn titik terdekat yang boleh dipakai
+      if (allowedList.length === 0) {
+        showToast('Presensi pulang DITOLAK. Akun Anda belum terhubung ke titik lokasi manapun. Hubungi admin untuk menetapkan outlet penugasan Anda.', 'error');
+        return;
+      }
+      let near = null, nearDist = Infinity;
+      allowedList.forEach(o => {
+        const aLat = parseFloat(o.lat), aLon = parseFloat(o.lon);
+        if (isNaN(aLat) || isNaN(aLon)) return;
+        const d = calculateHaversine(AppState.deviceCoordinates.lat, AppState.deviceCoordinates.lon, aLat, aLon);
+        if (d < nearDist) { nearDist = d; near = o; }
+      });
+      showToast(`Presensi pulang DITOLAK. Anda tidak berada di dalam radius titik lokasi manapun${near ? ' (titik terdekat: ' + near.name + ', ' + nearDist + 'm)' : ''}. Mendekatlah ke titik lokasi terdaftar lalu coba lagi.`, 'error');
+      return;
     }
   }
 
