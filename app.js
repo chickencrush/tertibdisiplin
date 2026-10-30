@@ -166,6 +166,122 @@ const showToast = (message, type = 'info') => {
   }, 4000);
 };
 
+// ============================================================================
+// v85.3: API SETUP DIAGNOSTIC — deteksi masalah login SEBELUM fetch
+// Tampilkan pesan error spesifik (bukan generic "kesalahan koneksi")
+// User juga bisa panggil manual: diagnoseApiSetup() di Console (F12)
+// ============================================================================
+const _tdDiagInternal = () => {
+  const checks = [];
+  const log = [];
+
+  // Check 1: window.TD_CONFIG ada?
+  if (typeof window.TD_CONFIG === 'undefined') {
+    checks.push({ ok: false, key: 'TD_CONFIG_MISSING', msg: 'config.js tidak termuat. Pastikan file config.js ada di repo GitHub Pages dan berisi window.TD_CONFIG = { API_URL: "..." }.' });
+    log.push('❌ window.TD_CONFIG tidak ditemukan — config.js belum di-upload atau gagal load');
+  } else {
+    log.push('✅ window.TD_CONFIG ditemukan');
+  }
+
+  // Check 2: API_URL terisi?
+  const cfg = window.TD_CONFIG || {};
+  if (!cfg.API_URL) {
+    checks.push({ ok: false, key: 'API_URL_EMPTY', msg: 'API_URL belum diisi di config.js. Buka file config.js di repo GitHub Pages, ganti nilai API_URL dengan link /exec dari Apps Script Anda.' });
+    log.push('❌ cfg.API_URL kosong');
+  } else if (cfg.API_URL.indexOf('GANTI_DENGAN') >= 0) {
+    checks.push({ ok: false, key: 'API_URL_PLACEHOLDER', msg: 'API_URL masih placeholder "GANTI_DENGAN_LINK_EXEC_APPS_SCRIPT". Edit config.js, isi dengan URL /exec asli dari Apps Script.' });
+    log.push('❌ cfg.API_URL masih placeholder: ' + cfg.API_URL);
+  } else if (cfg.API_URL.indexOf('https://script.google.com/') !== 0) {
+    checks.push({ ok: false, key: 'API_URL_INVALID', msg: 'API_URL tidak valid. Harus berformat https://script.google.com/macros/s/.../exec. Saat ini: ' + cfg.API_URL.substring(0, 60) });
+    log.push('❌ cfg.API_URL format salah: ' + cfg.API_URL.substring(0, 80));
+  } else {
+    log.push('✅ cfg.API_URL valid: ' + cfg.API_URL.substring(0, 80) + '...');
+  }
+
+  // Check 3: api-client.js termuat? (cek apakah window.fetch sudah di-override)
+  // Cara cek: api-client.js menambahkan property _tdApiClientLoaded = true ke window
+  if (!window._tdApiClientLoaded) {
+    // Fallback detection: cek apakah fetch.toString() mengandung signature api-client
+    const fetchStr = (window.fetch && window.fetch.toString()) || '';
+    const isOverridden = fetchStr.indexOf('apiPath') >= 0 || fetchStr.indexOf('TD_CONFIG') >= 0 || fetchStr.indexOf('callApi') >= 0;
+    if (!isOverridden) {
+      checks.push({ ok: false, key: 'API_CLIENT_NOT_LOADED', msg: 'api-client.js tidak termuat. Pastikan file api-client.js ada di repo GitHub Pages (di folder yang sama dengan index.html). Buka URL ini di browser untuk verifikasi: https://chickencrush.github.io/tertibdisiplin/api-client.js' });
+      log.push('❌ api-client.js tidak termuat (window.fetch belum di-override)');
+    } else {
+      log.push('✅ api-client.js terdeteksi (window.fetch sudah di-override)');
+    }
+  } else {
+    log.push('✅ api-client.js termuat');
+  }
+
+  // Check 4: Service Worker versi lama?
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    const swUrl = navigator.serviceWorker.controller.scriptURL || '';
+    log.push('ℹ️ SW controller active: ' + swUrl);
+  }
+
+  // Return result
+  const firstFail = checks.find(c => !c.ok);
+  if (firstFail) {
+    return {
+      ok: false,
+      key: firstFail.key,
+      message: firstFail.msg,
+      log: log
+    };
+  }
+
+  return {
+    ok: true,
+    message: 'Semua check API setup OK. Siap untuk login.',
+    log: log
+  };
+};
+window._tdDiagInternal = _tdDiagInternal;
+window.diagnoseApiSetup = () => {
+  const r = _tdDiagInternal();
+  console.group('%c[TERTIB DISIPLIN] diagnoseApiSetup()', 'color:#701c34; font-weight:bold; font-size:13px;');
+  console.log('Status:', r.ok ? '✅ OK' : '❌ FAIL');
+  console.log('Pesan:', r.message);
+  console.log('Detail log:');
+  r.log.forEach(l => console.log('  ' + l));
+  console.log('window.TD_CONFIG:', window.TD_CONFIG);
+  console.log('window.fetch (apakah sudah di-override?):', window.fetch.toString().substring(0, 200));
+  console.groupEnd();
+  return r;
+};
+// Helper agar user bisa jalankan: tdHelp()
+window.tdHelp = () => {
+  console.log('%c=== TERTIB DISIPLIN — Troubleshooting Login ===', 'color:#701c34; font-weight:bold; font-size:14px;');
+  console.log('');
+  console.log('%c1. Jalankan diagnoseApiSetup() untuk cek status API setup', 'font-weight:bold;');
+  console.log('   Ketik: diagnoseApiSetup()');
+  console.log('');
+  console.log('%c2. Cek file yang harus ada di repo GitHub Pages Anda:', 'font-weight:bold;');
+  console.log('   - config.js        (berisi window.TD_CONFIG.API_URL = "https://script.google.com/.../exec")');
+  console.log('   - api-client.js    (file penghubung fetch ke Apps Script)');
+  console.log('   - app.js');
+  console.log('   - sw.js');
+  console.log('   - index.html');
+  console.log('   - style.css');
+  console.log('   - manifest.json');
+  console.log('   - icons/ folder (5 file PNG)');
+  console.log('');
+  console.log('%c3. Verifikasi URL ini di browser (harus return file, bukan 404):', 'font-weight:bold;');
+  console.log('   https://chickencrush.github.io/tertibdisiplin/config.js');
+  console.log('   https://chickencrush.github.io/tertibdisiplin/api-client.js');
+  console.log('');
+  console.log('%c4. Untuk unregister Service Worker lama (force update):', 'font-weight:bold;');
+  console.log('   navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).then(() => location.reload())');
+  console.log('');
+  console.log('%c5. Cek Apps Script Web App URL:', 'font-weight:bold;');
+  console.log('   - Buka https://script.google.com → project TERTIB DISIPLIN');
+  console.log('   - Deploy → Manage deployments → Edit deployment');
+  console.log('   - Pastikan "Web app" type, Execute as: Me, Who has access: Anyone');
+  console.log('   - Copy URL yang berakhir /exec → paste ke config.js');
+  console.log('');
+};
+
 // === MODERN UI HELPERS ===
 // Animate number count-up for stat cards
 const animateCountUp = (el, target, duration = 800) => {
@@ -295,15 +411,10 @@ const MANAGEMENT_DIVISIONS = ['HRD', 'BM', 'Finance', 'QC', 'Creative', 'DOS', '
 const OPERASIONAL_DIVISIONS = ['SPV', 'Head Kitchen', 'Head Bar', 'Kasir', 'Server', 'Kitchen', 'Bar', 'PA', 'CS'];
 
 // v74: Deteksi apakah user boleh presensi fleksibel (bypass geofence).
-// Management division → auto-bypass. Operasional dgn flag geofence_exempt=1 → juga bypass.
-// Dipakai di checkGpsDistance (skip validation) & submitAttendanceCheckOut (skip same-outlet check).
-const isGeofenceExemptUser_ = () => {
-  const u = AppState.currentUser;
-  if (!u) return false;
-  if (MANAGEMENT_DIVISIONS.indexOf(u.division) >= 0) return true;
-  if (Number(u.geofence_exempt) === 1) return true;
-  return false;
-};
+// v87: SEMUA user bisa presensi dari lokasi manapun (tanpa batasan radius outlet).
+// Fungsi ini selalu return true — geofence validation dimatikan untuk semua user.
+// Jarak ke outlet masih dihitung untuk informasi record, tapi tidak memblokir presensi.
+const isGeofenceExemptUser_ = () => true;
 window.isGeofenceExemptUser_ = isGeofenceExemptUser_;
 const SHIFT_OPTIONS_MANAGEMENT = [
   { value: 'Shift Management', label: 'Shift Management (08:30 - 16:30)' },
@@ -828,6 +939,17 @@ const handleAuthLogin = async (e) => {
     return;
   }
 
+  // v85.3: Pre-flight diagnostic check — berikan pesan error spesifik SEBELUM fetch
+  // agar user tahu penyebab sebenarnya (bukan generic "kesalahan koneksi")
+  const diag = (typeof window.diagnoseApiSetup === 'function')
+    ? window.diagnoseApiSetup()
+    : _tdDiagInternal();
+  if (!diag.ok) {
+    showLoginError(diag.message);
+    console.error('[TERTIB DISIPLIN] Login diblokir oleh pre-flight check:', diag);
+    return;
+  }
+
   submitBtn.disabled = true;
   submitBtn.textContent = 'Memverifikasi...';
   const slowHint = setTimeout(() => { submitBtn.textContent = 'Menghubungi server, mohon tunggu...'; }, 4000);
@@ -852,12 +974,25 @@ const handleAuthLogin = async (e) => {
       window.updateTopbarInstallButton && window.updateTopbarInstallButton();
       window.maybeAutoOpenInstallModal && window.maybeAutoOpenInstallModal();
     } else {
-      const msg = data.detail || 'Login gagal. Periksa kembali NIP/Email dan password Anda.';
+      const msg = data.detail || data.message || 'Login gagal. Periksa kembali NIP/Email dan password Anda.';
       showLoginError(msg);
       showToast(msg, 'error');
     }
   } catch (err) {
-    const msg = 'Terjadi kesalahan koneksi saat login. Periksa internet lalu coba lagi.';
+    // v85.3: Error message spesifik berdasarkan tipe error
+    console.error('[TERTIB DISIPLIN] Login fetch error:', err);
+    let msg = 'Terjadi kesalahan koneksi saat login. ';
+    if (err && err.name === 'AbortError') {
+      msg = 'Login timeout (30 detik). Server Apps Script mungkin sedang sibuk. Coba lagi.';
+    } else if (err instanceof SyntaxError) {
+      msg = 'Server merespons dengan format yang tidak valid (kemungkinan api-client.js tidak termuat atau URL Apps Script salah). Buka Console (F12) untuk detail. Ketik: diagnoseApiSetup()';
+    } else if (err && err.message && err.message.indexOf('Failed to fetch') >= 0) {
+      msg = 'Koneksi gagal. Periksa internet, atau pastikan file api-client.js sudah di-upload ke GitHub Pages. Ketik diagnoseApiSetup() di Console.';
+    } else if (err && err.message) {
+      msg = 'Kesalahan: ' + err.message + '. Ketik diagnoseApiSetup() di Console (F12) untuk diagnosa.';
+    } else {
+      msg += 'Periksa internet lalu coba lagi. Ketik diagnoseApiSetup() di Console (F12).';
+    }
     showLoginError(msg);
     showToast(msg, 'error');
   } finally {
@@ -3239,17 +3374,12 @@ window.checkGpsDistance = () => {
   setPresensiButtonsEnabled(false);
 
   // v74: Bypass geofence utk Management & geofence_exempt users.
-  // Mereka boleh presensi dari lokasi manapun (kantor pusat, outlet manapun, dll).
-  // Tombol presensi langsung aktif tanpa cek GPS ke outlet.
+  // v87: SEMUA user bypass geofence — banner "Mode Presensi Fleksibel" DIHAPUS,
+  //      diganti status normal "Presensi Aktif" tanpa teks khusus.
   if (isGeofenceExemptUser_()) {
     banner.className = 'geofence-alert geofence-valid';
-    const u = AppState.currentUser || {};
-    const reason = MANAGEMENT_DIVISIONS.indexOf(u.division) >= 0
-      ? 'Akun Management — bebas presensi dari kantor/outlet manapun'
-      : 'Akun dikecualikan (presensi fleksibel)';
-    text.innerHTML = `<strong>✅ Mode Presensi Fleksibel</strong>
-      <br><span style="font-size:12px; opacity:0.9;">${reason}. Jam presensi mengikuti shift terpilih.
-      <br>Pilih outlet terdekat dgn lokasi Anda (opsional — hanya utk informasi record).</span>`;
+    text.innerHTML = `<strong>✅ Presensi Aktif</strong>
+      <br><span style="font-size:12px; opacity:0.9;">Jam presensi mengikuti shift terpilih. Pilih outlet untuk informasi record.</span>`;
     setPresensiButtonsEnabled(true);
     if (window.feather) feather.replace();
     return;
