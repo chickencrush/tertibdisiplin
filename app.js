@@ -897,6 +897,9 @@ const initAuthSession = () => {
             // Refresh nama user di topbar
             const nameEl = document.getElementById('current-user-name');
             if (nameEl) nameEl.textContent = freshUser.name;
+            // v92.2: Update indikator SPK juga saat SESSION RESTORE (bukan hanya login
+            // fresh). Tidak ada lagi modal auto-popup — hanya titik merah di pill Profile.
+            window.checkAgreementGate && window.checkAgreementGate(freshUser);
           }
         }).catch(err => {
           // Gagal re-fetch (offline / backend error) — abaikan, lanjut dgn cached user
@@ -1687,8 +1690,9 @@ const setCurrentUser = (user) => {
   localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(user));
   // v85: Start auto-check deadline notifikasi setelah login
   window.startDeadlineAutoCheck && window.startDeadlineAutoCheck();
-  // v91: Cek gate SPK Digital — kalau agreement_required=true, tampilkan modal
-  // yang tidak bisa di-dismiss sampai user klik SETUJUI.
+  // v92.2: SPK tidak lagi auto-muncul saat login. checkAgreementGate hanya
+  // memperbarui indikator (titik merah di pill Profile). SPK dibuka lewat klik:
+  // Profile → kartu SPK → tombol "Baca & Setujui SPK".
   window.checkAgreementGate && window.checkAgreementGate(user);
 };
 
@@ -5740,6 +5744,10 @@ const renderProfileView = () => {
   // Also update display name in identity card
   const displayName = document.getElementById('profile-display-name');
   if (displayName) displayName.textContent = u.name || '-';
+
+  // v92.1: Muat status SPK + dokumen persyaratan (fitur SPK Digital v91).
+  // Dipanggil di sini (bukan lewat hook luar) supaya tidak menimpa const.
+  window.loadProfileAgreementStatus && window.loadProfileAgreementStatus();
 };
 // Expose to window so switchView can call it
 window.renderProfileView = renderProfileView;
@@ -8007,33 +8015,37 @@ const TD_DOC_LABELS = {
   FOTO_DIRI: 'Foto Diri (pas foto)'
 };
 
-// v91: Cek gate SPK — dipanggil setCurrentUser setiap login/session-restore.
-// Kalau user.agreement_required=true, tampilkan modal gate (tidak bisa di-dismiss).
+// v92.2: SPK TIDAK LAGI auto-muncul saat login. Fungsi ini dipanggil
+// setCurrentUser (login fresh) & session restore, tapi hanya:
+//   1. menyimpan status pending di AppState,
+//   2. menampilkan/menyembunyikan titik merah kecil di pill Profile (topbar).
+// SPK dibuka HANYA lewat klik: Profile → kartu "Surat Perjanjian Kerja &
+// Persyaratan" → tombol "Baca & Setujui SPK".
 window.checkAgreementGate = (user) => {
   if (!user) return;
-  const gateModal = document.getElementById('modal-agreement-gate');
-  if (!gateModal) return;
-  if (user.agreement_required) {
-    console.log('[v91 SPK] Gate terbuka — user belum agree SPK');
-    AppState.__agreementState.isGateOpen = true;
-    openModal('modal-agreement-gate');
-    // Load SPK content
-    window.loadAgreementInto && window.loadAgreementInto('agreement-gate-content');
-    // Setup checkbox + button listener (sekali saja)
-    const cb = document.getElementById('agreement-gate-checkbox');
-    const btn = document.getElementById('btn-agreement-agree');
-    if (cb && btn) {
-      cb.onchange = () => { btn.disabled = !cb.checked; };
-      btn.onclick = () => window.submitAgreementAgree && window.submitAgreementAgree();
-    }
-  } else {
-    // Sudah agree → tutup gate kalau kebetulan terbuka
-    if (AppState.__agreementState.isGateOpen) {
-      AppState.__agreementState.isGateOpen = false;
-      closeModal('modal-agreement-gate');
-    }
+  AppState.__agreementState.pending = !!user.agreement_required;
+  window.updateAgreementBadge && window.updateAgreementBadge();
+};
+
+// v92.2: Titik merah kecil di pill Profile (topbar) kalau SPK belum disetujui.
+// Non-blocking — hanya penanda, tidak mengganggu penggunaan aplikasi.
+window.updateAgreementBadge = () => {
+  const pill = document.getElementById('user-profile-btn');
+  if (!pill) return;
+  let dot = document.getElementById('spk-pill-badge');
+  const pending = !!(AppState.currentUser && AppState.currentUser.agreement_required);
+  if (pending && !dot) {
+    try { if (getComputedStyle(pill).position === 'static') pill.style.position = 'relative'; } catch (e) { pill.style.position = 'relative'; }
+    dot = document.createElement('span');
+    dot.id = 'spk-pill-badge';
+    dot.title = 'SPK belum disetujui — buka Profile untuk membaca & menyetujui';
+    dot.style.cssText = 'position:absolute; top:-3px; right:-3px; width:11px; height:11px; background:#ef4444; border-radius:50%; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,0.3); pointer-events:none; z-index:5;';
+    pill.appendChild(dot);
+  } else if (!pending && dot) {
+    dot.remove();
   }
 };
+window.updateAgreementBadge = window.updateAgreementBadge;
 
 // v91: Load SPK dari backend + render ke container (gate atau view modal).
 window.loadAgreementInto = async (containerId) => {
@@ -8044,7 +8056,10 @@ window.loadAgreementInto = async (containerId) => {
   try {
     const res = await fetch('/api/agreement');
     if (!res.ok) {
-      container.innerHTML = '<p style="color:#dc2626; text-align:center; padding:20px;">Gagal memuat SPK. Coba lagi nanti. (HTTP ' + res.status + ')</p>';
+      // v92.1: Pesan jelas — 404 hampir pasti karena backend belum di-deploy v91+
+      container.innerHTML = res.status === 404
+        ? '<div style="padding:16px; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; color:#991b1b;"><strong>⚠️ Endpoint /api/agreement tidak ditemukan (404).</strong><p style="margin:6px 0 0 0; font-size:12px;">Backend Code.gs belum di-update ke v91+. Buka Apps Script → ganti Code.gs dengan versi terbaru → Deploy &gt; <strong>New version</strong> → tunggu 30 detik → refresh halaman ini.</p></div>'
+        : '<p style="color:#dc2626; text-align:center; padding:20px;">Gagal memuat SPK. Coba lagi nanti. (HTTP ' + res.status + ')</p>';
       return;
     }
     const data = await res.json();
@@ -8112,7 +8127,9 @@ window.submitAgreementAgree = async () => {
         AppState.currentUser.agreement_template_id = data.template_id;
         try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(AppState.currentUser)); } catch (e) { /* abaikan */ }
       }
-      // Tutup gate
+      // v92.2: Hilangkan titik merah indikator SPK di pill Profile
+      window.updateAgreementBadge && window.updateAgreementBadge();
+      // Tutup modal persetujuan (kalau terbuka)
       AppState.__agreementState.isGateOpen = false;
       closeModal('modal-agreement-gate');
       // Reset checkbox utk next time
@@ -8141,10 +8158,18 @@ window.submitAgreementAgree = async () => {
 };
 window.submitAgreementAgree = window.submitAgreementAgree;
 
-// v91: Buka modal baca SPK (dari Profile section — sudah agree, sekadar baca ulang).
+// v92.2: Buka modal SPK — HANYA lewat klik dari Profile (tidak auto-popup saat login).
+//   Belum setuju → modal persetujuan (checkbox + tombol SETUJUI).
+//   Sudah setuju → modal baca ulang (bisa ditutup dengan ×).
 window.openAgreementModal = () => {
-  openModal('modal-agreement-view');
-  window.loadAgreementInto && window.loadAgreementInto('agreement-view-content');
+  const needAgree = !!(AppState.currentUser && AppState.currentUser.agreement_required);
+  if (needAgree) {
+    openModal('modal-agreement-gate');
+    window.loadAgreementInto && window.loadAgreementInto('agreement-gate-content');
+  } else {
+    openModal('modal-agreement-view');
+    window.loadAgreementInto && window.loadAgreementInto('agreement-view-content');
+  }
 };
 window.openAgreementModal = window.openAgreementModal;
 
@@ -8154,7 +8179,12 @@ window.loadProfileAgreementStatus = async () => {
   if (!statusBox) return;
   try {
     const res = await fetch('/api/agreement');
-    if (!res.ok) { statusBox.innerHTML = '<p style="font-size:12px; color:#94a3b8;">Gagal memuat status SPK.</p>'; return; }
+    if (!res.ok) {
+      statusBox.innerHTML = res.status === 404
+        ? '<div style="padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b; font-size:11.5px;"><strong>⚠️ Backend belum v91+.</strong> Endpoint /api/agreement tidak ditemukan — deploy ulang Code.gs (Deploy &gt; New version).</div>'
+        : '<p style="font-size:12px; color:#94a3b8;">Gagal memuat status SPK (HTTP ' + res.status + ').</p>';
+      return;
+    }
     const data = await res.json();
     const badge = document.getElementById('profile-agreement-badge');
     const btnOpen = document.getElementById('btn-open-agreement');
@@ -8191,8 +8221,8 @@ window.loadProfileAgreementStatus = async () => {
 window.loadProfileAgreementStatus = window.loadProfileAgreementStatus;
 
 // v91: Simpan data diri SPK (tempat_lahir, alamat, dll).
-window.saveProfileSpkData = async () => {
-  const btn = event && event.target;
+window.saveProfileSpkData = async (ev) => {
+  const btn = ev && ev.target ? (ev.target.closest('button') || ev.target) : null;
   const original = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i data-feather="loader" style="width:12px; height:12px; animation:spin 1s linear infinite;"></i> Menyimpan...'; if (window.feather) feather.replace(); }
   try {
@@ -8333,13 +8363,12 @@ window.viewProfileDoc = (url, caption) => {
 };
 window.viewProfileDoc = window.viewProfileDoc;
 
-// v91: Hook renderProfileView supaya load status SPK + docs otomatis.
-const __originalRenderProfileView_v91_ = renderProfileView;
-renderProfileView = function () {
-  __originalRenderProfileView_v91_.apply(this, arguments);
-  // v91: Setelah render profile standard, load SPK status + docs
-  window.loadProfileAgreementStatus && window.loadProfileAgreementStatus();
-};
+// v92.1: Hook renderProfileView LAMA DIHAPUS — sebelumnya menimpa const
+// renderProfileView dan menyebabkan TypeError "Assignment to constant variable"
+// yang menghentikan seluruh eksekusi blok v92 di bawahnya (fungsi Panel Super
+// Admin SPK tidak pernah terdefinisi + status SPK di Profile stuck "Memuat...").
+// Sekarang pemanggilan loadProfileAgreementStatus dipindah ke DALAM body
+// renderProfileView asli (lihat deklarasi const renderProfileView di atas).
 window.renderProfileView = renderProfileView;
 
 // ============================================================================
