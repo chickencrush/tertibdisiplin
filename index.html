@@ -1404,6 +1404,70 @@
               </div>
             </div>
 
+            <!-- v91: Surat Perjanjian Kerja (SPK) Digital + Persyaratan Karyawan -->
+            <div class="modern-card" id="profile-agreement-card">
+              <div class="card-title-row">
+                <div>
+                  <h3>Surat Perjanjian Kerja &amp; Persyaratan</h3>
+                  <p style="font-size:12px; color:#64748b;">Baca Surat Perjanjian Kerja (SPK), setujui, lalu unggah persyaratan karyawan.</p>
+                </div>
+                <span class="card-badge-tag" id="profile-agreement-badge" style="background:#fef3c7; color:#92400e;">Menunggu</span>
+              </div>
+
+              <!-- Status SPK -->
+              <div id="profile-agreement-status-box" style="margin-top:14px; padding:12px; border-radius:10px; border:1px solid #e2e8f0; background:#f8fafc;">
+                <div id="profile-agreement-status-loading" style="text-align:center; color:#64748b; font-size:13px;">
+                  <i data-feather="loader" style="width:14px; height:14px; animation:spin 1s linear infinite;"></i> Memuat status SPK...
+                </div>
+              </div>
+
+              <!-- Tombol: Baca & Setujui SPK -->
+              <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn-primary" id="btn-open-agreement" style="padding:10px 16px; font-size:12px;" onclick="window.openAgreementModal && window.openAgreementModal()">
+                  <i data-feather="file-text" style="width:13px; height:13px;"></i> Baca &amp; Setujui SPK
+                </button>
+              </div>
+
+              <!-- Data diri tambahan (untuk template SPK) -->
+              <details style="margin-top:14px; border-top:1px dashed #e2e8f0; padding-top:14px;">
+                <summary style="cursor:pointer; font-size:12px; font-weight:700; color:#475569;">Data Diri untuk SPK (opsional, tapi disarankan diisi)</summary>
+                <div style="margin-top:12px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label" style="font-size:11px;">Tempat Lahir</label>
+                    <input type="text" class="form-control" id="profile-tempat-lahir" placeholder="Mis. Sleman" style="font-size:12px; padding:8px;">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label" style="font-size:11px;">Tanggal Lahir</label>
+                    <input type="date" class="form-control" id="profile-tanggal-lahir" style="font-size:12px; padding:8px;">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0; grid-column:1/-1;">
+                    <label class="form-label" style="font-size:11px;">Alamat</label>
+                    <input type="text" class="form-control" id="profile-alamat" placeholder="Alamat lengkap sesuai KTP" style="font-size:12px; padding:8px;">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label" style="font-size:11px;">Nomor KTP (16 digit)</label>
+                    <input type="text" class="form-control" id="profile-nomor-ktp" placeholder="3201..." maxlength="30" style="font-size:12px; padding:8px;">
+                  </div>
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label" style="font-size:11px;">Uraian Pekerjaan</label>
+                    <input type="text" class="form-control" id="profile-uraian-pekerjaan" placeholder="Mis. Crew Kitchen - persiapan bahan & masak" style="font-size:12px; padding:8px;">
+                  </div>
+                </div>
+                <button type="button" class="btn-secondary" style="margin-top:10px; padding:8px 14px; font-size:12px;" onclick="window.saveProfileSpkData && window.saveProfileSpkData()">
+                  <i data-feather="save" style="width:12px; height:12px;"></i> Simpan Data Diri SPK
+                </button>
+              </details>
+
+              <!-- Persyaratan Karyawan: 4 dokumen -->
+              <div style="margin-top:16px; border-top:1px dashed #e2e8f0; padding-top:14px;">
+                <h4 style="font-size:13px; margin:0 0 10px 0; color:#475569;">Persyaratan Karyawan</h4>
+                <div id="profile-docs-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                  <!-- Diisi otomatis oleh JS renderProfileDocs_() -->
+                </div>
+                <p style="font-size:10px; color:#94a3b8; margin:10px 0 0 0;">Format: JPG/PNG/PDF, maksimal 5MB per file. Bisa di-upload ulang untuk mengganti.</p>
+              </div>
+            </div>
+
             <!-- Form 2: Ganti Password -->
             <div class="modern-card">
               <div class="card-title-row">
@@ -1528,6 +1592,7 @@
             <button class="tab-pill-btn active" id="sa-tab-btn-overview" onclick="window.saSwitchTab && window.saSwitchTab('overview')">📊 Ringkasan Sistem</button>
             <button class="tab-pill-btn" id="sa-tab-btn-users" onclick="window.saSwitchTab && window.saSwitchTab('users')">👥 Manajemen Pengguna</button>
             <button class="tab-pill-btn" id="sa-tab-btn-shifts" onclick="window.saSwitchTab && window.saSwitchTab('shifts')">🕐 Pengaturan Shift</button>
+            <button class="tab-pill-btn" id="sa-tab-btn-spk" onclick="window.saSwitchTab && window.saSwitchTab('spk')">📄 SPK Digital</button>
             <button class="tab-pill-btn" id="sa-tab-btn-settings" onclick="window.saSwitchTab && window.saSwitchTab('settings')">⚙️ Pengaturan Sistem</button>
           </div>
         </div>
@@ -1644,7 +1709,105 @@
           </div>
         </div>
 
-        <!-- ======== TAB 4: PENGATURAN SISTEM ======== -->
+        <!-- ======== TAB 4: SPK DIGITAL (v92) ======== -->
+        <div id="sa-tab-spk" style="display:none;">
+          <!-- Bagian A: Editor Template SPK -->
+          <div class="modern-card" style="margin-bottom:20px;">
+            <div class="card-title-row">
+              <div>
+                <h3>Editor Template Surat Perjanjian Kerja</h3>
+                <p style="font-size:12px; color:#64748b;">Edit isi SPK. Setiap perubahan → versi bertambah → SEMUA karyawan wajib baca &amp; SETUJUI ulang.</p>
+              </div>
+              <span class="card-badge-tag" id="sa-spk-version-badge" style="background:#f1f5f9; color:#475569;">v-</span>
+            </div>
+
+            <!-- Info placeholder -->
+            <div style="margin-top:14px; padding:12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; font-size:11.5px; color:#1e40af;">
+              <strong>📋 Placeholder yang tersedia:</strong>
+              <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; font-family:monospace; font-size:10.5px;">
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{nomor}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tahun}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{employee_name}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{nip}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tempat_tanggal_lahir}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{alamat}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{email}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{nomor_ktp}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{phone}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{status}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{jabatan}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{uraian_pekerjaan}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{jam_kerja}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{gaji_pokok}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tunjangan_makan}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tunjangan_transport}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tunjangan_jabatan}}</code>
+                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{uang_kerajinan}}</code>
+              </div>
+              <p style="margin:8px 0 0 0; font-size:10.5px; color:#475569;">Placeholder akan otomatis diganti data karyawan saat SPK ditampilkan. Gunakan tag HTML standar (&lt;h3&gt;, &lt;p&gt;, &lt;ul&gt;, &lt;table&gt;, &lt;strong&gt;).</p>
+            </div>
+
+            <!-- Form editor -->
+            <div style="margin-top:14px;">
+              <div class="form-group">
+                <label class="form-label">Judul Template</label>
+                <input type="text" class="form-control" id="sa-spk-title" placeholder="Mis. Perjanjian Kerja PT. CCI" style="font-size:13px;">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Isi Template (HTML)</label>
+                <textarea class="form-control" id="sa-spk-content" rows="14" style="font-family:monospace; font-size:11px; line-height:1.5;" placeholder="<div class='agreement-doc'>...</div>"></textarea>
+                <p style="font-size:10px; color:#94a3b8; margin:4px 0 0 0;">Editor teks polos (HTML). Untuk format rumit, edit di editor HTML eksternal lalu paste di sini.</p>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                <button type="button" class="btn-primary" id="btn-spk-save" style="padding:10px 16px; font-size:12px;" onclick="window.saveSaSpkTemplate && window.saveSaSpkTemplate()">
+                  <i data-feather="save" style="width:13px; height:13px;"></i> Simpan &amp; Versi Baru
+                </button>
+                <button type="button" class="btn-secondary" id="btn-spk-preview" style="padding:10px 16px; font-size:12px;" onclick="window.previewSaSpkTemplate && window.previewSaSpkTemplate()">
+                  <i data-feather="eye" style="width:13px; height:13px;"></i> Preview (dgn data saya)
+                </button>
+                <button type="button" class="btn-secondary" id="btn-spk-reload" style="padding:10px 16px; font-size:12px;" onclick="window.loadSaSpkTemplate && window.loadSaSpkTemplate()">
+                  <i data-feather="refresh-cw" style="width:13px; height:13px;"></i> Muat Ulang
+                </button>
+              </div>
+              <div style="margin-top:10px; padding:10px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:8px; font-size:11px; color:#92400e;">
+                <strong>⚠️ Peringatan:</strong> Setiap klik "Simpan &amp; Versi Baru" akan membuat versi baru + menonaktifkan versi lama. SEMUA karyawan akan diminta menyetujui ulang SPK saat login berikutnya. Pastikan perubahan sudah final sebelum simpan.
+              </div>
+            </div>
+          </div>
+
+          <!-- Bagian B: Status Persetujuan Semua Karyawan -->
+          <div class="modern-card">
+            <div class="card-title-row">
+              <div>
+                <h3>Status Persetujuan SPK &amp; Persyaratan</h3>
+                <p style="font-size:12px; color:#64748b;">Pantau karyawan yang sudah/belum menyetujui SPK &amp; kelengkapan dokumen persyaratan.</p>
+              </div>
+              <span class="card-badge-tag" id="sa-spk-status-count" style="background:#f1f5f9; color:#475569;">-</span>
+            </div>
+            <div style="margin-top:14px; overflow-x:auto;">
+              <table class="data-table" style="width:100%; font-size:12px;">
+                <thead>
+                  <tr style="background:#f8fafc;">
+                    <th style="text-align:left; padding:8px;">NIP</th>
+                    <th style="text-align:left; padding:8px;">Nama</th>
+                    <th style="text-align:left; padding:8px;">Divisi</th>
+                    <th style="text-align:left; padding:8px;">Outlet</th>
+                    <th style="text-align:center; padding:8px;">SPK</th>
+                    <th style="text-align:center; padding:8px;">Disetujui</th>
+                    <th style="text-align:center; padding:8px;">Dokumen</th>
+                    <th style="text-align:center; padding:8px;">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="sa-spk-status-tbody">
+                  <tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:18px;">Klik tab ini untuk memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="font-size:10px; color:#94a3b8; margin:10px 0 0 0;">Legenda: ✅ = sudah setuju SPK versi terbaru / dokumen lengkap (4/4) &nbsp; ⚠️ = belum setuju / dokumen belum lengkap</p>
+          </div>
+        </div>
+
+        <!-- ======== TAB 5: PENGATURAN SISTEM ======== -->
         <div id="sa-tab-settings" style="display:none;">
           <div class="modern-card" style="margin-bottom:20px;">
             <div class="card-title-row">
@@ -2646,6 +2809,50 @@
       <button type="button" class="btn-primary" id="btn-install-action" style="display:none;">
         <i data-feather="download" style="width:13px; height:13px;"></i> <span id="btn-install-action-text">Install Sekarang</span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- v91: Gate Modal — Surat Perjanjian Kerja (tidak bisa di-dismiss sampai SETUJUI) -->
+<div class="modal-overlay" id="modal-agreement-gate" style="display:none; z-index:10000; background:rgba(15, 23, 42, 0.92); align-items:flex-start;">
+  <div class="modal-box" style="max-width:780px; width:96%; margin:20px auto; max-height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+    <div style="padding:18px 24px; background:linear-gradient(135deg, var(--burgundy-primary), var(--burgundy-soft)); color:#fff; flex-shrink:0;">
+      <h3 style="margin:0; font-size:16px;"><i data-feather="file-text" style="width:18px; height:18px; vertical-align:middle;"></i> Surat Perjanjian Kerja</h3>
+      <p style="margin:4px 0 0 0; font-size:11px; opacity:0.9;">Wajib dibaca &amp; disetujui sebelum dapat menggunakan aplikasi.</p>
+    </div>
+    <div id="agreement-gate-content" style="flex:1; overflow-y:auto; padding:24px; background:#fff; font-size:13px; line-height:1.6;">
+      <div style="text-align:center; color:#64748b; padding:40px 0;">
+        <i data-feather="loader" style="width:24px; height:24px; animation:spin 1s linear infinite;"></i>
+        <p style="margin-top:10px;">Memuat dokumen...</p>
+      </div>
+    </div>
+    <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; flex-shrink:0;">
+      <label style="display:flex; align-items:flex-start; gap:10px; font-size:12px; color:#475569; cursor:pointer; margin-bottom:10px;">
+        <input type="checkbox" id="agreement-gate-checkbox" style="margin-top:3px; transform:scale(1.3);">
+        <span>Saya telah membaca dan memahami seluruh isi Surat Perjanjian Kerja ini, dan saya menyetujui untuk mematuhinya.</span>
+      </label>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button type="button" class="btn-primary" id="btn-agreement-agree" style="flex:1; padding:12px; font-size:13px; background:#10b981; justify-content:center;" disabled>
+          <i data-feather="check-circle" style="width:14px; height:14px;"></i> SETUJUI PERJANJIAN KERJA
+        </button>
+      </div>
+      <p style="font-size:10px; color:#94a3b8; margin:8px 0 0 0; text-align:center;">Tombol SETUJUI aktif setelah Anda mencentang kotak di atas.</p>
+    </div>
+  </div>
+</div>
+
+<!-- v91: Modal Lihat SPK (sudah agree — sekadar baca ulang, bisa di-tutup) -->
+<div class="modal-overlay" id="modal-agreement-view" style="display:none; z-index:9999;">
+  <div class="modal-box" style="max-width:780px; width:96%; margin:20px auto; max-height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+    <div style="padding:14px 20px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
+      <h3 style="margin:0; font-size:15px; color:var(--text-dark);">Surat Perjanjian Kerja</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-agreement-view')">&times;</button>
+    </div>
+    <div id="agreement-view-content" style="flex:1; overflow-y:auto; padding:24px; background:#fff; font-size:13px; line-height:1.6;">
+      <div style="text-align:center; color:#64748b; padding:40px 0;">
+        <i data-feather="loader" style="width:24px; height:24px; animation:spin 1s linear infinite;"></i>
+        <p style="margin-top:10px;">Memuat dokumen...</p>
+      </div>
     </div>
   </div>
 </div>

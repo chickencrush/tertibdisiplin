@@ -1687,6 +1687,9 @@ const setCurrentUser = (user) => {
   localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(user));
   // v85: Start auto-check deadline notifikasi setelah login
   window.startDeadlineAutoCheck && window.startDeadlineAutoCheck();
+  // v91: Cek gate SPK Digital — kalau agreement_required=true, tampilkan modal
+  // yang tidak bisa di-dismiss sampai user klik SETUJUI.
+  window.checkAgreementGate && window.checkAgreementGate(user);
 };
 
 // ============ BACKEND VERSION CHECK (warn user jika backend outdated) ============
@@ -7120,7 +7123,7 @@ window.saveJoinDate = async () => {
 
 // ---- Tab switching ----
 window.saSwitchTab = (tab) => {
-  ['overview', 'users', 'shifts', 'settings'].forEach(t => {
+  ['overview', 'users', 'shifts', 'spk', 'settings'].forEach(t => {
     const panel = document.getElementById('sa-tab-' + t);
     const btn = document.getElementById('sa-tab-btn-' + t);
     if (panel) panel.style.display = (t === tab) ? '' : 'none';
@@ -7129,6 +7132,11 @@ window.saSwitchTab = (tab) => {
   if (tab === 'overview') window.loadSaOverview && window.loadSaOverview();
   if (tab === 'users') window.loadSaUsers && window.loadSaUsers();
   if (tab === 'shifts') window.loadSaShifts && window.loadSaShifts();
+  // v92: Tab SPK Digital — load template editor + status table
+  if (tab === 'spk') {
+    window.loadSaSpkTemplate && window.loadSaSpkTemplate();
+    window.loadSaSpkStatus && window.loadSaSpkStatus();
+  }
   if (tab === 'settings') window.loadSaSettings && window.loadSaSettings();
 };
 
@@ -7308,7 +7316,11 @@ window.loadSaOverview = async () => {
       { label: 'Outlet Terdaftar', val: data.total_outlets, color: '#0284c7', icon: '📍' },
       { label: 'Presensi Hari Ini', val: data.attendance_today, color: '#701c34', icon: '🕐' },
       { label: 'Terlambat Hari Ini', val: data.late_today, color: '#ea580c', icon: '⏰' },
-      { label: 'Cuti Menunggu OK', val: data.pending_leaves, color: '#7c3aed', icon: '🌴' }
+      { label: 'Cuti Menunggu OK', val: data.pending_leaves, color: '#7c3aed', icon: '🌴' },
+      // v92: SPK Digital stats
+      { label: 'SPK Disetujui', val: data.spk_agreed_count, color: '#065f46', icon: '📄' },
+      { label: 'SPK Belum Disetujui', val: data.spk_pending_count, color: '#b45309', icon: '⚠️' },
+      { label: 'Dokumen Lengkap (4/4)', val: data.spk_docs_complete_count, color: '#0891b2', icon: '📁' }
     ];
     wrap.innerHTML = stats.map(s => `
       <div class="modern-card" style="padding:16px; text-align:center;">
@@ -7973,4 +7985,557 @@ window.submitSaSettings = async (e) => {
     }
   }
 };
+
+// ============================================================================
+// v91: SURAT PERJANJIAN KERJA (SPK) DIGITAL + PERSYARATAN KARYAWAN
+// ============================================================================
+
+AppState.__agreementState = {
+  template_id: '',
+  version: 0,
+  html: '',
+  agreed_at: '',
+  isGateOpen: false
+};
+
+// Daftar tipe dokumen persyaratan (urutan = urutan tampil di UI).
+const TD_DOC_TYPES = ['KTP', 'KK', 'IJAZAH_TERAKHIR', 'FOTO_DIRI'];
+const TD_DOC_LABELS = {
+  KTP: 'KTP (Kartu Tanda Penduduk)',
+  KK: 'KK (Kartu Keluarga)',
+  IJAZAH_TERAKHIR: 'Ijazah Terakhir',
+  FOTO_DIRI: 'Foto Diri (pas foto)'
+};
+
+// v91: Cek gate SPK — dipanggil setCurrentUser setiap login/session-restore.
+// Kalau user.agreement_required=true, tampilkan modal gate (tidak bisa di-dismiss).
+window.checkAgreementGate = (user) => {
+  if (!user) return;
+  const gateModal = document.getElementById('modal-agreement-gate');
+  if (!gateModal) return;
+  if (user.agreement_required) {
+    console.log('[v91 SPK] Gate terbuka — user belum agree SPK');
+    AppState.__agreementState.isGateOpen = true;
+    openModal('modal-agreement-gate');
+    // Load SPK content
+    window.loadAgreementInto && window.loadAgreementInto('agreement-gate-content');
+    // Setup checkbox + button listener (sekali saja)
+    const cb = document.getElementById('agreement-gate-checkbox');
+    const btn = document.getElementById('btn-agreement-agree');
+    if (cb && btn) {
+      cb.onchange = () => { btn.disabled = !cb.checked; };
+      btn.onclick = () => window.submitAgreementAgree && window.submitAgreementAgree();
+    }
+  } else {
+    // Sudah agree → tutup gate kalau kebetulan terbuka
+    if (AppState.__agreementState.isGateOpen) {
+      AppState.__agreementState.isGateOpen = false;
+      closeModal('modal-agreement-gate');
+    }
+  }
+};
+
+// v91: Load SPK dari backend + render ke container (gate atau view modal).
+window.loadAgreementInto = async (containerId) => {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '<div style="text-align:center; color:#64748b; padding:40px 0;"><i data-feather="loader" style="width:24px; height:24px; animation:spin 1s linear infinite;"></i><p style="margin-top:10px;">Memuat dokumen...</p></div>';
+  if (window.feather) feather.replace();
+  try {
+    const res = await fetch('/api/agreement');
+    if (!res.ok) {
+      container.innerHTML = '<p style="color:#dc2626; text-align:center; padding:20px;">Gagal memuat SPK. Coba lagi nanti. (HTTP ' + res.status + ')</p>';
+      return;
+    }
+    const data = await res.json();
+    AppState.__agreementState.template_id = data.template_id || '';
+    AppState.__agreementState.version = data.version || 0;
+    AppState.__agreementState.html = data.html || '';
+    AppState.__agreementState.agreed_at = data.agreed_at || '';
+    if (!data.html) {
+      container.innerHTML = '<p style="color:#64748b; text-align:center; padding:20px;">' + (data.message || 'SPK belum tersedia. Hubungi admin.') + '</p>';
+      return;
+    }
+    container.innerHTML = data.html;
+    // Inject CSS untuk styling dokumen agreement (sekali saja)
+    if (!document.getElementById('v91-agreement-style')) {
+      const style = document.createElement('style');
+      style.id = 'v91-agreement-style';
+      style.textContent = `
+        .agreement-doc { font-family: 'Times New Roman', Georgia, serif; color:#1e293b; max-width:100%; }
+        .agreement-meta p { margin:4px 0; font-size:13px; }
+        .agreement-title { text-align:center; font-size:18px; font-weight:700; margin:18px 0 14px 0; text-transform:uppercase; letter-spacing:1px; }
+        .agreement-party { width:100%; border-collapse:collapse; margin:10px 0; font-size:12.5px; }
+        .agreement-party th { background:#f1f5f9; padding:8px 10px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:#475569; }
+        .agreement-party td { padding:6px 10px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+        .agreement-party td:first-child { font-weight:600; color:#475569; width:35%; }
+        .agreement-data { width:100%; border-collapse:collapse; margin:10px 0; font-size:12.5px; }
+        .agreement-data td { padding:6px 10px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+        .agreement-data td:first-child { font-weight:600; color:#475569; width:30%; }
+        .agreement-pasal { font-size:14px; font-weight:700; margin:18px 0 8px 0; color:#0f172a; padding-bottom:4px; border-bottom:2px solid #cbd5e1; }
+        .agreement-para { margin:8px 0; text-align:justify; font-size:12.5px; line-height:1.7; }
+        .agreement-list { margin:6px 0 10px 18px; padding-left:14px; font-size:12.5px; line-height:1.7; }
+        .agreement-list li { margin-bottom:4px; text-align:justify; }
+        .agreement-signature { display:flex; justify-content:space-around; margin-top:30px; gap:30px; }
+        .agreement-signature-col { text-align:center; font-size:12.5px; flex:1; }
+        .agreement-signature-col p { margin:2px 0; }
+        @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+      `;
+      document.head.appendChild(style);
+    }
+  } catch (err) {
+    console.error('loadAgreementInto error:', err);
+    container.innerHTML = '<p style="color:#dc2626; text-align:center; padding:20px;">Gagal memuat SPK: ' + (err.message || 'kesalahan koneksi') + '</p>';
+  }
+};
+
+// v91: Submit SETUJUI SPK (dari gate modal).
+window.submitAgreementAgree = async () => {
+  const btn = document.getElementById('btn-agreement-agree');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-feather="loader" style="width:14px; height:14px; animation:spin 1s linear infinite;"></i> Mencatat persetujuan...'; if (window.feather) feather.replace(); }
+  try {
+    const res = await fetch('/api/agreement/agree', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        template_id: AppState.__agreementState.template_id,
+        user_agent: navigator.userAgent
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + (data.message || 'Persetujuan SPK berhasil dicatat.'), 'success');
+      // Update local user state
+      if (AppState.currentUser) {
+        AppState.currentUser.agreement_required = false;
+        AppState.currentUser.agreed_at = data.agreed_at;
+        AppState.currentUser.agreement_template_id = data.template_id;
+        try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(AppState.currentUser)); } catch (e) { /* abaikan */ }
+      }
+      // Tutup gate
+      AppState.__agreementState.isGateOpen = false;
+      closeModal('modal-agreement-gate');
+      // Reset checkbox utk next time
+      const cb = document.getElementById('agreement-gate-checkbox');
+      if (cb) cb.checked = false;
+      // Refresh profile section (kalau sedang di panel profile)
+      if (typeof renderProfileView === 'function' && document.getElementById('view-profile')?.classList.contains('active')) {
+        renderProfileView();
+      }
+    } else {
+      showToast(data.detail || 'Gagal mencatat persetujuan SPK.', 'error');
+      const cb = document.getElementById('agreement-gate-checkbox');
+      if (cb && btn) { btn.disabled = !cb.checked; }
+    }
+  } catch (err) {
+    console.error('submitAgreementAgree error:', err);
+    showToast('Gagal: koneksi terputus.', 'error');
+    const cb = document.getElementById('agreement-gate-checkbox');
+    if (cb && btn) { btn.disabled = !cb.checked; }
+  } finally {
+    if (btn) {
+      btn.innerHTML = '<i data-feather="check-circle" style="width:14px; height:14px;"></i> SETUJUI PERJANJIAN KERJA';
+      if (window.feather) feather.replace();
+    }
+  }
+};
+window.submitAgreementAgree = window.submitAgreementAgree;
+
+// v91: Buka modal baca SPK (dari Profile section — sudah agree, sekadar baca ulang).
+window.openAgreementModal = () => {
+  openModal('modal-agreement-view');
+  window.loadAgreementInto && window.loadAgreementInto('agreement-view-content');
+};
+window.openAgreementModal = window.openAgreementModal;
+
+// v91: Load status SPK + dokumen persyaratan untuk ditampilkan di Profile section.
+window.loadProfileAgreementStatus = async () => {
+  const statusBox = document.getElementById('profile-agreement-status-box');
+  if (!statusBox) return;
+  try {
+    const res = await fetch('/api/agreement');
+    if (!res.ok) { statusBox.innerHTML = '<p style="font-size:12px; color:#94a3b8;">Gagal memuat status SPK.</p>'; return; }
+    const data = await res.json();
+    const badge = document.getElementById('profile-agreement-badge');
+    const btnOpen = document.getElementById('btn-open-agreement');
+    if (data.agreement_required) {
+      statusBox.innerHTML = '<div style="display:flex; align-items:center; gap:10px;"><span style="font-size:24px;">⚠️</span><div><p style="margin:0; font-size:13px; font-weight:700; color:#92400e;">Belum menyetujui SPK</p><p style="margin:2px 0 0 0; font-size:11px; color:#64748b;">Wajib baca &amp; setujui sebelum dapat menggunakan aplikasi sepenuhnya.</p></div></div>';
+      statusBox.style.background = '#fffbeb'; statusBox.style.borderColor = '#fde68a';
+      if (badge) { badge.textContent = 'Belum Disetujui'; badge.style.background = '#fef3c7'; badge.style.color = '#92400e'; }
+      if (btnOpen) { btnOpen.style.background = '#dc2626'; btnOpen.innerHTML = '<i data-feather="alert-triangle" style="width:13px; height:13px;"></i> WAJIB: Baca &amp; Setujui SPK'; }
+    } else if (data.agreed_at) {
+      const d = new Date(String(data.agreed_at).replace(/-/g, '/'));
+      const dateStr = isNaN(d.getTime()) ? data.agreed_at : d.toLocaleString('id-ID', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      statusBox.innerHTML = '<div style="display:flex; align-items:center; gap:10px;"><span style="font-size:24px;">✅</span><div><p style="margin:0; font-size:13px; font-weight:700; color:#065f46;">SPK v' + (data.version || 1) + ' disetujui</p><p style="margin:2px 0 0 0; font-size:11px; color:#64748b;">Tanggal persetujuan: ' + dateStr + '</p></div></div>';
+      statusBox.style.background = '#ecfdf5'; statusBox.style.borderColor = '#a7f3d0';
+      if (badge) { badge.textContent = 'Disetujui'; badge.style.background = '#d1fae5'; badge.style.color = '#065f46'; }
+      if (btnOpen) { btnOpen.style.background = ''; btnOpen.innerHTML = '<i data-feather="file-text" style="width:13px; height:13px;"></i> Baca Ulang SPK'; }
+    } else {
+      statusBox.innerHTML = '<p style="font-size:12px; color:#64748b; margin:0;">' + (data.message || 'SPK belum tersedia.') + '</p>';
+    }
+    if (window.feather) feather.replace();
+  } catch (err) {
+    statusBox.innerHTML = '<p style="font-size:12px; color:#94a3b8;">Gagal memuat status SPK: ' + (err.message || '') + '</p>';
+  }
+  // Load docs paralel
+  window.loadProfileDocs && window.loadProfileDocs();
+  // Isi form data diri SPK dari user data
+  const u = AppState.currentUser || {};
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  setVal('profile-tempat-lahir', u.tempat_lahir);
+  setVal('profile-tanggal-lahir', u.tanggal_lahir);
+  setVal('profile-alamat', u.alamat);
+  setVal('profile-nomor-ktp', u.nomor_ktp);
+  setVal('profile-uraian-pekerjaan', u.uraian_pekerjaan);
+};
+window.loadProfileAgreementStatus = window.loadProfileAgreementStatus;
+
+// v91: Simpan data diri SPK (tempat_lahir, alamat, dll).
+window.saveProfileSpkData = async () => {
+  const btn = event && event.target;
+  const original = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-feather="loader" style="width:12px; height:12px; animation:spin 1s linear infinite;"></i> Menyimpan...'; if (window.feather) feather.replace(); }
+  try {
+    const payload = {
+      tempat_lahir: document.getElementById('profile-tempat-lahir')?.value || '',
+      tanggal_lahir: document.getElementById('profile-tanggal-lahir')?.value || '',
+      alamat: document.getElementById('profile-alamat')?.value || '',
+      nomor_ktp: document.getElementById('profile-nomor-ktp')?.value || '',
+      uraian_pekerjaan: document.getElementById('profile-uraian-pekerjaan')?.value || ''
+    };
+    const res = await fetch('/api/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ Data diri SPK berhasil disimpan.', 'success');
+      // Update local user state
+      if (data.user) {
+        AppState.currentUser = { ...AppState.currentUser, ...data.user };
+        try { localStorage.setItem('tertib_disiplin_auth_user', JSON.stringify(AppState.currentUser)); } catch (e) { /* abaikan */ }
+      }
+    } else {
+      showToast(data.detail || 'Gagal menyimpan data diri SPK.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = original; if (window.feather) feather.replace(); }
+  }
+};
+window.saveProfileSpkData = window.saveProfileSpkData;
+
+// v91: Load daftar dokumen persyaratan user + render grid di Profile.
+window.loadProfileDocs = async () => {
+  const grid = document.getElementById('profile-docs-grid');
+  if (!grid) return;
+  try {
+    const res = await fetch('/api/employee-documents');
+    const docs = res.ok ? await res.json() : [];
+    const docMap = {};
+    (Array.isArray(docs) ? docs : []).forEach(d => { docMap[d.doc_type] = d; });
+    grid.innerHTML = TD_DOC_TYPES.map(dt => {
+      const doc = docMap[dt];
+      const label = TD_DOC_LABELS[dt];
+      const hasDoc = !!doc;
+      const uploadedDate = hasDoc ? (() => {
+        try { const d = new Date(String(doc.uploaded_at).replace(/-/g, '/')); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }); } catch (e) { return ''; }
+      })() : '';
+      return `
+        <div style="padding:10px; border:1px solid ${hasDoc ? '#a7f3d0' : '#e2e8f0'}; border-radius:10px; background:${hasDoc ? '#ecfdf5' : '#f8fafc'};">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+            <span style="font-size:12px; font-weight:700; color:${hasDoc ? '#065f46' : '#475569'};">${label}</span>
+            <span style="font-size:11px;">${hasDoc ? '✅' : '⬜'}</span>
+          </div>
+          ${hasDoc ? '<p style="font-size:10px; color:#64748b; margin:0 0 6px 0;">Upload: ' + uploadedDate + '</p>' : '<p style="font-size:10px; color:#94a3b8; margin:0 0 6px 0;">Belum diupload</p>'}
+          <input type="file" id="doc-input-${dt}" accept="image/*,application/pdf" style="display:none;" onchange="window.uploadProfileDoc('${dt}', this)">
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="btn-secondary" style="padding:5px 10px; font-size:10px; flex:1;" onclick="document.getElementById('doc-input-${dt}').click()">
+              <i data-feather="upload" style="width:10px; height:10px;"></i> ${hasDoc ? 'Ganti' : 'Upload'}
+            </button>
+            ${hasDoc ? `<button type="button" class="btn-secondary" style="padding:5px 10px; font-size:10px;" onclick="window.viewProfileDoc('${doc.file_url}', '${label}')"><i data-feather="eye" style="width:10px; height:10px;"></i></button>` : ''}
+            ${hasDoc ? `<button type="button" class="btn-secondary" style="padding:5px 10px; font-size:10px; color:#dc2626;" onclick="window.deleteProfileDoc('${doc.id}', '${dt}')"><i data-feather="trash-2" style="width:10px; height:10px;"></i></button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+    if (window.feather) feather.replace();
+  } catch (err) {
+    grid.innerHTML = '<p style="font-size:11px; color:#94a3b8;">Gagal memuat dokumen.</p>';
+  }
+};
+window.loadProfileDocs = window.loadProfileDocs;
+
+// v91: Upload dokumen persyaratan (base64 ke backend).
+window.uploadProfileDoc = async (docType, input) => {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('Ukuran file melebihi 5MB.', 'error');
+    input.value = '';
+    return;
+  }
+  showToast('Mengunggah ' + TD_DOC_LABELS[docType] + '...', 'info');
+  try {
+    // Baca file jadi base64
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const base64 = e.target.result.split(',')[1];
+        const res = await fetch('/api/employee-documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ doc_type: docType, data: base64, filename: file.name, file_size: file.size })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+          showToast('✅ ' + data.message, 'success');
+          window.loadProfileDocs && window.loadProfileDocs();
+        } else {
+          showToast(data.detail || 'Gagal upload dokumen.', 'error');
+        }
+      } catch (err) {
+        showToast('Gagal: koneksi terputus.', 'error');
+      }
+    };
+    reader.onerror = () => showToast('Gagal membaca file.', 'error');
+    reader.readAsDataURL(file);
+  } catch (err) {
+    showToast('Gagal upload: ' + (err.message || ''), 'error');
+  }
+  input.value = '';
+};
+window.uploadProfileDoc = window.uploadProfileDoc;
+
+// v91: Hapus dokumen persyaratan.
+window.deleteProfileDoc = async (docId, docType) => {
+  if (!confirm('Hapus ' + TD_DOC_LABELS[docType] + '? Anda bisa upload ulang kapan saja.')) return;
+  try {
+    const res = await fetch('/api/employee-documents/' + docId, { method: 'DELETE' });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      window.loadProfileDocs && window.loadProfileDocs();
+    } else {
+      showToast(data.detail || 'Gagal hapus dokumen.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  }
+};
+window.deleteProfileDoc = window.deleteProfileDoc;
+
+// v91: Lihat dokumen (lightbox).
+window.viewProfileDoc = (url, caption) => {
+  if (window.openLightbox) {
+    window.openLightbox(url, caption);
+  } else {
+    window.open(url, '_blank');
+  }
+};
+window.viewProfileDoc = window.viewProfileDoc;
+
+// v91: Hook renderProfileView supaya load status SPK + docs otomatis.
+const __originalRenderProfileView_v91_ = renderProfileView;
+renderProfileView = function () {
+  __originalRenderProfileView_v91_.apply(this, arguments);
+  // v91: Setelah render profile standard, load SPK status + docs
+  window.loadProfileAgreementStatus && window.loadProfileAgreementStatus();
+};
+window.renderProfileView = renderProfileView;
+
+// ============================================================================
+// v92: SPK TEMPLATE EDITOR + STATUS MONITORING (Panel Super Admin)
+// ============================================================================
+
+// v92: Load template SPK aktif ke form editor.
+window.loadSaSpkTemplate = async () => {
+  const titleInput = document.getElementById('sa-spk-title');
+  const contentInput = document.getElementById('sa-spk-content');
+  const badge = document.getElementById('sa-spk-version-badge');
+  if (!titleInput || !contentInput) return;
+  titleInput.value = 'Memuat...';
+  contentInput.value = '';
+  contentInput.disabled = true;
+  try {
+    const res = await fetch('/api/admin/agreement-template');
+    if (!res.ok) {
+      titleInput.value = '';
+      contentInput.value = '';
+      contentInput.disabled = false;
+      if (badge) badge.textContent = 'v- (error)';
+      showToast('Gagal memuat template SPK (HTTP ' + res.status + ').', 'error');
+      return;
+    }
+    const data = await res.json();
+    titleInput.value = data.title || '';
+    contentInput.value = data.content_html || '';
+    contentInput.disabled = false;
+    if (badge) {
+      badge.textContent = data.id ? 'v' + (data.version || 1) + ' (aktif)' : 'v- (belum ada)';
+    }
+  } catch (err) {
+    titleInput.value = '';
+    contentInput.value = '';
+    contentInput.disabled = false;
+    if (badge) badge.textContent = 'v- (error)';
+    showToast('Gagal memuat template: ' + (err.message || 'koneksi terputus'), 'error');
+  }
+};
+window.loadSaSpkTemplate = window.loadSaSpkTemplate;
+
+// v92: Simpan template baru (PUT). Versi bertambah + nonaktifkan versi lama.
+window.saveSaSpkTemplate = async () => {
+  const titleInput = document.getElementById('sa-spk-title');
+  const contentInput = document.getElementById('sa-spk-content');
+  const btn = document.getElementById('btn-spk-save');
+  const title = (titleInput?.value || '').trim();
+  const content = (contentInput?.value || '').trim();
+  if (!title || title.length < 3) { showToast('Judul template minimal 3 karakter.', 'error'); return; }
+  if (!content || content.length < 50) { showToast('Isi template HTML minimal 50 karakter.', 'error'); return; }
+  // Konfirmasi kuat — karena trigger re-agreement semua karyawan
+  if (!confirm('PERINGATAN:\n\nMenyimpan template akan membuat VERSI BARU + menonaktifkan versi lama.\n\nSEMUA KARYAWAN akan diminta menyetujui ulang SPK saat login berikutnya.\n\nLanjutkan simpan?')) return;
+  if (!confirm('Konfirmasi sekali lagi: Anda yakin perubahan sudah final?')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-feather="loader" style="width:13px; height:13px; animation:spin 1s linear infinite;"></i> Menyimpan...'; if (window.feather) feather.replace(); }
+  try {
+    const res = await fetch('/api/admin/agreement-template', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title, content_html: content })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      // Reload template + status table
+      window.loadSaSpkTemplate && window.loadSaSpkTemplate();
+      window.loadSaSpkStatus && window.loadSaSpkStatus();
+    } else {
+      showToast(data.detail || 'Gagal menyimpan template.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan &amp; Versi Baru'; if (window.feather) feather.replace(); }
+  }
+};
+window.saveSaSpkTemplate = window.saveSaSpkTemplate;
+
+// v92: Preview template dengan data admin yg login (render di modal view SPK).
+window.previewSaSpkTemplate = async () => {
+  const contentInput = document.getElementById('sa-spk-content');
+  const content = (contentInput?.value || '').trim();
+  if (!content) { showToast('Isi template masih kosong.', 'error'); return; }
+  // Submit temporary template via dedicated preview endpoint tidak ada.
+  // Solusi: pakai endpoint GET /api/agreement (yg render template AKTIF dari backend),
+  // TAPI karena admin sedang edit (belum save), kita render lokal di frontend
+  // dengan template sementara. Karena renderAgreementHtml_ ada di backend, kita
+  // kirim ke endpoint preview khusus... sayangnya belum ada.
+  // Pendekatan: tampilkan HTML mentah di modal view (placeholder belum di-replace),
+  // supaya admin bisa lihat struktur. Untuk preview dgn placeholder terisi,
+  // admin harus Save dulu, lalu buka Profile > "Baca Ulang SPK".
+  // — v92.1: tambah endpoint preview kalau perlu.
+  const viewContent = document.getElementById('agreement-view-content');
+  if (!viewContent) { showToast('Modal preview tidak ditemukan.', 'error'); return; }
+  viewContent.innerHTML = '<div style="padding:14px; background:#fef3c7; border:1px solid #fde68a; border-radius:8px; margin-bottom:14px; font-size:11px; color:#92400e;"><strong>ℹ️ Preview Lokal:</strong> Placeholder <code>{{...}}</code> belum di-replace (belum disimpan & dirender backend). Setelah Simpan, buka Profile > "Baca Ulang SPK" untuk lihat hasil akhir dgn data Anda.</div>' + content;
+  openModal('modal-agreement-view');
+};
+window.previewSaSpkTemplate = window.previewSaSpkTemplate;
+
+// v92: Load status persetujuan SPK + dokumen semua karyawan → render table.
+window.loadSaSpkStatus = async () => {
+  const tbody = document.getElementById('sa-spk-status-tbody');
+  const countBadge = document.getElementById('sa-spk-status-count');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:18px;">Memuat data...</td></tr>';
+  try {
+    const res = await fetch('/api/admin/agreement-status');
+    if (!res.ok) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#dc2626; padding:18px;">Gagal memuat data (HTTP ' + res.status + '). Pastikan backend v91+ sudah di-deploy.</td></tr>';
+      if (countBadge) countBadge.textContent = '-';
+      return;
+    }
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:18px;">Belum ada karyawan terdaftar.</td></tr>';
+      if (countBadge) countBadge.textContent = '0';
+      return;
+    }
+    // Sort: yang belum agree dulu, lalu belum lengkap dokumen, lalu nama
+    data.sort((a, b) => {
+      if (a.agreement_required !== b.agreement_required) return a.agreement_required ? -1 : 1;
+      const aDocs = a.doc_count || 0, bDocs = b.doc_count || 0;
+      if (aDocs !== bDocs) return aDocs - bDocs;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+    const total = data.length;
+    const agreed = data.filter(x => !x.agreement_required).length;
+    if (countBadge) countBadge.textContent = agreed + '/' + total + ' setuju';
+    tbody.innerHTML = data.map(e => {
+      const spkStatus = e.agreement_required
+        ? '<span style="color:#92400e; font-weight:700;">⚠️ Belum</span>'
+        : '<span style="color:#065f46; font-weight:700;">✅ Setuju</span>';
+      const agreedDate = e.agreed_at ? (() => {
+        try { const d = new Date(String(e.agreed_at).replace(/-/g, '/')); return isNaN(d.getTime()) ? '' : d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }); } catch (er) { return ''; }
+      })() : '-';
+      const docCount = e.doc_count || 0;
+      const docStatus = docCount >= 4
+        ? '<span style="color:#065f46; font-weight:700;">✅ ' + docCount + '/4</span>'
+        : '<span style="color:#92400e; font-weight:700;">⚠️ ' + docCount + '/4</span>';
+      const docTypes = (e.doc_types || []).join(', ') || '-';
+      return `
+        <tr style="${e.agreement_required ? 'background:#fffbeb;' : ''}">
+          <td style="padding:8px;"><code style="font-size:11px;">${escapeHtml(e.nip || '-')}</code></td>
+          <td style="padding:8px;"><strong>${escapeHtml(e.name || '-')}</strong></td>
+          <td style="padding:8px;">${escapeHtml(e.division || '-')}</td>
+          <td style="padding:8px;">${escapeHtml(e.outlet_name || '-')}</td>
+          <td style="padding:8px; text-align:center;">${spkStatus}</td>
+          <td style="padding:8px; text-align:center; font-size:11px;">${agreedDate}</td>
+          <td style="padding:8px; text-align:center;" title="${escapeHtml(docTypes)}">${docStatus}</td>
+          <td style="padding:8px; text-align:center;">
+            <button class="btn-secondary" style="padding:4px 8px; font-size:10px;" onclick="window.viewSaSpkEmployeeDocs && window.viewSaSpkEmployeeDocs('${e.id}', '${escapeHtml(e.name || '').replace(/'/g, "\\'")}')"><i data-feather="folder" style="width:10px; height:10px;"></i> Dokumen</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    if (window.feather) feather.replace();
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#dc2626; padding:18px;">Gagal: ' + (err.message || 'koneksi terputus') + '</td></tr>';
+    if (countBadge) countBadge.textContent = '-';
+  }
+};
+window.loadSaSpkStatus = window.loadSaSpkStatus;
+
+// v92: Lihat dokumen persyaratan karyawan tertentu (admin).
+window.viewSaSpkEmployeeDocs = async (employeeId, empName) => {
+  try {
+    const res = await fetch('/api/admin/employee-documents/' + employeeId);
+    if (!res.ok) { showToast('Gagal memuat dokumen (HTTP ' + res.status + ').', 'error'); return; }
+    const docs = await res.json();
+    const list = Array.isArray(docs) ? docs : [];
+    const docLabels = { KTP: 'KTP', KK: 'KK', IJAZAH_TERAKHIR: 'Ijazah Terakhir', FOTO_DIRI: 'Foto Diri' };
+    const html = list.length === 0
+      ? '<p style="text-align:center; color:#94a3b8; padding:20px;">Belum ada dokumen diupload.</p>'
+      : '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">' + list.map(d => {
+          const label = docLabels[d.doc_type] || d.doc_type;
+          const date = d.uploaded_at ? (() => {
+            try { const dt = new Date(String(d.uploaded_at).replace(/-/g, '/')); return isNaN(dt.getTime()) ? '' : dt.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }); } catch (er) { return ''; }
+          })() : '';
+          return `<div style="padding:10px; border:1px solid #a7f3d0; border-radius:8px; background:#ecfdf5;">
+            <p style="margin:0 0 4px 0; font-size:12px; font-weight:700; color:#065f46;">${escapeHtml(label)}</p>
+            <p style="margin:0 0 8px 0; font-size:10px; color:#64748b;">Upload: ${date}</p>
+            <a href="${escapeHtml(d.file_url)}" target="_blank" rel="noopener" style="font-size:11px; color:var(--burgundy-primary); font-weight:700; text-decoration:none;"><i data-feather="eye" style="width:11px; height:11px;"></i> Lihat File</a>
+          </div>`;
+        }).join('') + '</div>';
+    // Render di modal view SPK (reuse)
+    const viewContent = document.getElementById('agreement-view-content');
+    if (!viewContent) { showToast('Modal tidak ditemukan.', 'error'); return; }
+    viewContent.innerHTML = '<h3 style="margin:0 0 6px 0; font-size:15px;">Dokumen Persyaratan: ' + escapeHtml(empName) + '</h3><p style="font-size:11px; color:#64748b; margin:0 0 14px 0;">' + list.length + ' dokumen terupload</p>' + html;
+    // Update header modal
+    const modalTitle = document.querySelector('#modal-agreement-view .modal-box h3');
+    if (modalTitle) modalTitle.textContent = 'Dokumen: ' + empName;
+    openModal('modal-agreement-view');
+    if (window.feather) feather.replace();
+  } catch (err) {
+    showToast('Gagal: ' + (err.message || 'koneksi terputus'), 'error');
+  }
+};
+window.viewSaSpkEmployeeDocs = window.viewSaSpkEmployeeDocs;
 
