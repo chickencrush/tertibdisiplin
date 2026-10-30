@@ -897,10 +897,6 @@ const initAuthSession = () => {
             // Refresh nama user di topbar
             const nameEl = document.getElementById('current-user-name');
             if (nameEl) nameEl.textContent = freshUser.name;
-            // v92.1: Cek gate SPK juga saat SESSION RESTORE (bukan hanya login fresh).
-            // Sebelumnya gate hanya muncul di handleAuthLogin — user yang reload halaman
-            // dengan token cache bisa melewati gate SPK.
-            window.checkAgreementGate && window.checkAgreementGate(freshUser);
           }
         }).catch(err => {
           // Gagal re-fetch (offline / backend error) — abaikan, lanjut dgn cached user
@@ -5744,10 +5740,6 @@ const renderProfileView = () => {
   // Also update display name in identity card
   const displayName = document.getElementById('profile-display-name');
   if (displayName) displayName.textContent = u.name || '-';
-
-  // v92.1: Muat status SPK + dokumen persyaratan (fitur SPK Digital v91).
-  // Dipanggil di sini (bukan lewat hook luar) supaya tidak menimpa const.
-  window.loadProfileAgreementStatus && window.loadProfileAgreementStatus();
 };
 // Expose to window so switchView can call it
 window.renderProfileView = renderProfileView;
@@ -8052,10 +8044,7 @@ window.loadAgreementInto = async (containerId) => {
   try {
     const res = await fetch('/api/agreement');
     if (!res.ok) {
-      // v92.1: Pesan jelas — 404 hampir pasti karena backend belum di-deploy v91+
-      container.innerHTML = res.status === 404
-        ? '<div style="padding:16px; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; color:#991b1b;"><strong>⚠️ Endpoint /api/agreement tidak ditemukan (404).</strong><p style="margin:6px 0 0 0; font-size:12px;">Backend Code.gs belum di-update ke v91+. Buka Apps Script → ganti Code.gs dengan versi terbaru → Deploy &gt; <strong>New version</strong> → tunggu 30 detik → refresh halaman ini.</p></div>'
-        : '<p style="color:#dc2626; text-align:center; padding:20px;">Gagal memuat SPK. Coba lagi nanti. (HTTP ' + res.status + ')</p>';
+      container.innerHTML = '<p style="color:#dc2626; text-align:center; padding:20px;">Gagal memuat SPK. Coba lagi nanti. (HTTP ' + res.status + ')</p>';
       return;
     }
     const data = await res.json();
@@ -8165,12 +8154,7 @@ window.loadProfileAgreementStatus = async () => {
   if (!statusBox) return;
   try {
     const res = await fetch('/api/agreement');
-    if (!res.ok) {
-      statusBox.innerHTML = res.status === 404
-        ? '<div style="padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; color:#991b1b; font-size:11.5px;"><strong>⚠️ Backend belum v91+.</strong> Endpoint /api/agreement tidak ditemukan — deploy ulang Code.gs (Deploy &gt; New version).</div>'
-        : '<p style="font-size:12px; color:#94a3b8;">Gagal memuat status SPK (HTTP ' + res.status + ').</p>';
-      return;
-    }
+    if (!res.ok) { statusBox.innerHTML = '<p style="font-size:12px; color:#94a3b8;">Gagal memuat status SPK.</p>'; return; }
     const data = await res.json();
     const badge = document.getElementById('profile-agreement-badge');
     const btnOpen = document.getElementById('btn-open-agreement');
@@ -8207,8 +8191,8 @@ window.loadProfileAgreementStatus = async () => {
 window.loadProfileAgreementStatus = window.loadProfileAgreementStatus;
 
 // v91: Simpan data diri SPK (tempat_lahir, alamat, dll).
-window.saveProfileSpkData = async (ev) => {
-  const btn = ev && ev.target ? (ev.target.closest('button') || ev.target) : null;
+window.saveProfileSpkData = async () => {
+  const btn = event && event.target;
   const original = btn ? btn.innerHTML : '';
   if (btn) { btn.disabled = true; btn.innerHTML = '<i data-feather="loader" style="width:12px; height:12px; animation:spin 1s linear infinite;"></i> Menyimpan...'; if (window.feather) feather.replace(); }
   try {
@@ -8349,12 +8333,13 @@ window.viewProfileDoc = (url, caption) => {
 };
 window.viewProfileDoc = window.viewProfileDoc;
 
-// v92.1: Hook renderProfileView LAMA DIHAPUS — sebelumnya menimpa const
-// renderProfileView dan menyebabkan TypeError "Assignment to constant variable"
-// yang menghentikan seluruh eksekusi blok v92 di bawahnya (fungsi Panel Super
-// Admin SPK tidak pernah terdefinisi + status SPK di Profile stuck "Memuat...").
-// Sekarang pemanggilan loadProfileAgreementStatus dipindah ke DALAM body
-// renderProfileView asli (lihat deklarasi const renderProfileView di atas).
+// v91: Hook renderProfileView supaya load status SPK + docs otomatis.
+const __originalRenderProfileView_v91_ = renderProfileView;
+renderProfileView = function () {
+  __originalRenderProfileView_v91_.apply(this, arguments);
+  // v91: Setelah render profile standard, load SPK status + docs
+  window.loadProfileAgreementStatus && window.loadProfileAgreementStatus();
+};
 window.renderProfileView = renderProfileView;
 
 // ============================================================================

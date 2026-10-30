@@ -1453,7 +1453,7 @@
                     <input type="text" class="form-control" id="profile-uraian-pekerjaan" placeholder="Mis. Crew Kitchen - persiapan bahan & masak" style="font-size:12px; padding:8px;">
                   </div>
                 </div>
-                <button type="button" class="btn-secondary" style="margin-top:10px; padding:8px 14px; font-size:12px;" onclick="window.saveProfileSpkData && window.saveProfileSpkData(event)">
+                <button type="button" class="btn-secondary" style="margin-top:10px; padding:8px 14px; font-size:12px;" onclick="window.saveProfileSpkData && window.saveProfileSpkData()">
                   <i data-feather="save" style="width:12px; height:12px;"></i> Simpan Data Diri SPK
                 </button>
               </details>
@@ -2814,27 +2814,25 @@
 </div>
 
 <!-- v91: Gate Modal — Surat Perjanjian Kerja (tidak bisa di-dismiss sampai SETUJUI) -->
-<!-- v92.1: display:none inline DIHAPUS (menimpa class .active — modal tak pernah tampil);
-     container pakai .modal-card (class standar yang ada di style.css) -->
-<div class="modal-overlay" id="modal-agreement-gate" style="z-index:10000; background:rgba(15, 23, 42, 0.92); align-items:flex-start;">
-  <div class="modal-card" style="max-width:780px; width:96%; margin:20px auto; max-height:92vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+<div class="modal-overlay" id="modal-agreement-gate" style="display:none; z-index:10000; background:rgba(15, 23, 42, 0.92); align-items:flex-start;">
+  <div class="modal-box" style="max-width:780px; width:96%; margin:20px auto; max-height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
     <div style="padding:18px 24px; background:linear-gradient(135deg, var(--burgundy-primary), var(--burgundy-soft)); color:#fff; flex-shrink:0;">
       <h3 style="margin:0; font-size:16px;"><i data-feather="file-text" style="width:18px; height:18px; vertical-align:middle;"></i> Surat Perjanjian Kerja</h3>
       <p style="margin:4px 0 0 0; font-size:11px; opacity:0.9;">Wajib dibaca &amp; disetujui sebelum dapat menggunakan aplikasi.</p>
     </div>
     <div id="agreement-gate-content" style="flex:1; overflow-y:auto; padding:24px; background:#fff; font-size:13px; line-height:1.6;">
       <div style="text-align:center; color:#64748b; padding:40px 0;">
-        <i data-feather="loader" style="width:24px; height:24px;"></i>
+        <i data-feather="loader" style="width:24px; height:24px; animation:spin 1s linear infinite;"></i>
         <p style="margin-top:10px;">Memuat dokumen...</p>
       </div>
     </div>
     <div style="padding:14px 24px; border-top:1px solid #e2e8f0; background:#f8fafc; flex-shrink:0;">
       <label style="display:flex; align-items:flex-start; gap:10px; font-size:12px; color:#475569; cursor:pointer; margin-bottom:10px;">
-        <input type="checkbox" id="agreement-gate-checkbox" style="margin-top:3px; transform:scale(1.3);" onchange="document.getElementById('btn-agreement-agree').disabled = !this.checked">
+        <input type="checkbox" id="agreement-gate-checkbox" style="margin-top:3px; transform:scale(1.3);">
         <span>Saya telah membaca dan memahami seluruh isi Surat Perjanjian Kerja ini, dan saya menyetujui untuk mematuhinya.</span>
       </label>
       <div style="display:flex; gap:10px; align-items:center;">
-        <button type="button" class="btn-primary" id="btn-agreement-agree" style="flex:1; padding:12px; font-size:13px; background:#10b981; justify-content:center;" disabled onclick="window.submitAgreementAgree && window.submitAgreementAgree()">
+        <button type="button" class="btn-primary" id="btn-agreement-agree" style="flex:1; padding:12px; font-size:13px; background:#10b981; justify-content:center;" disabled>
           <i data-feather="check-circle" style="width:14px; height:14px;"></i> SETUJUI PERJANJIAN KERJA
         </button>
       </div>
@@ -2844,16 +2842,15 @@
 </div>
 
 <!-- v91: Modal Lihat SPK (sudah agree — sekadar baca ulang, bisa di-tutup) -->
-<!-- v92.1: display:none inline DIHAPUS + container .modal-card -->
-<div class="modal-overlay" id="modal-agreement-view" style="z-index:9999;">
-  <div class="modal-card" style="max-width:780px; width:96%; max-height:92vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+<div class="modal-overlay" id="modal-agreement-view" style="display:none; z-index:9999;">
+  <div class="modal-box" style="max-width:780px; width:96%; margin:20px auto; max-height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
     <div style="padding:14px 20px; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;">
-      <h3 style="margin:0; font-size:15px; color:var(--text-dark);" id="agreement-view-title">Surat Perjanjian Kerja</h3>
+      <h3 style="margin:0; font-size:15px; color:var(--text-dark);">Surat Perjanjian Kerja</h3>
       <button class="modal-close-btn" onclick="closeModal('modal-agreement-view')">&times;</button>
     </div>
     <div id="agreement-view-content" style="flex:1; overflow-y:auto; padding:24px; background:#fff; font-size:13px; line-height:1.6;">
       <div style="text-align:center; color:#64748b; padding:40px 0;">
-        <i data-feather="loader" style="width:24px; height:24px;"></i>
+        <i data-feather="loader" style="width:24px; height:24px; animation:spin 1s linear infinite;"></i>
         <p style="margin-top:10px;">Memuat dokumen...</p>
       </div>
     </div>
