@@ -1534,11 +1534,12 @@ const switchView = (viewName) => {
   }
 
   if (viewName === 'presensi' && !isSameView) {
-    // v68: Kamera OTOMATIS terbuka saat masuk panel Presensi (tanpa tombol Buka Kamera).
-    // SetFaceStatus('loading') dipanggil di dalam startCamera. Kalau permission denied,
-    // indikator berubah jadi "Kamera ditolak" + toast instruksi — user tetap bisa
-    // presensi lewat tombol kamera HP.
-    window.startCamera && window.startCamera();
+    // v90: Lazy camera — jangan auto-start kamera saat masuk panel (BUG "loading lama
+    // saat awal masuk" + "kamera terkadang tidak bisa terbuka"). Kamera hanya dibuka:
+    //   (a) otomatis saat user klik tombol "Deteksi GPS" DAN GPS valid (dekat outlet), atau
+    //   (b) saat user klik tombol "Buka Kamera" manual.
+    // Indikator face status tetap idle sampai kamera benar-benar dibuka.
+    setFaceStatus && setFaceStatus('idle', 'Tekan "Buka Kamera" atau deteksi GPS dulu');
     // Pastikan dropdown shift sesuai divisi user (jaga-jaga kalau populate belum jalan)
     window.populateShiftOptions && window.populateShiftOptions();
     if (!AppState.gpsOk && !AppState.gpsLoading) {
@@ -1756,7 +1757,8 @@ const showBackendOutdatedBanner = (currentVer) => {
 };
 
 // Load Outlets from API
-const loadOutlets = async () => {
+const loadOutlets = async (opts) => {
+  opts = opts || {};
   // === CHECK 1: Pastikan API_URL sudah diisi di config.js ===
   const cfg = window.TD_CONFIG || {};
   if (!cfg.API_URL || cfg.API_URL.indexOf('GANTI_DENGAN') >= 0 || cfg.API_URL.indexOf('script.google.com') < 0) {
@@ -1766,6 +1768,28 @@ const loadOutlets = async () => {
     AppState.outletsLoadError = errMsg;
     window.checkGpsDistance && window.checkGpsDistance();
     return;
+  }
+
+  // v90: Cache outlets di localStorage (TTL 10 menit) — supaya masuk panel
+  // presensi TIDAK perlu nunggu fetch /api/outlets (salah satu sumber loading
+  // lama saat awal masuk). Force-bypass lewat opts.force=true kalau perlu.
+  if (!opts.force) {
+    try {
+      const cached = localStorage.getItem('td_outlets_cache_v90');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const ageMs = Date.now() - (parsed.t || 0);
+        if (ageMs < 10 * 60 * 1000 && Array.isArray(parsed.outlets) && parsed.outlets.length > 0) {
+          // Pakai cache dulu — render UI langsung jadi, fetch fresh di background.
+          AppState.outlets = parsed.outlets;
+          AppState.outletsLoadError = '';
+          _applyOutletsToUI_(parsed.outlets);
+          // Background refresh (no await) — kalau ada perubahan, UI update otomatis.
+          loadOutlets({ force: true });
+          return;
+        }
+      }
+    } catch (e) { /* cache corrupt — abaikan, lanjut fetch */ }
   }
 
   try {
@@ -1802,31 +1826,10 @@ const loadOutlets = async () => {
     AppState.outlets = outletList;
     AppState.outletsLoadError = '';
 
-    // Isi dropdown filter "Semua Outlet" di topbar dengan daftar outlet
-    window.populateGlobalOutletFilter && window.populateGlobalOutletFilter();
+    // v90: Simpan ke cache localStorage utk entri berikutnya.
+    try { localStorage.setItem('td_outlets_cache_v90', JSON.stringify({ t: Date.now(), outlets: outletList })); } catch (e) { /* quota — abaikan */ }
 
-    // Segarkan dropdown shift kerja — sekarang AppState.outlets sudah terisi,
-    // sehingga isSchOutletUser_() bisa menentukan apakah user berada di outlet SCH
-    // (shift SCH baru bisa muncul setelah outlet list tersedia).
-    window.populateShiftOptions && window.populateShiftOptions();
-
-    // Populate presensi outlet select
-    // v88: dropdown titik lokasi presensi difilter per role —
-    // Tim Operasional hanya melihat & memilih outlet penugasannya sendiri.
-    const pSelect = document.getElementById('presensi-outlet-select');
-    const rSelect = document.getElementById('rep-form-outlet');
-    if (pSelect && outletList.length > 0) {
-      window.refreshPresensiOutletOptions();
-      console.log('Dropdown presensi terisi dengan', outletList.length, 'outlet (difilter per role)');
-    } else if (pSelect) {
-      pSelect.innerHTML = '<option value="">— Belum ada outlet —</option>';
-      AppState.outletsLoadError = 'Tidak ada outlet di database. Jalankan setupBaru di Apps Script, atau tambah outlet via menu "Titik Lokasi Outlet".';
-    }
-    if (rSelect && outletList.length > 0) {
-      rSelect.innerHTML = outletList.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
-    }
-
-    renderOutletsTable();
+    _applyOutletsToUI_(outletList);
     window.checkGpsDistance && window.checkGpsDistance();
   } catch (err) {
     console.error('Failed loading outlets:', err);
@@ -1834,6 +1837,28 @@ const loadOutlets = async () => {
     AppState.outletsLoadError = (err && err.message) ? err.message : 'Kesalahan koneksi saat memuat outlet. Periksa internet & pastikan API_URL di config.js benar.';
     window.checkGpsDistance && window.checkGpsDistance();
   }
+};
+
+// v90: Helper — aplikasikan outletList ke UI (dropdown, table, GPS check).
+// Dipakai ulang oleh cache & fetch fresh supaya logikanya konsisten.
+const _applyOutletsToUI_ = (outletList) => {
+  // Isi dropdown filter "Semua Outlet" di topbar dengan daftar outlet
+  window.populateGlobalOutletFilter && window.populateGlobalOutletFilter();
+  // Segarkan dropdown shift kerja
+  window.populateShiftOptions && window.populateShiftOptions();
+  // Populate presensi outlet select (v88: difilter per role)
+  const pSelect = document.getElementById('presensi-outlet-select');
+  const rSelect = document.getElementById('rep-form-outlet');
+  if (pSelect && outletList.length > 0) {
+    window.refreshPresensiOutletOptions && window.refreshPresensiOutletOptions();
+  } else if (pSelect) {
+    pSelect.innerHTML = '<option value="">— Belum ada outlet —</option>';
+    AppState.outletsLoadError = 'Tidak ada outlet di database. Jalankan setupBaru di Apps Script, atau tambah outlet via menu "Titik Lokasi Outlet".';
+  }
+  if (rSelect && outletList.length > 0) {
+    rSelect.innerHTML = outletList.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+  }
+  renderOutletsTable && renderOutletsTable();
 };
 
 // v82: Load shift definitions dari backend (sheet `shifts`).
@@ -2592,6 +2617,29 @@ const renderDailyReportBoard = () => {
       `<span style="display:inline-flex; align-items:center; gap:3px; font-size:10.5px; font-weight:700; color:${dl.color}; background:${dl.bg}; border:1px solid ${dl.color}33; padding:2px 8px; border-radius:10px;${dl.status === 'overdue' ? ' animation: td-deadline-blink 1.2s ease-in-out infinite;' : ''}" title="Deadline: ${r.deadline_at || ''}"><i data-feather="${dlIcon}" style="width:11px; height:11px;"></i> 📅 ${dl.label}</span>`
     ) : '';
 
+    // v90: Baris waktu mulai / selesai / durasi total — ditampilkan di card
+    // saat ada started_at (laporan baru v90). Untuk laporan lama (pre-v90),
+    // started_at di-backfill dari created_at oleh migrasi, jadi tetap muncul.
+    const _fmtDT = (s) => {
+      if (!s) return '';
+      try {
+        const d = new Date(String(s).replace(/-/g, '/'));
+        if (isNaN(d.getTime())) return String(s);
+        return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      } catch (e) { return String(s); }
+    };
+    const startedLabel = r.started_at ? _fmtDT(r.started_at) : '';
+    const completedLabel = r.completed_at ? _fmtDT(r.completed_at) : '';
+    // v90: durMins & durLabel sudah dideklarasikan di atas (utk durBadge) — reuse.
+    // Baris waktu: tampilkan hanya kalau ada started_at. Layout compact:
+    //   ▶ Mulai: 29 Okt 14:30   ■ Selesai: 29 Okt 16:05   ⏱ 1j 35m
+    const timeRow = startedLabel ? (function () {
+      const startedChip = `<span style="font-size:10.5px; color:#1e40af;"><i data-feather="play-circle" style="width:11px; height:11px; vertical-align:-1px;"></i> <strong>Mulai:</strong> ${startedLabel}</span>`;
+      const completedChip = completedLabel ? `<span style="font-size:10.5px; color:#047857;"><i data-feather="check-circle" style="width:11px; height:11px; vertical-align:-1px;"></i> <strong>Selesai:</strong> ${completedLabel}</span>` : '';
+      const durChip = durMins > 0 ? `<span style="font-size:10.5px; color:${r.status === 'Selesai' ? '#047857' : '#1d4ed8'}; font-weight:700;"><i data-feather="${r.status === 'Selesai' ? 'check-circle' : 'clock'}" style="width:11px; height:11px; vertical-align:-1px;"></i> ⏱ ${durLabel}</span>` : '';
+      return `<div style="margin-top:8px; padding:8px 10px; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">${startedChip}${completedChip}${durChip}</div>`;
+    })() : '';
+
     // v84: Selesai = LOCKED — tidak ada tombol Hold/Proses, hanya badge "Final"
     const isLocked = r.status === 'Selesai';
     const lockedBadge = isLocked
@@ -2621,6 +2669,8 @@ const renderDailyReportBoard = () => {
         ${r.hold_reason ? `<div style="font-size:11px; color:#b45309; background:#fffbeb; padding:6px 8px; border-radius:6px; margin-bottom:8px;"><strong>Kendala:</strong> ${r.hold_reason}</div>` : ''}
 
         ${(durBadge || deadlineBadge) ? `<div style="margin-bottom:8px; display:flex; flex-wrap:wrap; gap:6px;">${durBadge}${deadlineBadge}</div>` : ''}
+
+        ${timeRow}
 
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#94a3b8; border-top:1px dashed #f1f5f9; padding-top:8px;">
           <span>👤 ${r.reporter_name || '-'}</span>
@@ -2723,8 +2773,37 @@ const previewReportFile = async (input) => {
     input.value = '';
     return;
   }
+
+  // v90: Untuk gambar — kompres di client (max 1280px, JPEG 0.82) sebelum upload.
+  // Preview instan pakai FileReader (tidak nunggu roundtrip ke Drive).
+  // PDF dilewati kompresi (bukan gambar).
+  let uploadFile = file;
+  let localPreviewUrl = null;
+  if (file.type.startsWith('image/')) {
+    try {
+      const compressed = await _tdCompressImage_(file, 1280, 0.82);
+      if (compressed) {
+        uploadFile = compressed.file;
+        localPreviewUrl = compressed.previewUrl;
+        console.log('v90 image compressed:', file.size, '→', uploadFile.size, '(' + Math.round(uploadFile.size / 1024) + 'KB)');
+      } else {
+        localPreviewUrl = URL.createObjectURL(file);
+      }
+    } catch (e) {
+      console.warn('v90 image compress failed:', e);
+      localPreviewUrl = URL.createObjectURL(file);
+    }
+  }
+
+  // v90: Tampilkan preview instan dari blob lokal — tidak perlu nunggu upload selesai.
+  if (localPreviewUrl) {
+    const previewImg = document.getElementById('proof-preview-img');
+    previewImg.src = localPreviewUrl;
+    document.getElementById('proof-preview-container').style.display = 'block';
+  }
+
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', uploadFile);
 
   try {
     showToast('Mengunggah bukti file...', 'info');
@@ -2738,9 +2817,14 @@ const previewReportFile = async (input) => {
       document.getElementById('rep-form-proof-url').value = url;
       // Preview hanya jika image (bukan PDF)
       if (file.type.startsWith('image/')) {
+        // Preview lokal sudah ditampilkan di atas; ganti src ke URL final utk persistence.
         const previewImg = document.getElementById('proof-preview-img');
         previewImg.src = url;
         document.getElementById('proof-preview-container').style.display = 'block';
+        // Bebaskan blob URL setelah src diganti.
+        if (localPreviewUrl && localPreviewUrl.indexOf('blob:') === 0) {
+          try { URL.revokeObjectURL(localPreviewUrl); } catch (e) { /* abaikan */ }
+        }
       } else {
         document.getElementById('proof-preview-container').style.display = 'none';
         showToast('PDF terunggah. Preview tidak tersedia utk PDF.', 'info');
@@ -2748,12 +2832,67 @@ const previewReportFile = async (input) => {
       showToast('Bukti berhasil diunggah!', 'success');
     } else {
       showToast(data.detail || 'Gagal mengunggah file bukti', 'error');
+      // v90: Reset preview kalau upload gagal
+      document.getElementById('proof-preview-container').style.display = 'none';
+      if (localPreviewUrl && localPreviewUrl.indexOf('blob:') === 0) {
+        try { URL.revokeObjectURL(localPreviewUrl); } catch (e) { /* abaikan */ }
+      }
     }
   } catch (err) {
     showToast('Gagal mengunggah file bukti', 'error');
+    document.getElementById('proof-preview-container').style.display = 'none';
+    if (localPreviewUrl && localPreviewUrl.indexOf('blob:') === 0) {
+      try { URL.revokeObjectURL(localPreviewUrl); } catch (e) { /* abaikan */ }
+    }
   }
 };
 window.previewReportFile = previewReportFile;
+
+// v90: Helper — kompresi gambar di client sebelum upload.
+// Kenapa: file kamera HP biasanya 2-5MB (JPEG 4000x3000). Tanpa kompresi, upload
+// lambat + preview <img> me-load file besar dari Drive (roundtrip + decode lambat).
+// Setelah kompresi: max 1280px, JPEG quality 0.82 → biasanya 100-300KB. Upload 5-10x lebih cepat.
+// Return: { file: Blob (image/jpeg), previewUrl: blob URL } atau null kalau gagal.
+const _tdCompressImage_ = (file, maxDim, quality) => {
+  return new Promise((resolve) => {
+    if (!file || !file.type.startsWith('image/')) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        if (!w || !h) { resolve(null); return; }
+        // Scale down kalau salah satu dimensi > maxDim (preserve aspect ratio)
+        if (w > maxDim || h > maxDim) {
+          if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else        { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(null); return; }
+        // Background putih utk PNG dgn transparansi (jpeg tidak dukung alpha)
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        try {
+          canvas.toBlob((blob) => {
+            if (!blob) { resolve(null); return; }
+            // Beri nama file .jpg supaya backend sniffExt_ dapat extension
+            const renamed = new File([blob], file.name.replace(/\.(png|webp|heic|heif)$/i, '.jpg').replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+            const previewUrl = URL.createObjectURL(blob);
+            resolve({ file: renamed, previewUrl: previewUrl });
+          }, 'image/jpeg', quality);
+        } catch (e) { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+};
 
 // Submit Daily Report with MANDATORY proof check
 const submitDailyReportForm = async (e) => {
@@ -2894,8 +3033,31 @@ const previewQuickProofFile = async (input) => {
     input.value = '';
     return;
   }
+
+  // v90: Kompres gambar di client + preview instan (sama seperti previewReportFile)
+  let uploadFile = file;
+  let localPreviewUrl = null;
+  if (file.type.startsWith('image/')) {
+    try {
+      const compressed = await _tdCompressImage_(file, 1280, 0.82);
+      if (compressed) {
+        uploadFile = compressed.file;
+        localPreviewUrl = compressed.previewUrl;
+      } else {
+        localPreviewUrl = URL.createObjectURL(file);
+      }
+    } catch (e) {
+      localPreviewUrl = URL.createObjectURL(file);
+    }
+  }
+  if (localPreviewUrl) {
+    const previewImg = document.getElementById('quick-proof-preview-img');
+    previewImg.src = localPreviewUrl;
+    document.getElementById('quick-proof-preview-container').style.display = 'block';
+  }
+
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', uploadFile);
   try {
     showToast('Mengunggah bukti...', 'info');
     const res = await fetch('/api/upload', { method: 'POST', body: formData });
@@ -2908,6 +3070,9 @@ const previewQuickProofFile = async (input) => {
         const previewImg = document.getElementById('quick-proof-preview-img');
         previewImg.src = url;
         document.getElementById('quick-proof-preview-container').style.display = 'block';
+        if (localPreviewUrl && localPreviewUrl.indexOf('blob:') === 0) {
+          try { URL.revokeObjectURL(localPreviewUrl); } catch (e) { /* abaikan */ }
+        }
       } else {
         document.getElementById('quick-proof-preview-container').style.display = 'none';
         showToast('PDF terunggah. Preview tidak tersedia utk PDF.', 'info');
@@ -2915,9 +3080,17 @@ const previewQuickProofFile = async (input) => {
       showToast('Bukti berhasil diunggah!', 'success');
     } else {
       showToast(data.detail || 'Gagal mengunggah bukti', 'error');
+      document.getElementById('quick-proof-preview-container').style.display = 'none';
+      if (localPreviewUrl && localPreviewUrl.indexOf('blob:') === 0) {
+        try { URL.revokeObjectURL(localPreviewUrl); } catch (e) { /* abaikan */ }
+      }
     }
   } catch (err) {
     showToast('Gagal mengunggah bukti: koneksi terputus', 'error');
+    document.getElementById('quick-proof-preview-container').style.display = 'none';
+    if (localPreviewUrl && localPreviewUrl.indexOf('blob:') === 0) {
+      try { URL.revokeObjectURL(localPreviewUrl); } catch (e) { /* abaikan */ }
+    }
   }
 };
 window.previewQuickProofFile = previewQuickProofFile;
@@ -3137,33 +3310,96 @@ const updateAttendanceClock = () => {
 
 // --- Camera Start (async, with proper state tracking) ---
 // v68: dipanggil otomatis saat masuk panel Presensi (tanpa tombol Buka Kamera).
-window.startCamera = async () => {
+// v90: Robust retry + state recovery + simpler constraints fallback.
+//   Bug lama: kamera "terkadang tidak bisa terbuka" karena:
+//   (a) Constraint {width, height, facingMode} konflik di beberapa Android Chrome
+//       → coba constraint sederhana {video: true} sebagai fallback.
+//   (b) AppState.cameraLoading nyangkut true kalau ada exception sebelum reset
+//       → reset paksa di awal startCamera.
+//   (c) Video metadata timeout 3s terlalu pendek di device lambat → naikkan ke 6s.
+//   (d) Tidak ada cara manual retry → user harus keluar-masuk panel.
+window.startCamera = async (opts) => {
+  opts = opts || {};
   const video = document.getElementById('camera-feed');
   if (!video) return;
-  if (AppState.cameraLoading || AppState.cameraReady) return; // prevent duplicate calls
+  // v90: Reset paksa state kalau nyangkut (cameraLoading=true dari attempt gagal
+  // yg lupa reset). Tapi jangan ganggu stream aktif.
+  if (AppState.cameraReady && AppState.cameraStream && !opts.force) return;
+  if (AppState.cameraLoading) {
+    // Kalau loading terlalu lama (>10s), asumsikan nyangkut — reset.
+    if (!AppState._cameraLoadingSince || (Date.now() - AppState._cameraLoadingSince > 10000)) {
+      console.warn('startCamera: cameraLoading nyangkut, reset paksa.');
+      AppState.cameraLoading = false;
+      try { if (AppState.cameraStream) AppState.cameraStream.getTracks().forEach(t => t.stop()); } catch (e) { /* abaikan */ }
+      AppState.cameraStream = null;
+      AppState.cameraReady = false;
+    } else {
+      return; // masih loading normal, jangan interupsi
+    }
+  }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     showToast('Browser tidak mendukung akses kamera. Gunakan tombol kamera HP saat presensi.', 'warning');
     setFaceStatus('idle', 'Kamera tidak didukung browser');
     return;
   }
   AppState.cameraLoading = true;
+  AppState._cameraLoadingSince = Date.now();
   setFaceStatus('loading');
-  // Update button label if exists
   const btn = document.getElementById('btn-submit-checkin');
+
+  // v90: Constraint gradual — coba ideal dulu, fallback ke simple.
+  const constraintsList = [
+    { video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }, audio: false },
+    { video: { facingMode: 'user' }, audio: false },       // tanpa dimensi eksplisit
+    { video: true, audio: false }                            // paling liberal
+  ];
+  let stream = null;
+  let lastErr = null;
+  for (let i = 0; i < constraintsList.length; i++) {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraintsList[i]);
+      break; // sukses
+    } catch (err) {
+      lastErr = err;
+      console.warn('startCamera: constraint #' + i + ' gagal —', err && err.name, err && err.message);
+      // NotAllowedError = permission denied — tidak gunakan fallback (user must grant).
+      if (err && err.name === 'NotAllowedError') break;
+      // NotFoundError / OverconstrainedError → coba constraint berikutnya.
+    }
+  }
+
+  if (!stream) {
+    AppState.cameraReady = false;
+    AppState.cameraLoading = false;
+    AppState._cameraLoadingSince = null;
+    stopFaceDetection();
+    const msg = (lastErr && lastErr.name === 'NotAllowedError')
+      ? 'Akses kamera ditolak. Izinkan kamera di browser (ikon gembok di address bar), lalu tekan tombol "Buka Kamera" lagi.'
+      : 'Kamera tidak bisa dibuka. Coba tekan tombol "Buka Kamera" — atau gunakan kamera HP saat klik tombol presensi.';
+    console.warn('Camera error:', lastErr && lastErr.message);
+    setFaceStatus('idle', (lastErr && lastErr.name === 'NotAllowedError') ? 'Kamera ditolak — izinkan akses di browser' : 'Kamera gagal dibuka — tekan tombol Buka Kamera');
+    showToast(msg, 'warning');
+    return;
+  }
+
   try {
-    AppState.cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-      audio: false
-    });
-    video.srcObject = AppState.cameraStream;
-    // Wait for video metadata to ensure dimensions are available
+    AppState.cameraStream = stream;
+    video.srcObject = stream;
+    // v90: Pastikan video play() dijalankan (beberapa browser butuh explicit play).
+    try { await video.play(); } catch (e) { /* autoplay mungkin sudah aktif */ }
+    // Wait for video metadata to ensure dimensions are available — v90: 6s timeout.
     await new Promise((resolve) => {
       if (video.readyState >= 2) return resolve();
       video.onloadedmetadata = () => resolve();
-      setTimeout(resolve, 3000); // safety timeout
+      setTimeout(resolve, 6000);
     });
+    // v90: Pastikan video dimensions valid — kalau masih 0, beri sedikit waktu lagi.
+    if (!video.videoWidth) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
     AppState.cameraReady = true;
     AppState.cameraLoading = false;
+    AppState._cameraLoadingSince = null;
     // v68: init FaceDetector API (kalau tersedia — Chrome/Android), lalu mulai loop deteksi
     try {
       if ('FaceDetector' in window) {
@@ -3175,16 +3411,32 @@ window.startCamera = async () => {
   } catch (err) {
     AppState.cameraReady = false;
     AppState.cameraLoading = false;
+    AppState._cameraLoadingSince = null;
     stopFaceDetection();
-    const msg = (err && err.name === 'NotAllowedError')
-      ? 'Akses kamera ditolak. Izinkan kamera di browser (ikon gembok di address bar), lalu keluar-masuk panel Presensi lagi.'
-      : 'Kamera tidak tersedia. Anda bisa presensi dengan kamera HP saat klik tombol presensi.';
-    console.warn('Camera error:', err && err.message);
-    setFaceStatus('idle', (err && err.name === 'NotAllowedError') ? 'Kamera ditolak — izinkan akses di browser' : 'Kamera tidak tersedia');
-    showToast(msg, 'warning');
+    setFaceStatus('idle', 'Kamera gagal diinisialisasi');
+    showToast('Kamera terbuka tapi gagal menampilkan preview. Coba tombol Buka Kamera lagi.', 'warning');
   }
 };
 const startCamera = window.startCamera;
+
+// v90: Manual retry — dipanggil tombol "Buka Kamera" di panel presensi.
+// Stop stream lama dulu (kalau ada), reset state, lalu startCamera(force).
+window.retryCamera = async () => {
+  try {
+    if (AppState.cameraStream) {
+      AppState.cameraStream.getTracks().forEach(t => { try { t.stop(); } catch (e) { /* abaikan */ } });
+    }
+  } catch (e) { /* abaikan */ }
+  AppState.cameraStream = null;
+  AppState.cameraReady = false;
+  AppState.cameraLoading = false;
+  AppState._cameraLoadingSince = null;
+  const video = document.getElementById('camera-feed');
+  if (video) video.srcObject = null;
+  setFaceStatus('loading', 'Membuka kamera...');
+  await window.startCamera({ force: true });
+};
+const retryCamera = window.retryCamera;
 
 // --- Stop Camera (called when leaving presensi view) ---
 const stopCamera = () => {
@@ -3583,6 +3835,11 @@ window.checkGpsDistance = () => {
       text.innerHTML = `<strong>Tervalidasi di Lokasi:</strong> ${dist} meter dari ${outlet.name} (Batas Radius: ${radiusLimit}m)${accuracyInfo} — <strong>Valid Untuk Presensi</strong>`;
     }
     setPresensiButtonsEnabled(true);
+    // v90: Lazy camera — baru buka kamera SETELAH GPS tervalidasi (dekat outlet).
+    // Menghindari buka kamera sia-sia kalau user ternyata di luar radius.
+    if (!AppState.cameraReady && !AppState.cameraLoading) {
+      window.startCamera && window.startCamera();
+    }
   } else {
     // User di luar radius outlet yang dipilih — cek apakah ada outlet lain yang dalam radius
     if (nearestOutlet && nearestValid) {

@@ -624,11 +624,17 @@
               </div>
 
               <!-- v68: Indikator posisi wajah (pengganti tombol Buka Kamera) -->
+              <!-- v90: Tambah tombol "Buka Kamera" utk retry manual (fix bug kamera terkadang tidak bisa terbuka) -->
               <div class="form-group" style="margin-bottom:0;">
                 <label class="form-label">Status Kamera &amp; Wajah</label>
-                <div id="face-status-indicator" style="display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px; background:#f1f5f9; border:2px solid #e2e8f0; height:44px; box-sizing:border-box; transition: all 0.3s ease;">
-                  <span id="face-status-icon" style="font-size:16px; line-height:1;">📷</span>
-                  <span id="face-status-text" style="font-size:12px; font-weight:600; color:#64748b;">Kamera belum aktif</span>
+                <div style="display:flex; gap:6px; align-items:stretch;">
+                  <div id="face-status-indicator" style="flex:1; display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px; background:#f1f5f9; border:2px solid #e2e8f0; height:44px; box-sizing:border-box; transition: all 0.3s ease;">
+                    <span id="face-status-icon" style="font-size:16px; line-height:1;">📷</span>
+                    <span id="face-status-text" style="font-size:12px; font-weight:600; color:#64748b;">Kamera belum aktif</span>
+                  </div>
+                  <button type="button" class="btn-secondary" style="padding:0 14px; font-size:11.5px; font-weight:700; height:44px; white-space:nowrap;" onclick="window.retryCamera && window.retryCamera()" title="Buka kamera manual (jika kamera tidak otomatis terbuka)">
+                    <i data-feather="camera" style="width:14px; height:14px;"></i> Buka Kamera
+                  </button>
                 </div>
               </div>
             </div>
