@@ -7141,9 +7141,13 @@ window.saSwitchTab = (tab) => {
   if (tab === 'users') window.loadSaUsers && window.loadSaUsers();
   if (tab === 'shifts') window.loadSaShifts && window.loadSaShifts();
   // v92: Tab SPK Digital — load template editor + status table
+  // v92.3: Muat Form Cepat (default mode) + Editor HTML Lanjutan + status table.
   if (tab === 'spk') {
-    window.loadSaSpkTemplate && window.loadSaSpkTemplate();
+    window.loadSaSpkForm && window.loadSaSpkForm();        // v92.3: Form Cepat (default)
+    window.loadSaSpkTemplate && window.loadSaSpkTemplate(); // v92: Editor HTML Lanjutan
     window.loadSaSpkStatus && window.loadSaSpkStatus();
+    // Pastikan mode default = Form Cepat
+    window.saSpkSwitchMode && window.saSpkSwitchMode('form');
   }
   if (tab === 'settings') window.loadSaSettings && window.loadSaSettings();
 };
@@ -8373,7 +8377,465 @@ window.renderProfileView = renderProfileView;
 
 // ============================================================================
 // v92: SPK TEMPLATE EDITOR + STATUS MONITORING (Panel Super Admin)
+// v92.3: Form Cepat — input field-by-field, ramah admin non-teknis.
 // ============================================================================
+
+// v92.3: Default field untuk Form Cepat SPK (identitas perusahaan, judul,
+// denda, jam kerja default, lokasi pengadilan). Ini adalah baseline; admin
+// bisa override per field. Data karyawan (nama, NIP, gaji, alamat, dll)
+// TIDAK diisi di sini — tetap via placeholder {{...}} yang dirender backend
+// dari data karyawan saat SPK ditampilkan.
+const TD_SPK_FORM_DEFAULTS = {
+  template_title: 'Perjanjian Kerja PT. CCI (Default)',
+  document_title: 'PERJANJIAN KERJA',
+  location_city: 'Sleman',
+  company_name: 'PT. CHICKEN CRUSH INDONESIA',
+  company_address: 'Kabupaten Sleman',
+  representative_name: 'Abd. Halim',
+  representative_position: 'People & Culture Development',
+  jam_kerja_management: 'Senin - Jumat : 08.30 – 16.30 atau dalam kondisi kunjungan kerja akan menyesuaikan',
+  jam_kerja_operasional: 'Sesuai jadwal shift outlet yang ditetapkan (lihat penjadwalan)',
+  denda_pelanggaran: '20000000',
+  denda_undur_diri: '10000000',
+  pengadilan: 'Pengadilan Negeri Sleman',
+  masa_evaluasi: '3 (tiga) bulan'
+};
+
+// v92.3: Spesifikasi field Form Cepat (id, label, type, group, placeholder, help).
+// Dirender dinamis ke #sa-spk-form-container. Group dipakai untuk section header.
+const TD_SPK_FORM_FIELDSPEC = [
+  { id: 'template_title', label: 'Judul Template (internal, untuk admin)', type: 'text', group: 'Umum', placeholder: 'Mis. Perjanjian Kerja PT. CCI', help: 'Hanya label internal — tidak muncul di dokumen SPK yang dilihat karyawan.' },
+  { id: 'document_title', label: 'Judul Dokumen (header besar di SPK)', type: 'text', group: 'Umum', placeholder: 'PERJANJIAN KERJA', help: 'Judul besar di bagian atas dokumen SPK.' },
+  { id: 'location_city', label: 'Kota Tempat SPK Dibuat', type: 'text', group: 'Umum', placeholder: 'Sleman', help: 'Muncul sebagai "… di <kota>" di bagian tanggal.' },
+
+  { id: 'company_name', label: 'Nama Perusahaan', type: 'text', group: 'Identitas Perusahaan', placeholder: 'PT. CHICKEN CRUSH INDONESIA', help: '' },
+  { id: 'company_address', label: 'Tempat Kedudukan', type: 'text', group: 'Identitas Perusahaan', placeholder: 'Kabupaten Sleman', help: '' },
+  { id: 'representative_name', label: 'Diwakili oleh (Nama)', type: 'text', group: 'Identitas Perusahaan', placeholder: 'Abd. Halim', help: 'Nama perwakilan yang menandatangani SPK di sisi perusahaan.' },
+  { id: 'representative_position', label: 'Jabatan Perwakilan', type: 'text', group: 'Identitas Perusahaan', placeholder: 'People & Culture Development', help: '' },
+
+  { id: 'jam_kerja_management', label: 'Jam Kerja Default (Management)', type: 'text', group: 'Jam Kerja', placeholder: 'Senin - Jumat : 08.30 – 16.30', help: 'Dipakai saat divisi karyawan = Management. Untuk Operasional, pakai field di bawah.' },
+  { id: 'jam_kerja_operasional', label: 'Jam Kerja Default (Operasional)', type: 'text', group: 'Jam Kerja', placeholder: 'Sesuai jadwal shift outlet', help: 'Dipakai saat divisi karyawan = Tim Operasional.' },
+
+  { id: 'denda_pelanggaran', label: 'Denda Pelanggaran Pasal 5 (Rp)', type: 'number', group: 'Sanksi & Denda', placeholder: '20000000', help: 'Denda untuk pelanggaran Kerahasiaan, Hak Kekayaan Intelektual, Kepentingan Pribadi, Non Kompetisi.' },
+  { id: 'denda_undur_diri', label: 'Denda Undur Diri Tidak Sesuai Prosedur (Rp)', type: 'number', group: 'Sanksi & Denda', placeholder: '10000000', help: 'Denda bagi karyawan yang mengundurkan diri tidak sesuai prosedur (1 bulan sebelumnya).' },
+  { id: 'pengadilan', label: 'Lokasi Pengadilan (Pasal 7)', type: 'text', group: 'Sanksi & Denda', placeholder: 'Pengadilan Negeri Sleman', help: 'Pengadilan yang berwenang menyelesaikan perselisihan dari SPK.' },
+  { id: 'masa_evaluasi', label: 'Masa Evaluasi Kerja', type: 'text', group: 'Sanksi & Denda', placeholder: '3 (tiga) bulan', help: 'Periode evaluasi kerja (Pasal 2).' }
+];
+
+// v92.3: Format angka ke rupiah (mis. 20000000 → "20.000.000"). Sama dengan
+// formatRupiahAmount_ di backend, tapi di-frontend untuk preview.
+function tdSpkFormatRupiah_(n) {
+  const x = Number(n) || 0;
+  return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+// v92.3: Escape HTML supaya input admin tidak injeksi XSS saat dirender.
+function tdSpkEscapeHtml_(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// v92.3: Bangun HTML SPK lengkap dari field Form Cepat. Placeholder {{...}}
+// untuk data karyawan (nama, NIP, gaji, dll) tetap utuh — backend akan render
+// dari data karyawan saat SPK ditampilkan. Marker <!--SPK-FORM-V1--> ditanam
+// di awal supaya kita bisa deteksi saat load: kalau marker ada, field aman
+// di-parse dari HTML; kalau tidak ada, tampilkan warning "template kustom".
+function buildSpkHtmlFromForm_(fields) {
+  const f = Object.assign({}, TD_SPK_FORM_DEFAULTS, fields || {});
+  const companyName = tdSpkEscapeHtml_(f.company_name);
+  const companyAddress = tdSpkEscapeHtml_(f.company_address);
+  const repName = tdSpkEscapeHtml_(f.representative_name);
+  const repPos = tdSpkEscapeHtml_(f.representative_position);
+  const docTitle = tdSpkEscapeHtml_(f.document_title);
+  const locationCity = tdSpkEscapeHtml_(f.location_city);
+  const jamMgmt = tdSpkEscapeHtml_(f.jam_kerja_management);
+  const jamOps = tdSpkEscapeHtml_(f.jam_kerja_operasional);
+  const dendaPelanggaran = tdSpkFormatRupiah_(f.denda_pelanggaran);
+  const dendaUndurDiri = tdSpkFormatRupiah_(f.denda_undur_diri);
+  const pengadilan = tdSpkEscapeHtml_(f.pengadilan);
+  const masaEvaluasi = tdSpkEscapeHtml_(f.masa_evaluasi);
+
+  // Untuk jam_kerja: kita pakai placeholder {{jam_kerja}} yang sudah ada di template
+  // backend, TAPI karena Form Cepat ingin preview akurat, kita tanam dua nilai
+  // sebagai komentar HTML — backend tetap pakai {{jam_kerja}} (dari divisi karyawan).
+  // Catatan: nilai default jam_kerja di-renderAgreementHtml_ (backend) tetap
+  // berdasarkan divisi. Field jam_kerja_* di Form Cepat ini hanya referensi visual
+  // untuk admin; nilai aktual saat ditampilkan ke karyawan pakai logika backend.
+
+  return [
+    '<!--SPK-FORM-V1-->',
+    '<!--FORM:' + JSON.stringify({
+      template_title: f.template_title,
+      document_title: f.document_title,
+      location_city: f.location_city,
+      company_name: f.company_name,
+      company_address: f.company_address,
+      representative_name: f.representative_name,
+      representative_position: f.representative_position,
+      jam_kerja_management: f.jam_kerja_management,
+      jam_kerja_operasional: f.jam_kerja_operasional,
+      denda_pelanggaran: f.denda_pelanggaran,
+      denda_undur_diri: f.denda_undur_diri,
+      pengadilan: f.pengadilan,
+      masa_evaluasi: f.masa_evaluasi
+    }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026') + '-->',
+    '<div class="agreement-doc">',
+    '  <div class="agreement-meta">',
+    '    <p><strong>Nomor</strong> &nbsp;: {{nomor}}</p>',
+    '    <p><strong>Tanggal</strong> &nbsp;: {{tahun}} di ' + locationCity + '</p>',
+    '  </div>',
+    '  <h2 class="agreement-title">' + docTitle + '</h2>',
+    '  <table class="agreement-party">',
+    '    <tr><th colspan="2">PERUSAHAAN</th></tr>',
+    '    <tr><td>Nama</td><td>' + companyName + '</td></tr>',
+    '    <tr><td>Tempat Kedudukan</td><td>' + companyAddress + '</td></tr>',
+    '    <tr><td>Diwakili oleh</td><td>' + repName + '</td></tr>',
+    '    <tr><td>Jabatan</td><td>' + repPos + '</td></tr>',
+    '  </table>',
+    '  <table class="agreement-party">',
+    '    <tr><th colspan="2">KARYAWAN</th></tr>',
+    '    <tr><td>Nama</td><td>{{employee_name}}</td></tr>',
+    '    <tr><td>NIK</td><td>{{nip}}</td></tr>',
+    '    <tr><td>Tempat &amp; Tanggal Lahir</td><td>{{tempat_tanggal_lahir}}</td></tr>',
+    '    <tr><td>Alamat</td><td>{{alamat}}</td></tr>',
+    '    <tr><td>Email</td><td>{{email}}</td></tr>',
+    '    <tr><td>Nomor KTP</td><td>{{nomor_ktp}}</td></tr>',
+    '    <tr><td>Telepon / HP</td><td>{{phone}}</td></tr>',
+    '  </table>',
+    '  <p class="agreement-para">Perusahaan dan Karyawan secara bersama-sama disebut sebagai &ldquo;Para Pihak&rdquo;. Para Pihak sepakat membuat Perjanjian Kerja (&ldquo;Perjanjian&rdquo;) ini dengan ketentuan sebagai berikut:</p>',
+    '  <h3 class="agreement-pasal">Pasal 1. Status &amp; Jabatan</h3>',
+    '  <table class="agreement-data">',
+    '    <tr><td>Status</td><td>{{status}}</td></tr>',
+    '    <tr><td>Jabatan</td><td>{{jabatan}}</td></tr>',
+    '    <tr><td>Uraian Pekerjaan</td><td>{{uraian_pekerjaan}}</td></tr>',
+    '    <tr><td>Jam Kerja</td><td>{{jam_kerja}}</td></tr>',
+    '    <tr><td>Gaji Pokok</td><td>Rp. {{gaji_pokok}},-</td></tr>',
+    '    <tr><td>Tunjangan Makan</td><td>Rp. {{tunjangan_makan}},- / hari</td></tr>',
+    '    <tr><td>Tunjangan Transportasi</td><td>Rp. {{tunjangan_transport}},- / hari</td></tr>',
+    '    <tr><td>Tunjangan Jabatan</td><td>Rp. {{tunjangan_jabatan}},-</td></tr>',
+    '    <tr><td>Uang Kerajinan</td><td>Rp. {{uang_kerajinan}},-</td></tr>',
+    '  </table>',
+    '  <h3 class="agreement-pasal">Pasal 2. Jangka Waktu dan Evaluasi</h3>',
+    '  <p class="agreement-para"><strong>Jangka Waktu:</strong> Perjanjian ini berlaku sejak tanggal ditandatanganinya Perjanjian ini dan berakhir apabila terjadi Pemutusan Hubungan Kerja dan atau Pengunduran Diri dari Karyawan.</p>',
+    '  <p class="agreement-para"><strong>Evaluasi:</strong> Evaluasi kerja dapat diadakan tiap ' + masaEvaluasi + ' sekali. Hasil evaluasi disampaikan Perusahaan kepada Karyawan secara tertulis. Apabila hasil evaluasi tidak baik, dan setelah diberi teguran atau peringatan oleh Perusahaan, Karyawan tidak dapat memperbaiki diri, maka Perusahaan berhak melakukan pemutusan hubungan kerja.</p>',
+    '  <h3 class="agreement-pasal">Pasal 3. Hak Para Pihak</h3>',
+    '  <p class="agreement-para"><strong>PERUSAHAAN:</strong></p>',
+    '  <ul class="agreement-list">',
+    '    <li>Mendapatkan kontribusi dari Karyawan berupa hasil dari pekerjaan sesuai dengan posisi kerja yang Karyawan dapat di pasal 1.</li>',
+    '    <li>Memberikan instruksi di luar uraian Pekerjaan Karyawan untuk kelangsungan usaha, baik secara langsung maupun tidak langsung.</li>',
+    '    <li>Membuat ketetapan, peraturan, dan kebijakan Perusahaan.</li>',
+    '    <li>Mengawasi, mengkoordinir, menegur, dan memberhentikan Karyawan.</li>',
+    '    <li>Memindahkan, menaikkan, atau menurunkan posisi dan jabatan kerja Karyawan. Dalam hal apabila terjadi, penyesuaian akan diberikan dalam Adendum.</li>',
+    '    <li>Memotong atau menurunkan nilai upah, tunjangan, dan atau bonus apabila menemukan Karyawan tidak memenuhi peraturan perusahaan yang sudah ditetapkan.</li>',
+    '  </ul>',
+    '  <p class="agreement-para"><strong>KARYAWAN:</strong></p>',
+    '  <ul class="agreement-list">',
+    '    <li>Mendapatkan upah, tunjangan, dan atau bonus dari Perusahaan sesuai pasal 1.</li>',
+    '    <li>Mendapatkan perlakuan yang baik dan sesuai di dalam pekerjaan.</li>',
+    '    <li>Mendapatkan dan atau menggunakan fasilitas dan pelatihan yang disediakan Perusahaan.</li>',
+    '    <li>Mendapatkan hak waktu kerja yang disebut pada pasal 1.</li>',
+    '    <li>Mendapatkan Tunjangan Hari Raya.</li>',
+    '    <li>Mendapatkan cuti tahunan sebanyak 12 (dua belas) hari, khusus Karyawan dengan masa kerja di atas 9 Bulan.</li>',
+    '    <li>Cuti Menikah sebanyak 4 (empat) hari.</li>',
+    '  </ul>',
+    '  <h3 class="agreement-pasal">Pasal 4. Kewajiban Para Pihak</h3>',
+    '  <p class="agreement-para"><strong>PERUSAHAAN:</strong></p>',
+    '  <ul class="agreement-list">',
+    '    <li>Memberikan instruksi kerja sesuai Jabatan dan Uraian Pekerjaan Karyawan. Perusahaan berhak memberikan instruksi diluar Uraian Pekerjaan Karyawan untuk kelangsungan usaha, baik secara langsung maupun tidak langsung. Perusahaan berwenang memindahkan Karyawan ke jabatan atau lokasi kerja lain sesuai dengan pertimbangan dan kebutuhan Perusahaan.</li>',
+    '    <li>Membayar Upah tepat waktu dan meningkatkan nilai upah, tunjangan, dan atau bonus yang terdapat pada pasal 1.</li>',
+    '  </ul>',
+    '  <p class="agreement-para"><strong>KARYAWAN:</strong></p>',
+    '  <ul class="agreement-list">',
+    '    <li>Melaksanakan perintah dan instruksi kerja dengan sungguh-sungguh dan itikad baik untuk mencapai hasil kerja yang dibutuhkan dan sesuai dengan standar Perusahaan.</li>',
+    '    <li>Mematuhi instruksi kerja/ arahan dari atasan/ pimpinan di Perusahaan. Mematuhi Peraturan Perusahaan, tata tertib dan peraturan lain yang berlaku di perusahaan.</li>',
+    '    <li>Menjaga citra perusahaan dengan berperilaku profesional dan tidak melakukan hal-hal yang dapat merusak citra perusahaan.</li>',
+    '    <li>Merawat dan mempergunakan fasilitas perusahaan untuk keperluan kerja, secara efisien dan tanggung jawab.</li>',
+    '    <li>Melaporkan setiap pekerjaan dan mempertanggungjawabkan hasil kerja kepada Perusahaan.</li>',
+    '  </ul>',
+    '  <h3 class="agreement-pasal">Pasal 5. Pernyataan dan Jaminan</h3>',
+    '  <p class="agreement-para"><strong>KERAHASIAN:</strong> Karyawan wajib menjaga data, dokumen dan informasi rahasia terkait dengan kegiatan usaha Perusahaan. Informasi Rahasia adalah termasuk namun tak terbatas pada informasi bisnis, keuangan, dan teknis, dokumentasi, desain, prosedur, catatan, laporan, gambar, rencana, daftar harga, daftar pelanggan, dan/atau sejenisnya. Sehubungan dengan perlindungan Informasi Rahasia tersebut, Karyawan berkewajiban menggunakan Informasi Rahasia yang diterima hanya untuk keperluan pelaksanaan Perjanjian ini, kecuali mendapatkan ijin tertulis Direktur untuk penggunaan yang lain.</p>',
+    '  <p class="agreement-para"><strong>HAK KEKAYAAN INTELEKTUAL:</strong> Setiap hasil kerja, penemuan, desain, teknik, segala perwujudan hak kekayaan intelektual oleh Karyawan dalam pelaksanaan pekerjaan adalah milik dan akan selalu menjadi milik Perusahaan. Karyawan tidak diperkenankan menggandakan, mempublikasikan dan atau menggunakan hak kekayaan intelektual tersebut tanpa izin tertulis Direktur.</p>',
+    '  <p class="agreement-para"><strong>KEPENTINGAN PRIBADI:</strong> Selama Jangka Waktu Kerja, Karyawan menjamin tidak mengambil manfaat dari fasilitas dan jaringan bisnis Perusahaan untuk kepentingan pribadi.</p>',
+    '  <p class="agreement-para"><strong>Non Kompetisi:</strong> Selama Jangka Waktu Kerja, Karyawan menjamin untuk tidak bekerja/ menjalin kerja sama/ memberikan bantuan dengan cara apapun kepada pihak pesaing.</p>',
+    '  <p class="agreement-para"><strong>Sanksi:</strong> Pelanggaran atas ketentuan Kerahasiaan, Hak Kekayaan Intelektual, Kepentingan Pribadi dan Non Kompetisi dikenakan sanksi kompensasi Rp ' + dendaPelanggaran + ',- yang wajib dibayar oleh Karyawan kepada Perusahaan selambatnya 7 (tujuh) hari kerja sejak tanggal pemberitahuan pelanggaran disampaikan oleh Perusahaan kepada Karyawan.</p>',
+    '  <h3 class="agreement-pasal">Pasal 6. Berakhirnya Perjanjian Kerja</h3>',
+    '  <p class="agreement-para"><strong>Perjanjian ini dapat diakhiri oleh Perusahaan dalam hal:</strong></p>',
+    '  <ul class="agreement-list">',
+    '    <li>Karyawan melakukan pelanggaran perjanjian kerja atau pelanggaran tata tertib/ Peraturan Perusahaan. Pengakhiran perjanjian oleh Perusahaan ini dilakukan tanpa disertai kompensasi apapun kepada Karyawan. Apabila sebagai akibat pelanggaran tersebut terdapat kerugian, maka Karyawan diwajibkan melakukan penggantian atas kerugian tersebut;</li>',
+    '    <li>Karyawan dinilai Perusahaan tidak mencapai nilai, atau dinilai Perusahaan tidak dapat memenuhi kebutuhan / standar kerja Perusahaan dan setelah diberikan teguran (lisan) atau peringatan (tertulis) dinilai tidak ada perbaikan. Pengakhiran perjanjian oleh Perusahaan ini dilakukan tanpa disertai kompensasi apapun kepada Karyawan;</li>',
+    '    <li>Pengakhiran perjanjian oleh Perusahaan diluar alasan tersebut di atas dikenai kewajiban pembayaran kompensasi senilai Upah selama sisa Jangka Waktu Kerja Karyawan.</li>',
+    '  </ul>',
+    '  <p class="agreement-para"><strong>Perjanjian ini dapat diakhiri oleh Karyawan / Mengundurkan Diri:</strong></p>',
+    '  <ul class="agreement-list">',
+    '    <li>Karyawan yang bermaksud mengundurkan diri wajib memberitahukan secara tertulis kepada Direktur dengan menjelaskan alasannya, paling lambat 1 bulan sebelum efektif berhenti kerja.</li>',
+    '    <li>Dalam masa 1 bulan terakhir tersebut Karyawan diwajibkan untuk bekerja sebagaimana biasanya serta melakukan proses pelimpahan kerja serta pengalihan pengetahuan dan keterampilan kerjanya kepada manajemen atau karyawan calon pengganti untuk posisi yang ditinggalkannya.</li>',
+    '    <li>Karyawan wajib mengembalikan fasilitas dan dokumen kerja serta melaksanakan delegasi / serah terima pekerjaan kepada pengampu tugas yang ditunjuk Perusahaan, H-1 sebelum pengakhiran Perjanjian.</li>',
+    '    <li>Karyawan tetap yang mengundurkan diri sesuai ketentuan tersebut di atas, berhak mendapatkan penggantian hak yang belum diambil dan belum gugur sesuai peraturan yang berlaku.</li>',
+    '    <li>Karyawan yang mengundurkan diri tidak sesuai dengan ketentuan di atas, maka sisa haknya tidak akan diberikan. Dan akan dikenakan denda sebesar Rp. ' + dendaUndurDiri + ',-</li>',
+    '  </ul>',
+    '  <h3 class="agreement-pasal">Pasal 7. Ketentuan Lain</h3>',
+    '  <p class="agreement-para"><strong>Addendum:</strong> Apabila diperlukan, hal-hal yang belum diatur dalam Perjanjian ini atau di Peraturan Perusahaan akan diatur kemudian dalam Addendum dan/atau Lampiran. Addendum dan Lampiran merupakan satu kesatuan bagian yang tidak terpisahkan dari Perjanjian ini.</p>',
+    '  <p class="agreement-para"><strong>Keberlakuan:</strong> Perjanjian kerja ini batal dengan sendirinya jika karena keadaan atau situasi yang memaksa, seperti: bencana alam, pemberontakan, huru-hara, kerusuhan, peraturan pemerintah atau apapun yang mengakibatkan perjanjian kerja ini tidak mungkin lagi untuk diwujudkan. Dalam hal ada ketentuan dalam Perjanjian ini yang menjadi tidak berlaku karena suatu peraturan perundang-undangan maka ketidakberlakuan ketentuan tersebut tidak mengakibatkan batalnya Perjanjian. Para Pihak menyetujui dan mengikatkan diri serta wajib untuk membuat dan menandatangani ketentuan yang baru untuk menggantikan ketentuan yang telah tidak berlaku tersebut, dengan suatu atau lebih ketentuan yang sah dan berlaku sesuai dengan ketentuan peraturan perundang-undangan yang berlaku di Indonesia.</p>',
+    '  <p class="agreement-para"><strong>Perselisihan:</strong> Setiap perselisihan yang timbul sebagai akibat Perjanjian ini akan diselesaikan secara musyawarah mufakat. Apabila musyawarah mufakat tidak dapat menyelesaikan perselisihan, maka perselisihan tersebut akan diselesaikan melalui ' + pengadilan + '.</p>',
+    '  <p class="agreement-para">Demikian Perjanjian ini dibuat pada hari dan tanggal sebagaimana tersebut pada bagian awal Perjanjian ini, untuk dipatuhi dan dilaksanakan dengan sebaik-baiknya oleh Para Pihak.</p>',
+    '  <div class="agreement-signature">',
+    '    <div class="agreement-signature-col">',
+    '      <p>' + companyName + '</p>',
+    '      <p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>',
+    '      <p><strong>' + repName + '</strong></p>',
+    '      <p>' + repPos + '</p>',
+    '    </div>',
+    '    <div class="agreement-signature-col">',
+    '      <p>Karyawan,</p>',
+    '      <p>&nbsp;</p><p>&nbsp;</p><p>&nbsp;</p>',
+    '      <p><strong>{{employee_name}}</strong></p>',
+    '      <p>&nbsp;</p>',
+    '    </div>',
+    '  </div>',
+    '</div>'
+  ].join('\n');
+}
+
+// v92.3: Parse HTML SPK existing → ekstrak field Form Cepat. Deteksi via marker
+// <!--SPK-FORM-V1--> + <!--FORM:{...}-->. Kalau marker ada, parse JSON dari
+// komentar FORM. Kalau tidak ada (template kustom / hasil edit HTML manual),
+// return null → frontend tampilkan warning "Template kustom — Form Cepat
+// mungkin tidak akurat, sarankan pakai Editor HTML Lanjutan".
+function parseSpkHtmlToFields_(html) {
+  if (!html || typeof html !== 'string') return null;
+  if (html.indexOf('SPK-FORM-V1') < 0) return null;
+  const m = html.match(/<!--FORM:(.*?)-->/);
+  if (!m) return null;
+  try {
+    const obj = JSON.parse(m[1]);
+    if (obj && typeof obj === 'object') return obj;
+  } catch (e) { /* fallthrough */ }
+  return null;
+}
+
+// v92.3: Render Form Cepat ke #sa-spk-form-container dari spec + values.
+function renderSaSpkForm_(values) {
+  const container = document.getElementById('sa-spk-form-container');
+  if (!container) return;
+  const v = Object.assign({}, TD_SPK_FORM_DEFAULTS, values || {});
+  // Group fields by `group`
+  const groups = [];
+  const groupMap = {};
+  TD_SPK_FORM_FIELDSPEC.forEach(function (f) {
+    if (!groupMap[f.group]) { groupMap[f.group] = []; groups.push(f.group); }
+    groupMap[f.group].push(f);
+  });
+  const html = ['<div style="display:grid; gap:18px;">'];
+  groups.forEach(function (gname) {
+    html.push('<fieldset style="border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px 10px 16px; margin:0;">');
+    html.push('<legend style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px; padding:0 8px;">' + tdSpkEscapeHtml_(gname) + '</legend>');
+    html.push('<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">');
+    groupMap[gname].forEach(function (f) {
+      const val = v[f.id] !== undefined ? v[f.id] : '';
+      const isWide = (f.type === 'text' && (f.id === 'jam_kerja_management' || f.id === 'jam_kerja_operasional' || f.id === 'company_address'));
+      const colSpan = isWide ? 'grid-column:1/-1;' : '';
+      html.push('<div class="form-group" style="margin-bottom:0; ' + colSpan + '">');
+      html.push('<label class="form-label" style="font-size:11px; font-weight:600; color:#334155;">' + tdSpkEscapeHtml_(f.label) + '</label>');
+      if (f.type === 'number') {
+        html.push('<input type="number" class="form-control spk-form-field" data-field-id="' + f.id + '" value="' + tdSpkEscapeHtml_(val) + '" placeholder="' + tdSpkEscapeHtml_(f.placeholder || '') + '" style="font-size:12.5px; padding:8px 10px;" oninput="window.spkFormOnInput && window.spkFormOnInput(this)">');
+      } else {
+        html.push('<input type="text" class="form-control spk-form-field" data-field-id="' + f.id + '" value="' + tdSpkEscapeHtml_(val) + '" placeholder="' + tdSpkEscapeHtml_(f.placeholder || '') + '" style="font-size:12.5px; padding:8px 10px;' + (isWide ? ' width:100%;' : '') + '" oninput="window.spkFormOnInput && window.spkFormOnInput(this)">');
+      }
+      if (f.help) {
+        html.push('<p style="font-size:10px; color:#94a3b8; margin:3px 0 0 0;">' + tdSpkEscapeHtml_(f.help) + '</p>');
+      }
+      html.push('</div>');
+    });
+    html.push('</div>');
+    html.push('</fieldset>');
+  });
+  html.push('</div>');
+  // Hidden state container untuk simpan values dari Form Cepat
+  html.push('<input type="hidden" id="sa-spk-form-mode" value="form">');
+  container.innerHTML = html.join('');
+}
+
+// v92.3: Kumpulkan nilai dari semua input.spk-form-field → object.
+function collectSpkFormValues_() {
+  const out = {};
+  document.querySelectorAll('.spk-form-field').forEach(function (inp) {
+    const id = inp.getAttribute('data-field-id');
+    if (id) out[id] = inp.value;
+  });
+  return out;
+}
+
+// v92.3: Switch antara Form Cepat & Editor HTML Lanjutan.
+window.saSpkSwitchMode = (mode) => {
+  const formDiv = document.getElementById('spk-mode-form');
+  const htmlDiv = document.getElementById('spk-mode-html');
+  const btnForm = document.getElementById('spk-mode-btn-form');
+  const btnHtml = document.getElementById('spk-mode-btn-html');
+  if (!formDiv || !htmlDiv || !btnForm || !btnHtml) return;
+  if (mode === 'html') {
+    formDiv.style.display = 'none';
+    htmlDiv.style.display = '';
+    btnForm.style.color = '#475569';
+    btnForm.style.borderBottomColor = 'transparent';
+    btnForm.classList.remove('spk-mode-tab-active');
+    btnHtml.style.color = 'var(--burgundy-primary, #8b1e3f)';
+    btnHtml.style.borderBottomColor = 'var(--burgundy-primary, #8b1e3f)';
+    btnHtml.classList.add('spk-mode-tab-active');
+    // Saat beralih ke HTML mode, sinkronkan textarea dari Form Cepat (kalau ada)
+    // supaya admin bisa lihat hasil build. Hanya jika textarea masih kosong.
+    const ta = document.getElementById('sa-spk-content');
+    if (ta && !ta.value.trim()) {
+      const vals = collectSpkFormValues_();
+      ta.value = buildSpkHtmlFromForm_(vals);
+      const titleInput = document.getElementById('sa-spk-title');
+      if (titleInput && !titleInput.value.trim()) titleInput.value = vals.template_title || TD_SPK_FORM_DEFAULTS.template_title;
+    }
+  } else {
+    formDiv.style.display = '';
+    htmlDiv.style.display = 'none';
+    btnForm.style.color = 'var(--burgundy-primary, #8b1e3f)';
+    btnForm.style.borderBottomColor = 'var(--burgundy-primary, #8b1e3f)';
+    btnForm.classList.add('spk-mode-tab-active');
+    btnHtml.style.color = '#475569';
+    btnHtml.style.borderBottomColor = 'transparent';
+    btnHtml.classList.remove('spk-mode-tab-active');
+  }
+};
+window.saSpkSwitchMode = window.saSpkSwitchMode;
+
+// v92.3: No-op handler oninput (placeholder untuk future live-preview).
+window.spkFormOnInput = () => { /* intentionally empty */ };
+
+// v92.3: Muat template SPK aktif → isi Form Cepat (kalau ada marker) atau
+// pakai default + warning. Dipanggil otomatis saat tab SPK dibuka.
+window.loadSaSpkForm = async () => {
+  const container = document.getElementById('sa-spk-form-container');
+  if (!container) return;
+  container.innerHTML = '<p style="color:#94a3b8; font-size:12px;">Memuat template...</p>';
+  try {
+    const res = await fetch('/api/admin/agreement-template');
+    if (!res.ok) {
+      // Backend belum v91+ → tampilkan form dgn default + warning
+      renderSaSpkForm_(TD_SPK_FORM_DEFAULTS);
+      const warn = document.createElement('div');
+      warn.style.cssText = 'margin-top:12px; padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; font-size:11px; color:#991b1b;';
+      warn.innerHTML = '<strong>⚠️ Backend belum v91+.</strong> Endpoint /api/admin/agreement-template tidak ditemukan (HTTP ' + res.status + '). Form ditampilkan dgn nilai default. Deploy ulang Code.gs (Deploy &gt; New version) supaya simpan berfungsi.';
+      container.appendChild(warn);
+      return;
+    }
+    const data = await res.json();
+    const parsed = parseSpkHtmlToFields_(data.content_html || '');
+    if (parsed) {
+      // Template dihasilkan Form Cepat → field aman di-restore
+      renderSaSpkForm_(parsed);
+    } else {
+      // Template kustom (manual HTML) → pakai default + warning
+      renderSaSpkForm_(TD_SPK_FORM_DEFAULTS);
+      const warn = document.createElement('div');
+      warn.style.cssText = 'margin-top:12px; padding:10px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:8px; font-size:11px; color:#92400e;';
+      warn.innerHTML = '<strong>ℹ️ Template aktif terdeteksi sebagai HTML kustom.</strong> Form Cepat menampilkan nilai default. Kalau Anda simpan dari Form Cepat, template kustom akan <strong>ditimpa</strong> dengan hasil Form Cepat. Untuk mempertahankan kustomisasi, gunakan <strong>Editor HTML Lanjutan</strong>.';
+      container.appendChild(warn);
+    }
+    // Update badge versi (sinkron dengan loadSaSpkTemplate)
+    const badge = document.getElementById('sa-spk-version-badge');
+    if (badge) badge.textContent = data.id ? 'v' + (data.version || 1) + ' (aktif)' : 'v- (belum ada)';
+  } catch (err) {
+    renderSaSpkForm_(TD_SPK_FORM_DEFAULTS);
+    const warn = document.createElement('div');
+    warn.style.cssText = 'margin-top:12px; padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; font-size:11px; color:#991b1b;';
+    warn.innerHTML = '<strong>Gagal memuat template:</strong> ' + (err.message || 'koneksi terputus') + '. Form ditampilkan dengan nilai default.';
+    container.appendChild(warn);
+  }
+};
+window.loadSaSpkForm = window.loadSaSpkForm;
+
+// v92.3: Simpan template baru dari Form Cepat. Build HTML dari field, lalu
+// kirim ke endpoint PUT yang sama dgn Editor HTML (kompatibel penuh).
+window.saveSaSpkFromForm = async () => {
+  const vals = collectSpkFormValues_();
+  if (!vals.template_title || vals.template_title.trim().length < 3) {
+    showToast('Judul Template minimal 3 karakter.', 'error');
+    return;
+  }
+  // Validasi angka denda
+  const dendaP = Number(vals.denda_pelanggaran);
+  const dendaU = Number(vals.denda_undur_diri);
+  if (isNaN(dendaP) || dendaP < 0) { showToast('Denda Pelanggaran harus angka ≥ 0.', 'error'); return; }
+  if (isNaN(dendaU) || dendaU < 0) { showToast('Denda Undur Diri harus angka ≥ 0.', 'error'); return; }
+  // Validasi field wajib
+  const required = ['document_title', 'location_city', 'company_name', 'company_address', 'representative_name', 'representative_position', 'pengadilan', 'masa_evaluasi'];
+  for (let i = 0; i < required.length; i++) {
+    if (!vals[required[i]] || !vals[required[i]].trim()) {
+      showToast('Field wajib belum diisi: ' + required[i], 'error');
+      return;
+    }
+  }
+  // Konfirmasi kuat — trigger re-agreement semua karyawan
+  if (!confirm('PERINGATAN:\n\nMenyimpan template akan membuat VERSI BARU + menonaktifkan versi lama.\n\nSEMUA KARYAWAN akan diminta menyetujui ulang SPK saat membuka Profile berikutnya.\n\nLanjutkan simpan?')) return;
+  if (!confirm('Konfirmasi sekali lagi: Anda yakin perubahan sudah final?')) return;
+  const btn = document.getElementById('btn-spk-form-save');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-feather="loader" style="width:13px; height:13px; animation:spin 1s linear infinite;"></i> Menyimpan...'; if (window.feather) feather.replace(); }
+  try {
+    const html = buildSpkHtmlFromForm_(vals);
+    const res = await fetch('/api/admin/agreement-template', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: vals.template_title.trim(), content_html: html })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      window.loadSaSpkForm && window.loadSaSpkForm();
+      window.loadSaSpkStatus && window.loadSaSpkStatus();
+    } else {
+      showToast(data.detail || 'Gagal menyimpan template.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-feather="save" style="width:13px; height:13px;"></i> Simpan &amp; Versi Baru'; if (window.feather) feather.replace(); }
+  }
+};
+window.saveSaSpkFromForm = window.saveSaSpkFromForm;
+
+// v92.3: Preview struktur HTML hasil Form Cepat (placeholder belum di-replace,
+// sama seperti previewSaSpkTemplate versi HTML). Buka di modal view.
+window.previewSaSpkFromForm = () => {
+  const vals = collectSpkFormValues_();
+  const html = buildSpkHtmlFromForm_(vals);
+  const viewContent = document.getElementById('agreement-view-content');
+  if (!viewContent) { showToast('Modal preview tidak ditemukan.', 'error'); return; }
+  viewContent.innerHTML = '<div style="padding:14px; background:#fef3c7; border:1px solid #fde68a; border-radius:8px; margin-bottom:14px; font-size:11px; color:#92400e;"><strong>ℹ️ Preview Lokal:</strong> Placeholder <code>{{...}}</code> belum di-replace (data karyawan diisi backend saat karyawan buka SPK). Setelah Simpan, buka Profile > "Baca Ulang SPK" untuk lihat hasil akhir dgn data Anda.</div>' + html;
+  openModal('modal-agreement-view');
+};
+window.previewSaSpkFromForm = window.previewSaSpkFromForm;
+
+// v92.3: Reset semua field Form Cepat ke nilai default.
+window.resetSaSpkForm = () => {
+  if (!confirm('Reset semua field Form Cepat ke nilai default? Perubahan belum disimpan akan hilang.')) return;
+  renderSaSpkForm_(TD_SPK_FORM_DEFAULTS);
+  showToast('Form direset ke default.', 'success');
+};
+window.resetSaSpkForm = window.resetSaSpkForm;
+
+// v92.3: Salin HTML hasil Form Cepat ke textarea Editor HTML Lanjutan +
+// beralih ke mode HTML supaya admin bisa fine-tune. TIDAK otomatis simpan.
+window.copySpkHtmlFromForm = () => {
+  const vals = collectSpkFormValues_();
+  const html = buildSpkHtmlFromForm_(vals);
+  const ta = document.getElementById('sa-spk-content');
+  const titleInput = document.getElementById('sa-spk-title');
+  if (ta) ta.value = html;
+  if (titleInput) titleInput.value = vals.template_title || TD_SPK_FORM_DEFAULTS.template_title;
+  window.saSpkSwitchMode && window.saSpkSwitchMode('html');
+  showToast('HTML hasil Form Cepat disalin ke Editor Lanjutan. Edit jika perlu, lalu Simpan dari mode HTML.', 'success');
+};
+window.copySpkHtmlFromForm = window.copySpkHtmlFromForm;
 
 // v92: Load template SPK aktif ke form editor.
 window.loadSaSpkTemplate = async () => {
