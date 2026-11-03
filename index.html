@@ -1717,39 +1717,86 @@
             <div class="card-title-row">
               <div>
                 <h3>Editor Template Surat Perjanjian Kerja</h3>
-                <p style="font-size:12px; color:#64748b;">Edit isi SPK. Setiap perubahan → versi bertambah → SEMUA karyawan wajib baca &amp; SETUJUI ulang.</p>
+                <p style="font-size:12px; color:#64748b;">Edit SPK lewat <strong>Form Cepat</strong> (disarankan — cukup isi field) atau <strong>Editor HTML Lanjutan</strong>. Setiap simpan → versi bertambah → SEMUA karyawan wajib SETUJUI ulang.</p>
               </div>
               <span class="card-badge-tag" id="sa-spk-version-badge" style="background:#f1f5f9; color:#475569;">v-</span>
             </div>
 
-            <!-- Info placeholder -->
-            <div style="margin-top:14px; padding:12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; font-size:11.5px; color:#1e40af;">
-              <strong>📋 Placeholder yang tersedia:</strong>
-              <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; font-family:monospace; font-size:10.5px;">
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{nomor}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tahun}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{employee_name}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{nip}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tempat_tanggal_lahir}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{alamat}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{email}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{nomor_ktp}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{phone}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{status}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{jabatan}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{uraian_pekerjaan}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{jam_kerja}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{gaji_pokok}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tunjangan_makan}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tunjangan_transport}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tunjangan_jabatan}}</code>
-                <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{uang_kerajinan}}</code>
-              </div>
-              <p style="margin:8px 0 0 0; font-size:10.5px; color:#475569;">Placeholder akan otomatis diganti data karyawan saat SPK ditampilkan. Gunakan tag HTML standar (&lt;h3&gt;, &lt;p&gt;, &lt;ul&gt;, &lt;table&gt;, &lt;strong&gt;).</p>
+            <!-- v92.3: Toggle Mode Editor -->
+            <div style="margin-top:14px; display:flex; gap:4px; border-bottom:2px solid #e2e8f0;">
+              <button type="button" id="spk-mode-btn-form" class="spk-mode-tab spk-mode-tab-active" onclick="window.saSpkSwitchMode && window.saSpkSwitchMode('form')" style="padding:9px 16px; font-size:12px; font-weight:600; border:none; background:transparent; color:#475569; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px;">
+                📝 Form Cepat
+              </button>
+              <button type="button" id="spk-mode-btn-html" class="spk-mode-tab" onclick="window.saSpkSwitchMode && window.saSpkSwitchMode('html')" style="padding:9px 16px; font-size:12px; font-weight:600; border:none; background:transparent; color:#475569; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px;">
+                </> Editor HTML Lanjutan
+              </button>
             </div>
 
-            <!-- Form editor -->
-            <div style="margin-top:14px;">
+            <!-- v92.4: Multi-Template Selector per Divisi -->
+            <div style="margin-top:14px; padding:12px; background:#fafbff; border:1px solid #e2e8f0; border-radius:10px;">
+              <div style="font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Target Divisi Template</div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" id="spk-div-tab-ALL" onclick="window.saSpkSelectDivision && window.saSpkSelectDivision('ALL')" style="padding:8px 14px; font-size:11.5px; font-weight:600; background:var(--burgundy-primary, #8b1e3f); color:#fff; border:1px solid var(--burgundy-primary, #8b1e3f); border-radius:8px; cursor:pointer;">📋 ALL — Semua Karyawan</button>
+                <button type="button" id="spk-div-tab-Management" onclick="window.saSpkSelectDivision && window.saSpkSelectDivision('Management')" style="padding:8px 14px; font-size:11.5px; font-weight:600; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:8px; cursor:pointer;">👔 Management</button>
+                <button type="button" id="spk-div-tab-Operasional" onclick="window.saSpkSelectDivision && window.saSpkSelectDivision('Operasional')" style="padding:8px 14px; font-size:11.5px; font-weight:600; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; border-radius:8px; cursor:pointer;">🏪 Operasional</button>
+              </div>
+              <p style="font-size:10px; color:#64748b; margin:8px 0 0 0;">Pilih divisi lalu edit field di bawah. Setiap divisi bisa punya template berbeda (klausul, denda, jam kerja). Karyawan otomatis dapat template sesuai divisinya — kalau divisi belum punya template khusus, fallback ke ALL.</p>
+              <!-- Ringkasan semua template -->
+              <div id="sa-spk-template-list" style="margin-top:10px; padding-top:10px; border-top:1px dashed #e2e8f0;"><p style="color:#94a3b8; font-size:11px;">Memuat daftar template...</p></div>
+            </div>
+
+            <!-- ========== MODE: FORM CEPAT (default, v92.3) ========== -->
+            <div id="spk-mode-form" style="margin-top:14px;">
+              <div style="padding:10px 12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; font-size:11.5px; color:#065f46; margin-bottom:14px;">
+                <strong>✓ Form Cepat:</strong> Isi field di bawah — sistem otomatis menyusun HTML SPK lengkap. Data karyawan (nama, NIP, gaji, alamat, dll) tetap otomatis dari data masing-masing karyawan saat SPK ditampilkan. Tidak perlu sentuh HTML.
+              </div>
+              <!-- Form fields dirender dinamis oleh JS (TD_SPK_FORM_FIELDSPEC) -->
+              <div id="sa-spk-form-container"><p style="color:#94a3b8; font-size:12px;">Memuat form...</p></div>
+
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
+                <button type="button" class="btn-primary" id="btn-spk-form-save" style="padding:10px 16px; font-size:12px;" onclick="window.saveSaSpkFromForm && window.saveSaSpkFromForm()">
+                  <i data-feather="save" style="width:13px; height:13px;"></i> Simpan &amp; Versi Baru
+                </button>
+                <button type="button" class="btn-secondary" id="btn-spk-form-preview" style="padding:10px 16px; font-size:12px;" onclick="window.previewSaSpkFromForm && window.previewSaSpkFromForm()">
+                  <i data-feather="eye" style="width:13px; height:13px;"></i> Preview Struktur
+                </button>
+                <button type="button" class="btn-secondary" id="btn-spk-form-reset" style="padding:10px 16px; font-size:12px;" onclick="window.resetSaSpkForm && window.resetSaSpkForm()">
+                  <i data-feather="rotate-ccw" style="width:13px; height:13px;"></i> Reset ke Default
+                </button>
+                <button type="button" class="btn-secondary" id="btn-spk-form-copyhtml" style="padding:10px 16px; font-size:12px;" onclick="window.copySpkHtmlFromForm && window.copySpkHtmlFromForm()">
+                  <i data-feather="copy" style="width:13px; height:13px;"></i> Salin HTML ke Editor Lanjutan
+                </button>
+              </div>
+              <p style="font-size:10.5px; color:#94a3b8; margin:8px 0 0 0;">"Salin HTML" akan memindahkan hasil Form Cepat ke Editor HTML Lanjutan untuk fine-tuning.</p>
+            </div>
+
+            <!-- ========== MODE: EDITOR HTML LANJUTAN (tersembunyi default) ========== -->
+            <div id="spk-mode-html" style="margin-top:14px; display:none;">
+              <div style="padding:10px 12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; font-size:11.5px; color:#1e40af; margin-bottom:14px;">
+                <strong>📋 Placeholder yang tersedia</strong> (otomatis diganti data karyawan saat SPK ditampilkan):
+                <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; font-family:monospace; font-size:10.5px;">
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{nomor}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tahun}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{employee_name}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{nip}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tempat_tanggal_lahir}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{alamat}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{email}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{nomor_ktp}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{phone}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{status}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{jabatan}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{uraian_pekerjaan}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{jam_kerja}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{gaji_pokok}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tunjangan_makan}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tunjangan_transport}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{tunjangan_jabatan}}</code>
+                  <code style="background:#fff; padding:2px 6px; border-radius:4px;">{{uang_kerajinan}}</code>
+                </div>
+                <p style="margin:8px 0 0 0; font-size:10.5px; color:#475569;">Gunakan tag HTML standar (&lt;h3&gt;, &lt;p&gt;, &lt;ul&gt;, &lt;table&gt;, &lt;strong&gt;).</p>
+              </div>
+
               <div class="form-group">
                 <label class="form-label">Judul Template</label>
                 <input type="text" class="form-control" id="sa-spk-title" placeholder="Mis. Perjanjian Kerja PT. CCI" style="font-size:13px;">
@@ -1770,9 +1817,11 @@
                   <i data-feather="refresh-cw" style="width:13px; height:13px;"></i> Muat Ulang
                 </button>
               </div>
-              <div style="margin-top:10px; padding:10px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:8px; font-size:11px; color:#92400e;">
-                <strong>⚠️ Peringatan:</strong> Setiap klik "Simpan &amp; Versi Baru" akan membuat versi baru + menonaktifkan versi lama. SEMUA karyawan akan diminta menyetujui ulang SPK saat login berikutnya. Pastikan perubahan sudah final sebelum simpan.
-              </div>
+            </div>
+
+            <!-- Peringatan umum (berlaku kedua mode) -->
+            <div style="margin-top:14px; padding:10px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:8px; font-size:11px; color:#92400e;">
+              <strong>⚠️ Peringatan:</strong> Setiap klik "Simpan &amp; Versi Baru" akan membuat versi baru + menonaktifkan versi lama. SEMUA karyawan akan diminta menyetujui ulang SPK saat membuka Profile berikutnya. Pastikan perubahan sudah final sebelum simpan.
             </div>
           </div>
 

@@ -7142,9 +7142,10 @@ window.saSwitchTab = (tab) => {
   if (tab === 'shifts') window.loadSaShifts && window.loadSaShifts();
   // v92: Tab SPK Digital — load template editor + status table
   // v92.3: Muat Form Cepat (default mode) + Editor HTML Lanjutan + status table.
+  // v92.4: Muat juga list multi-template + default ke divisi 'ALL'.
   if (tab === 'spk') {
-    window.loadSaSpkForm && window.loadSaSpkForm();        // v92.3: Form Cepat (default)
-    window.loadSaSpkTemplate && window.loadSaSpkTemplate(); // v92: Editor HTML Lanjutan
+    window.loadSaSpkTemplateList && window.loadSaSpkTemplateList();
+    window.saSpkSelectDivision && window.saSpkSelectDivision('ALL'); // trigger load form + template utk divisi ALL
     window.loadSaSpkStatus && window.loadSaSpkStatus();
     // Pastikan mode default = Form Cepat
     window.saSpkSwitchMode && window.saSpkSwitchMode('form');
@@ -8398,7 +8399,9 @@ const TD_SPK_FORM_DEFAULTS = {
   denda_pelanggaran: '20000000',
   denda_undur_diri: '10000000',
   pengadilan: 'Pengadilan Negeri Sleman',
-  masa_evaluasi: '3 (tiga) bulan'
+  masa_evaluasi: '3 (tiga) bulan',
+  // v92.4: divisi template — 'ALL' (fallback), 'Management', atau 'Operasional'
+  division: 'ALL'
 };
 
 // v92.3: Spesifikasi field Form Cepat (id, label, type, group, placeholder, help).
@@ -8419,7 +8422,17 @@ const TD_SPK_FORM_FIELDSPEC = [
   { id: 'denda_pelanggaran', label: 'Denda Pelanggaran Pasal 5 (Rp)', type: 'number', group: 'Sanksi & Denda', placeholder: '20000000', help: 'Denda untuk pelanggaran Kerahasiaan, Hak Kekayaan Intelektual, Kepentingan Pribadi, Non Kompetisi.' },
   { id: 'denda_undur_diri', label: 'Denda Undur Diri Tidak Sesuai Prosedur (Rp)', type: 'number', group: 'Sanksi & Denda', placeholder: '10000000', help: 'Denda bagi karyawan yang mengundurkan diri tidak sesuai prosedur (1 bulan sebelumnya).' },
   { id: 'pengadilan', label: 'Lokasi Pengadilan (Pasal 7)', type: 'text', group: 'Sanksi & Denda', placeholder: 'Pengadilan Negeri Sleman', help: 'Pengadilan yang berwenang menyelesaikan perselisihan dari SPK.' },
-  { id: 'masa_evaluasi', label: 'Masa Evaluasi Kerja', type: 'text', group: 'Sanksi & Denda', placeholder: '3 (tiga) bulan', help: 'Periode evaluasi kerja (Pasal 2).' }
+  { id: 'masa_evaluasi', label: 'Masa Evaluasi Kerja', type: 'text', group: 'Sanksi & Denda', placeholder: '3 (tiga) bulan', help: 'Periode evaluasi kerja (Pasal 2).' },
+
+  // v92.4: Divisi template — pilih template ini untuk divisi mana
+  { id: 'division', label: 'Target Divisi (siapa yang pakai template ini)', type: 'select', group: 'Target Template', placeholder: '', help: 'ALL = semua karyawan yang divisi-nya tidak punya template khusus. Management = HRD/BM/Finance/QC/Creative/DOS/Logistik/Produksi/Driver/HRGA/Security/OM/PCD. Operasional = SPV/Head Kitchen/Head Bar/Kasir/Server/Kitchen/Bar/PA/CS.' }
+];
+
+// v92.4: Opsi divisi untuk dropdown Form Cepat.
+const TD_SPK_DIVISION_OPTIONS = [
+  { value: 'ALL', label: 'ALL — Semua Karyawan (fallback)' },
+  { value: 'Management', label: 'Management — HRD/BM/Finance/QC/dll' },
+  { value: 'Operasional', label: 'Operasional — SPV/Kitchen/Bar/Kasir/dll' }
 ];
 
 // v92.3: Format angka ke rupiah (mis. 20000000 → "20.000.000"). Sama dengan
@@ -8482,7 +8495,8 @@ function buildSpkHtmlFromForm_(fields) {
       denda_pelanggaran: f.denda_pelanggaran,
       denda_undur_diri: f.denda_undur_diri,
       pengadilan: f.pengadilan,
-      masa_evaluasi: f.masa_evaluasi
+      masa_evaluasi: f.masa_evaluasi,
+      division: f.division
     }).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026') + '-->',
     '<div class="agreement-doc">',
     '  <div class="agreement-meta">',
