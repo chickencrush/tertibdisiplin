@@ -8655,7 +8655,15 @@ function renderSaSpkForm_(values) {
       const colSpan = isWide ? 'grid-column:1/-1;' : '';
       html.push('<div class="form-group" style="margin-bottom:0; ' + colSpan + '">');
       html.push('<label class="form-label" style="font-size:11px; font-weight:600; color:#334155;">' + tdSpkEscapeHtml_(f.label) + '</label>');
-      if (f.type === 'number') {
+      if (f.type === 'select') {
+        // v92.4: dropdown (mis. untuk field division)
+        const options = (f.id === 'division' && window.TD_SPK_DIVISION_OPTIONS) ? window.TD_SPK_DIVISION_OPTIONS : (f.options || []);
+        const optsHtml = options.map(function (o) {
+          const sel = String(o.value) === String(val) ? ' selected' : '';
+          return '<option value="' + tdSpkEscapeHtml_(o.value) + '"' + sel + '>' + tdSpkEscapeHtml_(o.label) + '</option>';
+        }).join('');
+        html.push('<select class="form-control spk-form-field" data-field-id="' + f.id + '" style="font-size:12.5px; padding:8px 10px;" onchange="window.spkFormOnInput && window.spkFormOnInput(this)">' + optsHtml + '</select>');
+      } else if (f.type === 'number') {
         html.push('<input type="number" class="form-control spk-form-field" data-field-id="' + f.id + '" value="' + tdSpkEscapeHtml_(val) + '" placeholder="' + tdSpkEscapeHtml_(f.placeholder || '') + '" style="font-size:12.5px; padding:8px 10px;" oninput="window.spkFormOnInput && window.spkFormOnInput(this)">');
       } else {
         html.push('<input type="text" class="form-control spk-form-field" data-field-id="' + f.id + '" value="' + tdSpkEscapeHtml_(val) + '" placeholder="' + tdSpkEscapeHtml_(f.placeholder || '') + '" style="font-size:12.5px; padding:8px 10px;' + (isWide ? ' width:100%;' : '') + '" oninput="window.spkFormOnInput && window.spkFormOnInput(this)">');
@@ -8725,17 +8733,98 @@ window.saSpkSwitchMode = window.saSpkSwitchMode;
 // v92.3: No-op handler oninput (placeholder untuk future live-preview).
 window.spkFormOnInput = () => { /* intentionally empty */ };
 
+// v92.4: Expose konstanta ke window supaya renderSaSpkForm_ bisa akses dari inline.
+window.TD_SPK_DIVISION_OPTIONS = TD_SPK_DIVISION_OPTIONS;
+
+// v92.4: State global — divisi template yang sedang diedit ('ALL' | 'Management' | 'Operasional').
+AppState.__spkCurrentDivision = AppState.__spkCurrentDivision || 'ALL';
+
+// v92.4: Switch divisi template yang sedang diedit. Dipanggil dari tab selector.
+// Reload Form Cepat + Editor HTML dgn template aktif untuk divisi tsb.
+window.saSpkSelectDivision = (divKey) => {
+  if (['ALL', 'Management', 'Operasional'].indexOf(divKey) < 0) divKey = 'ALL';
+  AppState.__spkCurrentDivision = divKey;
+  // Update tab visual
+  ['ALL', 'Management', 'Operasional'].forEach(function (d) {
+    const tab = document.getElementById('spk-div-tab-' + d);
+    if (tab) {
+      const isActive = (d === divKey);
+      tab.style.background = isActive ? 'var(--burgundy-primary, #8b1e3f)' : '#f1f5f9';
+      tab.style.color = isActive ? '#fff' : '#475569';
+      tab.style.border = isActive ? '1px solid var(--burgundy-primary, #8b1e3f)' : '1px solid #e2e8f0';
+    }
+  });
+  // Reload Form Cepat + Editor HTML dgn template divisi tsb
+  window.loadSaSpkForm && window.loadSaSpkForm(divKey);
+  window.loadSaSpkTemplate && window.loadSaSpkTemplate(divKey);
+};
+window.saSpkSelectDivision = window.saSpkSelectDivision;
+
+// v92.4: Load ringkasan semua template (multi-template) → render ke #sa-spk-template-list.
+window.loadSaSpkTemplateList = async () => {
+  const list = document.getElementById('sa-spk-template-list');
+  if (!list) return;
+  list.innerHTML = '<p style="color:#94a3b8; font-size:11px;">Memuat daftar template...</p>';
+  try {
+    const res = await fetch('/api/admin/agreement-templates');
+    if (!res.ok) {
+      list.innerHTML = '<p style="color:#dc2626; font-size:11px;">Gagal memuat daftar template (HTTP ' + res.status + '). Backend mungkin belum v92.4+.</p>';
+      return;
+    }
+    const data = await res.json();
+    if (!data || data.length === 0) {
+      list.innerHTML = '<p style="color:#94a3b8; font-size:11px;">Belum ada template. Buat template pertama lewat Form Cepat di bawah.</p>';
+      return;
+    }
+    // Group by division
+    const byDiv = { 'ALL': [], 'Management': [], 'Operasional': [] };
+    data.forEach(function (t) { (byDiv[t.division] || (byDiv[t.division] = [])).push(t); });
+    const divLabel = { 'ALL': 'Semua Karyawan', 'Management': 'Management', 'Operasional': 'Operasional' };
+    const html = ['<div style="display:grid; gap:10px;">'];
+    ['ALL', 'Management', 'Operasional'].forEach(function (d) {
+      const list2 = byDiv[d] || [];
+      if (list2.length === 0) return;
+      html.push('<div style="padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">');
+      html.push('<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">');
+      html.push('<strong style="font-size:12px; color:#0f172a;">' + divLabel[d] + '</strong>');
+      const activeT = list2.find(function (t) { return t.active === 1; }) || list2[0];
+      if (activeT) {
+        html.push('<span style="font-size:10px; padding:2px 8px; background:#dcfce7; color:#065f46; border-radius:10px; font-weight:600;">Aktif: v' + activeT.version + '</span>');
+      }
+      html.push('</div>');
+      html.push('<div style="font-size:11px; color:#475569; line-height:1.5;">');
+      list2.slice(0, 3).forEach(function (t) {
+        const dot = t.active === 1 ? '🟢' : '⚪';
+        const updated = t.updated_at ? new Date(String(t.updated_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+        html.push('<div>' + dot + ' v' + t.version + ' — ' + tdSpkEscapeHtml_(t.title || '') + ' <span style="color:#94a3b8;">(' + updated + ')</span></div>');
+      });
+      if (list2.length > 3) html.push('<div style="color:#94a3b8;">+' + (list2.length - 3) + ' versi lama lainnya</div>');
+      html.push('</div>');
+      html.push('</div>');
+    });
+    html.push('</div>');
+    list.innerHTML = html.join('');
+  } catch (err) {
+    list.innerHTML = '<p style="color:#dc2626; font-size:11px;">Gagal: ' + (err.message || 'koneksi terputus') + '</p>';
+  }
+};
+window.loadSaSpkTemplateList = window.loadSaSpkTemplateList;
+
 // v92.3: Muat template SPK aktif → isi Form Cepat (kalau ada marker) atau
 // pakai default + warning. Dipanggil otomatis saat tab SPK dibuka.
-window.loadSaSpkForm = async () => {
+// v92.4: Support parameter division — ambil template untuk divisi tsb.
+window.loadSaSpkForm = async (division) => {
   const container = document.getElementById('sa-spk-form-container');
   if (!container) return;
-  container.innerHTML = '<p style="color:#94a3b8; font-size:12px;">Memuat template...</p>';
+  const divKey = ['ALL', 'Management', 'Operasional'].indexOf(division) >= 0 ? division : (AppState.__spkCurrentDivision || 'ALL');
+  AppState.__spkCurrentDivision = divKey;
+  container.innerHTML = '<p style="color:#94a3b8; font-size:12px;">Memuat template (' + divKey + ')...</p>';
   try {
-    const res = await fetch('/api/admin/agreement-template');
+    const res = await fetch('/api/admin/agreement-template?division=' + encodeURIComponent(divKey));
     if (!res.ok) {
       // Backend belum v91+ → tampilkan form dgn default + warning
-      renderSaSpkForm_(TD_SPK_FORM_DEFAULTS);
+      const defaults = Object.assign({}, TD_SPK_FORM_DEFAULTS, { division: divKey });
+      renderSaSpkForm_(defaults);
       const warn = document.createElement('div');
       warn.style.cssText = 'margin-top:12px; padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; font-size:11px; color:#991b1b;';
       warn.innerHTML = '<strong>⚠️ Backend belum v91+.</strong> Endpoint /api/admin/agreement-template tidak ditemukan (HTTP ' + res.status + '). Form ditampilkan dgn nilai default. Deploy ulang Code.gs (Deploy &gt; New version) supaya simpan berfungsi.';
@@ -8745,21 +8834,28 @@ window.loadSaSpkForm = async () => {
     const data = await res.json();
     const parsed = parseSpkHtmlToFields_(data.content_html || '');
     if (parsed) {
-      // Template dihasilkan Form Cepat → field aman di-restore
-      renderSaSpkForm_(parsed);
+      // v92.4: pastikan division sesuai divKey (backend mungkin return divisi berbeda)
+      const vals = Object.assign({}, parsed, { division: data.division || divKey });
+      renderSaSpkForm_(vals);
     } else {
-      // Template kustom (manual HTML) → pakai default + warning
-      renderSaSpkForm_(TD_SPK_FORM_DEFAULTS);
+      // Template kustom (manual HTML) atau belum ada → pakai default + warning
+      const defaults = Object.assign({}, TD_SPK_FORM_DEFAULTS, { division: data.division || divKey });
+      renderSaSpkForm_(defaults);
       const warn = document.createElement('div');
       warn.style.cssText = 'margin-top:12px; padding:10px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:8px; font-size:11px; color:#92400e;';
-      warn.innerHTML = '<strong>ℹ️ Template aktif terdeteksi sebagai HTML kustom.</strong> Form Cepat menampilkan nilai default. Kalau Anda simpan dari Form Cepat, template kustom akan <strong>ditimpa</strong> dengan hasil Form Cepat. Untuk mempertahankan kustomisasi, gunakan <strong>Editor HTML Lanjutan</strong>.';
+      if (!data.id) {
+        warn.innerHTML = '<strong>ℹ️ Belum ada template untuk divisi <code>' + divKey + '</code>.</strong> Isi Form Cepat di bawah lalu Simpan untuk membuat template baru untuk divisi ini.';
+      } else {
+        warn.innerHTML = '<strong>ℹ️ Template aktif terdeteksi sebagai HTML kustom.</strong> Form Cepat menampilkan nilai default. Kalau Anda simpan dari Form Cepat, template kustom akan <strong>ditimpa</strong> dengan hasil Form Cepat. Untuk mempertahankan kustomisasi, gunakan <strong>Editor HTML Lanjutan</strong>.';
+      }
       container.appendChild(warn);
     }
-    // Update badge versi (sinkron dengan loadSaSpkTemplate)
+    // Update badge versi
     const badge = document.getElementById('sa-spk-version-badge');
-    if (badge) badge.textContent = data.id ? 'v' + (data.version || 1) + ' (aktif)' : 'v- (belum ada)';
+    if (badge) badge.textContent = data.id ? 'v' + (data.version || 1) + ' (' + (data.division || divKey) + ', aktif)' : 'v- (' + divKey + ', belum ada)';
   } catch (err) {
-    renderSaSpkForm_(TD_SPK_FORM_DEFAULTS);
+    const defaults = Object.assign({}, TD_SPK_FORM_DEFAULTS, { division: divKey });
+    renderSaSpkForm_(defaults);
     const warn = document.createElement('div');
     warn.style.cssText = 'margin-top:12px; padding:10px 12px; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; font-size:11px; color:#991b1b;';
     warn.innerHTML = '<strong>Gagal memuat template:</strong> ' + (err.message || 'koneksi terputus') + '. Form ditampilkan dengan nilai default.';
@@ -8789,9 +8885,13 @@ window.saveSaSpkFromForm = async () => {
       return;
     }
   }
-  // Konfirmasi kuat — trigger re-agreement semua karyawan
-  if (!confirm('PERINGATAN:\n\nMenyimpan template akan membuat VERSI BARU + menonaktifkan versi lama.\n\nSEMUA KARYAWAN akan diminta menyetujui ulang SPK saat membuka Profile berikutnya.\n\nLanjutkan simpan?')) return;
-  if (!confirm('Konfirmasi sekali lagi: Anda yakin perubahan sudah final?')) return;
+  // v92.4: Validasi division
+  if (['ALL', 'Management', 'Operasional'].indexOf(vals.division) < 0) vals.division = 'ALL';
+  // v92.4: Konfirmasi pesan spesifik per divisi
+  const divLabel = vals.division === 'ALL' ? 'SEMUA divisi' : ('divisi ' + vals.division);
+  // Konfirmasi kuat — trigger re-agreement untuk karyawan di divisi tsb
+  if (!confirm('PERINGATAN:\n\nMenyimpan template akan membuat VERSI BARU untuk ' + divLabel + ' + menonaktifkan versi lama di ' + divLabel + '.\n\nKaryawan di ' + divLabel + ' akan diminta menyetujui ulang SPK saat membuka Profile berikutnya.\n\nLanjutkan simpan?')) return;
+  if (!confirm('Konfirmasi sekali lagi: Anda yakin perubahan untuk ' + divLabel + ' sudah final?')) return;
   const btn = document.getElementById('btn-spk-form-save');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i data-feather="loader" style="width:13px; height:13px; animation:spin 1s linear infinite;"></i> Menyimpan...'; if (window.feather) feather.replace(); }
   try {
@@ -8799,12 +8899,13 @@ window.saveSaSpkFromForm = async () => {
     const res = await fetch('/api/admin/agreement-template', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: vals.template_title.trim(), content_html: html })
+      body: JSON.stringify({ title: vals.template_title.trim(), content_html: html, division: vals.division })
     });
     const data = await res.json();
     if (res.ok && data.status === 'success') {
       showToast('✅ ' + data.message, 'success');
-      window.loadSaSpkForm && window.loadSaSpkForm();
+      window.loadSaSpkForm && window.loadSaSpkForm(vals.division);
+      window.loadSaSpkTemplateList && window.loadSaSpkTemplateList();
       window.loadSaSpkStatus && window.loadSaSpkStatus();
     } else {
       showToast(data.detail || 'Gagal menyimpan template.', 'error');
@@ -8852,22 +8953,24 @@ window.copySpkHtmlFromForm = () => {
 window.copySpkHtmlFromForm = window.copySpkHtmlFromForm;
 
 // v92: Load template SPK aktif ke form editor.
-window.loadSaSpkTemplate = async () => {
+// v92.4: Support parameter division — ambil template untuk divisi tsb.
+window.loadSaSpkTemplate = async (division) => {
   const titleInput = document.getElementById('sa-spk-title');
   const contentInput = document.getElementById('sa-spk-content');
   const badge = document.getElementById('sa-spk-version-badge');
   if (!titleInput || !contentInput) return;
-  titleInput.value = 'Memuat...';
+  const divKey = ['ALL', 'Management', 'Operasional'].indexOf(division) >= 0 ? division : (AppState.__spkCurrentDivision || 'ALL');
+  titleInput.value = 'Memuat (' + divKey + ')...';
   contentInput.value = '';
   contentInput.disabled = true;
   try {
-    const res = await fetch('/api/admin/agreement-template');
+    const res = await fetch('/api/admin/agreement-template?division=' + encodeURIComponent(divKey));
     if (!res.ok) {
       titleInput.value = '';
       contentInput.value = '';
       contentInput.disabled = false;
-      if (badge) badge.textContent = 'v- (error)';
-      showToast('Gagal memuat template SPK (HTTP ' + res.status + ').', 'error');
+      if (badge) badge.textContent = 'v- (' + divKey + ', error)';
+      showToast('Gagal memuat template SPK ' + divKey + ' (HTTP ' + res.status + ').', 'error');
       return;
     }
     const data = await res.json();
@@ -8875,13 +8978,13 @@ window.loadSaSpkTemplate = async () => {
     contentInput.value = data.content_html || '';
     contentInput.disabled = false;
     if (badge) {
-      badge.textContent = data.id ? 'v' + (data.version || 1) + ' (aktif)' : 'v- (belum ada)';
+      badge.textContent = data.id ? 'v' + (data.version || 1) + ' (' + (data.division || divKey) + ', aktif)' : 'v- (' + divKey + ', belum ada)';
     }
   } catch (err) {
     titleInput.value = '';
     contentInput.value = '';
     contentInput.disabled = false;
-    if (badge) badge.textContent = 'v- (error)';
+    if (badge) badge.textContent = 'v- (' + divKey + ', error)';
     showToast('Gagal memuat template: ' + (err.message || 'koneksi terputus'), 'error');
   }
 };
