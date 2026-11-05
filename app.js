@@ -5552,8 +5552,11 @@ const renderAttendanceTable = (logs) => {
     const isCrossDay = checkInDate && checkOutDate && checkInDate !== checkOutDate;
 
     // Format display jam masuk
+    // v98.2: Kalau jam 00:00:00 (data lama tanpa jam), tampilkan "-" supaya tidak misleading
     const checkInDisplay = l.check_in_time
-      ? `<strong style="color:#1e40af;">${checkInTime}</strong>${isCrossDay ? `<div style="font-size:10px; color:#64748b;">${checkInDate}</div>` : ''}`
+      ? (checkInTime === '00:00:00'
+        ? '<span style="color:#cbd5e1;">jam tidak tersimpan</span>'
+        : `<strong style="color:#1e40af;">${checkInTime}</strong>${isCrossDay ? `<div style="font-size:10px; color:#64748b;">${checkInDate}</div>` : ''}`)
       : '<span style="color:#94a3b8;">-</span>';
 
     // Format display jam pulang (v98: lebih menonjol + tampil tanggal kalau lintas hari)
