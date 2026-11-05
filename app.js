@@ -2134,6 +2134,13 @@ const loadAttendanceLogs = async () => {
     if (window.updateEarlyCheckoutUI) {
       window.updateEarlyCheckoutUI();
     }
+    // v94: Load pengajuan izin berangkit telat milik user + update UI.
+    if (window.loadLateArrivalRequests) {
+      await window.loadLateArrivalRequests({ scope: 'mine' });
+    }
+    if (window.updateLateArrivalUI) {
+      window.updateLateArrivalUI();
+    }
   } catch (err) {
     console.error('Failed loading attendance:', err);
   }
@@ -4646,6 +4653,503 @@ window.filterEarlyCheckout = (status) => {
   window.renderEarlyCheckoutApproverPanel && window.renderEarlyCheckoutApproverPanel();
 };
 window.filterEarlyCheckout = window.filterEarlyCheckout;
+
+// ============================================================================
+// v94: PENGAJUAN IZIN BERANGKIT TELAT — APPROVAL ATASAN
+// ============================================================================
+// HANYA untuk user Management. Pola mirip v93 early checkout.
+// Mekanisme denda: backend findApprovedLateArrival_ cek saat h_checkIn_,
+// kalau ada izin Approved → late_minutes/deduction = 0.
+
+// v94: State global — cache pengajuan saya & semua (untuk approver)
+AppState.__lateArrivalMine = [];
+AppState.__lateArrivalAll = [];
+
+// v94: Konstanta divisi Management (mirror dari backend MANAGEMENT_DIVISIONS)
+const TD_MANAGEMENT_DIVISIONS = ['HRD', 'BM', 'Finance', 'QC', 'Creative', 'DOS', 'Logistik', 'Produksi', 'Driver', 'HRGA', 'Security', 'OM', 'PCD'];
+
+// v94: Cek apakah user saat ini termasuk Management (boleh ajukan izin telat)
+function isManagementUser_(user) {
+  if (!user) return false;
+  return TD_MANAGEMENT_DIVISIONS.indexOf(user.division) >= 0;
+}
+
+// v94: Cari apakah user sudah check-in hari ini utk shift tertentu.
+// Dipakai utk validasi tombol "Ajukan Izin Telat" (harus SEBELUM check-in).
+function hasCheckedInToday_(shiftName) {
+  const today = new Date().toISOString().slice(0, 10);
+  const logs = AppState.attendanceLogs || [];
+  return logs.some(function (l) {
+    return String(l.employee_id) === String(AppState.currentUser.id)
+      && String(l.date) === today
+      && (!shiftName || String(l.shift_name) === String(shiftName))
+      && l.check_in_time;
+  });
+}
+
+// v94: Cari pengajuan izin telat milik user utk shift tertentu hari ini.
+function findMyLateArrivalForShift_(shiftName) {
+  const today = new Date().toISOString().slice(0, 10);
+  return (AppState.__lateArrivalMine || []).find(function (r) {
+    return String(r.attendance_date) === today
+      && (!shiftName || String(r.shift_name) === String(shiftName));
+  }) || null;
+}
+
+// v94: Load pengajuan izin telat dari backend → cache ke AppState.
+window.loadLateArrivalRequests = async (opts) => {
+  opts = opts || {};
+  try {
+    const url = '/api/late-arrival' + (opts.status ? ('?status=' + encodeURIComponent(opts.status)) : '');
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (opts.scope === 'all') {
+      AppState.__lateArrivalAll = data;
+    } else {
+      AppState.__lateArrivalMine = data;
+    }
+    return data;
+  } catch (err) {
+    console.warn('loadLateArrivalRequests error:', err);
+    return [];
+  }
+};
+window.loadLateArrivalRequests = window.loadLateArrivalRequests;
+
+// v94: Update UI kartu presensi berdasarkan status pengajuan izin telat.
+// Dipanggil setelah loadAttendanceLogs() & loadLateArrivalRequests().
+// Logic:
+//   - HANYA tampilkan tombol kalau user adalah Management
+//   - Kalau sudah check-in utk shift tsb → sembunyikan tombol (tidak bisa ajukan retroaktif)
+//   - Kalau belum check-in → tampilkan tombol
+//   - Kalau ada pengajuan Pending → status kuning "menunggu approval"
+//   - Kalau ada pengajuan Approved → status hijau "bisa absen telat tanpa denda"
+//   - Kalau ada pengajuan Rejected → status merah "harus absen tepat waktu"
+window.updateLateArrivalUI = () => {
+  const btnLate = document.getElementById('btn-late-arrival');
+  const statusBox = document.getElementById('late-arrival-status-box');
+  if (!btnLate) return;
+
+  // HANYA utk user Management
+  if (!isManagementUser_(AppState.currentUser)) {
+    btnLate.style.display = 'none';
+    if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    return;
+  }
+
+  // Cek shift yang sedang dipilih di dropdown presensi
+  const shiftSelect = document.getElementById('presensi-shift-select');
+  const selectedShift = shiftSelect ? shiftSelect.value : '';
+  if (!selectedShift) {
+    btnLate.style.display = 'none';
+    if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    return;
+  }
+
+  // Kalau sudah check-in utk shift tsb → sembunyikan tombol (tidak bisa ajukan retroaktif)
+  if (hasCheckedInToday_(selectedShift)) {
+    btnLate.style.display = 'none';
+    // Tapi tetap tampilkan status kalau ada pengajuan Approved (info "absen tanpa denda sudah dipakai")
+    const req = findMyLateArrivalForShift_(selectedShift);
+    if (req && String(req.status) === 'Approved' && statusBox) {
+      statusBox.style.display = '';
+      statusBox.style.background = '#ecfdf5';
+      statusBox.style.border = '1px solid #a7f3d0';
+      statusBox.style.color = '#065f46';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">✅</span><div><strong>Izin berangkit telat sudah dipakai.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda sudah absen masuk shift ini — denda keterlambatan otomatis dihapus berdasarkan izin yang disetujui.</p></div></div>';
+    } else if (statusBox) {
+      statusBox.style.display = 'none';
+      statusBox.innerHTML = '';
+    }
+    return;
+  }
+
+  // Belum check-in → tampilkan tombol
+  btnLate.style.display = '';
+  btnLate.disabled = false;
+  btnLate.style.opacity = '1';
+  btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Izin Berangkit Telat';
+
+  // Cek pengajuan utk shift tsb
+  const req = findMyLateArrivalForShift_(selectedShift);
+  if (!req) {
+    if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    if (window.feather) feather.replace();
+    return;
+  }
+
+  // Ada pengajuan → tampilkan status
+  if (statusBox) {
+    statusBox.style.display = '';
+    if (String(req.status) === 'Pending') {
+      statusBox.style.background = '#fef3c7';
+      statusBox.style.border = '1px solid #fde68a';
+      statusBox.style.color = '#92400e';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Pengajuan izin berangkit telat MENUNGGU approval.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Untuk shift ' + escapeHtml(selectedShift) + '. Kalau berubah pikiran, <a href="#" onclick="window.cancelMyLateArrival(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan pengajuan</a>.</p></div></div>';
+      btnLate.disabled = true;
+      btnLate.style.opacity = '0.5';
+      btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Pengajuan menunggu approval...';
+    } else if (String(req.status) === 'Approved') {
+      statusBox.style.background = '#ecfdf5';
+      statusBox.style.border = '1px solid #a7f3d0';
+      statusBox.style.color = '#065f46';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">✅</span><div><strong>Izin berangkit telat DISETUJUI.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Untuk shift ' + escapeHtml(selectedShift) + '. Anda bisa absen masuk kapan saja hari ini — denda keterlambatan otomatis dihapus (status: "Hadir Tepat Waktu (Izin Telat)").' + (req.approver_note ? ' Catatan atasan: ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
+      btnLate.disabled = true;
+      btnLate.style.opacity = '0.5';
+      btnLate.innerHTML = '<i data-feather="check-circle" style="width:14px; height:14px;"></i> Izin telat disetujui';
+    } else if (String(req.status) === 'Rejected') {
+      statusBox.style.background = '#fef2f2';
+      statusBox.style.border = '1px solid #fecaca';
+      statusBox.style.color = '#991b1b';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">❌</span><div><strong>Pengajuan izin berangkit telat DITOLAK.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Untuk shift ' + escapeHtml(selectedShift) + '. Anda harus absen tepat waktu atau dikenakan denda keterlambatan normal.' + (req.approver_note ? ' Alasan penolakan: ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
+      btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Ulang Izin Telat';
+    }
+    if (window.feather) feather.replace();
+  }
+};
+window.updateLateArrivalUI = window.updateLateArrivalUI;
+
+// v94: Buka modal form pengajuan izin telat.
+window.openLateArrivalModal = () => {
+  if (!isManagementUser_(AppState.currentUser)) {
+    showToast('Pengajuan izin berangkit telat HANYA untuk user Management.', 'error');
+    return;
+  }
+  // Isi dropdown shift dari #presensi-shift-select
+  const presensiShift = document.getElementById('presensi-shift-select');
+  const modalShift = document.getElementById('late-arrival-shift');
+  if (presensiShift && modalShift) {
+    modalShift.innerHTML = '';
+    Array.from(presensiShift.options).forEach(function (opt) {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.textContent;
+      if (opt.value === presensiShift.value) o.selected = true;
+      modalShift.appendChild(o);
+    });
+  }
+  // Reset field lain
+  const estEl = document.getElementById('late-arrival-estimated');
+  const reasonEl = document.getElementById('late-arrival-reason');
+  const attachEl = document.getElementById('late-arrival-attachment');
+  if (estEl) estEl.value = '';
+  if (reasonEl) reasonEl.value = '';
+  if (attachEl) attachEl.value = '';
+  openModal('modal-late-arrival');
+  setTimeout(() => { if (reasonEl) reasonEl.focus(); }, 100);
+};
+window.openLateArrivalModal = window.openLateArrivalModal;
+
+// v94: Submit pengajuan izin telat dari modal form.
+window.submitLateArrival = async () => {
+  const shiftSelect = document.getElementById('late-arrival-shift');
+  const shiftName = shiftSelect ? shiftSelect.value : '';
+  if (!shiftName) { showToast('Pilih shift terlebih dahulu.', 'error'); return; }
+
+  // Cari shift_time dari dropdown presensi (text label)
+  const presensiShift = document.getElementById('presensi-shift-select');
+  let shiftTime = '';
+  if (presensiShift) {
+    const opt = Array.from(presensiShift.options).find(function (o) { return o.value === shiftName; });
+    if (opt) shiftTime = opt.textContent || '';
+  }
+
+  const estEl = document.getElementById('late-arrival-estimated');
+  const estimatedArrival = estEl ? estEl.value : '';
+
+  const reasonEl = document.getElementById('late-arrival-reason');
+  const reason = (reasonEl?.value || '').trim();
+  if (reason.length < 10) { showToast('Alasan minimal 10 karakter.', 'error'); return; }
+  if (reason.length > 500) { showToast('Alasan maksimal 500 karakter.', 'error'); return; }
+
+  // Baca lampiran (opsional) → base64
+  const attachEl = document.getElementById('late-arrival-attachment');
+  let attachmentBase64 = '';
+  let attachmentFilename = '';
+  if (attachEl && attachEl.files && attachEl.files[0]) {
+    const file = attachEl.files[0];
+    if (file.size > 5 * 1024 * 1024) { showToast('Lampiran maksimal 5MB.', 'error'); return; }
+    attachmentFilename = file.name;
+    try {
+      attachmentBase64 = await new Promise(function (resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function () { resolve(String(reader.result).split(',')[1] || ''); };
+        reader.onerror = function () { reject(new Error('Gagal baca file')); };
+        reader.readAsDataURL(file);
+      });
+    } catch (err) {
+      showToast('Gagal membaca lampiran: ' + (err.message || ''), 'error');
+      return;
+    }
+  }
+
+  const btn = document.getElementById('btn-late-arrival-submit');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-feather="loader" style="width:13px; height:13px; animation:spin 1s linear infinite;"></i> Mengirim...'; if (window.feather) feather.replace(); }
+
+  try {
+    const body = {
+      shift_name: shiftName,
+      shift_time: shiftTime,
+      estimated_arrival: estimatedArrival,
+      reason: reason
+    };
+    if (attachmentBase64) {
+      body.attachment_base64 = attachmentBase64;
+      body.attachment_filename = attachmentFilename;
+    }
+    const res = await fetch('/api/late-arrival', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      closeModal('modal-late-arrival');
+      await window.loadLateArrivalRequests({ scope: 'mine' });
+      window.updateLateArrivalUI && window.updateLateArrivalUI();
+      // Tawarkan kirim WA ke atasan
+      window.offerSendWALateArrival && window.offerSendWALateArrival(reason, estimatedArrival, shiftName);
+    } else {
+      showToast(data.detail || 'Gagal mengirim pengajuan.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-feather="send" style="width:13px; height:13px;"></i> KIRIM PENGAJUAN'; if (window.feather) feather.replace(); }
+  }
+};
+window.submitLateArrival = window.submitLateArrival;
+
+// v94: Karyawan batalkan pengajuan izin telat sendiri (status harus Pending).
+window.cancelMyLateArrival = async (reqId) => {
+  if (!reqId) return;
+  if (!confirm('Batalkan pengajuan izin berangkit telat ini?')) return;
+  try {
+    const res = await fetch('/api/late-arrival/' + reqId + '/cancel', { method: 'PUT' });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      await window.loadLateArrivalRequests({ scope: 'mine' });
+      window.updateLateArrivalUI && window.updateLateArrivalUI();
+    } else {
+      showToast(data.detail || 'Gagal membatalkan.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  }
+};
+window.cancelMyLateArrival = window.cancelMyLateArrival;
+
+// v94: Tawarkan kirim WA ke atasan setelah pengajuan izin telat dibuat.
+window.offerSendWALateArrival = (reason, estimatedArrival, shiftName) => {
+  try {
+    const emps = AppState.employees || [];
+    const approvers = emps.filter(function (e) {
+      return String(e.division || '').toUpperCase() === 'PCD' || String(e.role || '').toUpperCase() === 'SUPER ADMIN';
+    });
+    if (approvers.length === 0) return;
+    const approver = approvers.find(function (a) { return a.phone && String(a.phone).length >= 8; });
+    if (!approver) return;
+    let phone = String(approver.phone).replace(/\D/g, '');
+    if (phone.startsWith('0')) phone = '62' + phone.slice(1);
+    if (!phone.startsWith('62')) phone = '62' + phone;
+    const me = AppState.currentUser || {};
+    let msg = 'Halo ' + (approver.name || 'Atasan') + ',\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan IZIN BERANGKIT TELAT utk shift ' + shiftName + ' hari ini.';
+    if (estimatedArrival) msg += '\nEstimasi jam hadir: ' + estimatedArrival;
+    msg += '\n\nAlasan: ' + reason + '\n\nMohon approval di aplikasi TERTIB DISIPLIN. Terima kasih.';
+    const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
+    showToast('📨 Pengajuan terkirim. Klik untuk kirim WA ke atasan: ' + (approver.name || ''), 'success', 8000);
+    setTimeout(function () {
+      try { window.open(waUrl, '_blank'); } catch (e) { /* abaikan popup blocker */ }
+    }, 1500);
+  } catch (err) {
+    console.warn('offerSendWALateArrival error:', err);
+  }
+};
+window.offerSendWALateArrival = window.offerSendWALateArrival;
+
+// v94: Approver — buka modal approval dengan detail pengajuan izin telat.
+window.openLateArrivalApproval = (reqId) => {
+  const req = (AppState.__lateArrivalAll || []).find(function (r) { return r.id === reqId; });
+  if (!req) { showToast('Pengajuan tidak ditemukan.', 'error'); return; }
+  const content = document.getElementById('late-arrival-approval-content');
+  if (!content) return;
+  const statusColor = { 'Pending': '#f59e0b', 'Approved': '#10b981', 'Rejected': '#ef4444', 'Canceled': '#94a3b8' };
+  const statusBg = { 'Pending': '#fef3c7', 'Approved': '#ecfdf5', 'Rejected': '#fef2f2', 'Canceled': '#f1f5f9' };
+  const created = req.created_at ? new Date(String(req.created_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+  const approved = req.approved_at ? new Date(String(req.approved_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+  let html = '<div style="display:grid; gap:10px;">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:' + (statusBg[req.status] || '#f1f5f9') + '; border-radius:8px;">';
+  html += '<strong style="font-size:13px;">' + escapeHtml(req.employee_name || '') + '</strong>';
+  html += '<span style="padding:3px 10px; border-radius:10px; font-size:11px; font-weight:700; background:' + (statusColor[req.status] || '#94a3b8') + '; color:#fff;">' + req.status + '</span>';
+  html += '</div>';
+  html += '<div style="padding:10px 12px; background:#f8fafc; border-radius:8px; font-size:11.5px;">';
+  html += '<div><strong>Divisi:</strong> ' + escapeHtml(req.division || '-') + '</div>';
+  html += '<div><strong>Outlet:</strong> ' + escapeHtml(req.outlet_name || '-') + '</div>';
+  html += '<div><strong>Shift:</strong> ' + escapeHtml(req.shift_name || '-') + ' (' + escapeHtml(req.shift_time || '-') + ')</div>';
+  html += '<div><strong>Tanggal:</strong> ' + escapeHtml(req.attendance_date || '-') + '</div>';
+  if (req.estimated_arrival) html += '<div><strong>Estimasi jam hadir:</strong> ' + escapeHtml(req.estimated_arrival) + '</div>';
+  html += '<div><strong>Diajukan:</strong> ' + created + '</div>';
+  if (req.status !== 'Pending') {
+    html += '<div><strong>Approver:</strong> ' + escapeHtml(req.approver_name || '-') + '</div>';
+    html += '<div><strong>Waktu proses:</strong> ' + approved + '</div>';
+    if (req.approver_note) html += '<div><strong>Catatan:</strong> ' + escapeHtml(req.approver_note) + '</div>';
+  }
+  html += '</div>';
+  html += '<div style="padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px;">';
+  html += '<strong style="font-size:11px; color:#92400e;">Alasan:</strong>';
+  html += '<p style="margin:6px 0 0 0; font-size:12px; line-height:1.6; color:#1e293b;">' + escapeHtml(req.reason || '') + '</p>';
+  html += '</div>';
+  if (req.attachment_url) {
+    html += '<div style="padding:8px 12px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; font-size:11.5px;">';
+    html += '<strong>Lampiran:</strong> <a href="' + escapeHtml(req.attachment_url) + '" target="_blank" style="color:#2563eb; text-decoration:underline;">Lihat dokumen</a>';
+    html += '</div>';
+  }
+  if (String(req.status) === 'Pending') {
+    html += '<div class="form-group" style="margin-top:6px;">';
+    html += '<label class="form-label" style="font-size:11px;">Catatan Approver (opsional utk approve, wajib utk reject)</label>';
+    html += '<textarea class="form-control" id="late-arrival-approver-note" rows="2" placeholder="Catatan untuk karyawan..." style="font-size:12px; padding:8px;"></textarea>';
+    html += '</div>';
+    html += '<div style="display:flex; gap:8px; margin-top:6px;">';
+    html += '<button type="button" class="btn-primary" style="flex:1; padding:11px; font-size:12.5px; background:#10b981; justify-content:center;" onclick="window.approveLateArrival(\'' + req.id + '\')"><i data-feather="check" style="width:13px; height:13px;"></i> SETUJUI</button>';
+    html += '<button type="button" class="btn-primary" style="flex:1; padding:11px; font-size:12.5px; background:#ef4444; justify-content:center;" onclick="window.rejectLateArrival(\'' + req.id + '\')"><i data-feather="x" style="width:13px; height:13px;"></i> TOLAK</button>';
+    html += '<button type="button" class="btn-secondary" style="padding:11px 16px; font-size:12.5px;" onclick="closeModal(\'modal-late-arrival-approval\')">Tutup</button>';
+    html += '</div>';
+  } else {
+    html += '<div style="display:flex; justify-content:flex-end; margin-top:6px;">';
+    html += '<button type="button" class="btn-secondary" style="padding:10px 16px; font-size:12.5px;" onclick="closeModal(\'modal-late-arrival-approval\')">Tutup</button>';
+    html += '</div>';
+  }
+  html += '</div>';
+  content.innerHTML = html;
+  if (window.feather) feather.replace();
+  openModal('modal-late-arrival-approval');
+};
+window.openLateArrivalApproval = window.openLateArrivalApproval;
+
+// v94: Approver — setujui pengajuan izin telat.
+window.approveLateArrival = async (reqId) => {
+  const noteEl = document.getElementById('late-arrival-approver-note');
+  const note = (noteEl?.value || '').trim();
+  if (!confirm('SETUJUI pengajuan izin berangkit telat ini?\n\nKaryawan bisa absen masuk telat tanpa denda keterlambatan utk shift tsb.')) return;
+  try {
+    const res = await fetch('/api/late-arrival/' + reqId + '/approve', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      closeModal('modal-late-arrival-approval');
+      await window.loadLateArrivalRequests({ scope: 'all' });
+      window.renderLateArrivalApproverPanel && window.renderLateArrivalApproverPanel();
+    } else {
+      showToast(data.detail || 'Gagal approve.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  }
+};
+window.approveLateArrival = window.approveLateArrival;
+
+// v94: Approver — tolak pengajuan izin telat.
+window.rejectLateArrival = async (reqId) => {
+  const noteEl = document.getElementById('late-arrival-approver-note');
+  const note = (noteEl?.value || '').trim();
+  if (note.length < 3) {
+    showToast('Alasan penolakan wajib diisi (min. 3 karakter).', 'error');
+    noteEl?.focus();
+    return;
+  }
+  if (!confirm('TOLAK pengajuan izin berangkit telat ini?\n\nKaryawan harus absen tepat waktu atau dikenakan denda normal.')) return;
+  try {
+    const res = await fetch('/api/late-arrival/' + reqId + '/reject', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      closeModal('modal-late-arrival-approval');
+      await window.loadLateArrivalRequests({ scope: 'all' });
+      window.renderLateArrivalApproverPanel && window.renderLateArrivalApproverPanel();
+    } else {
+      showToast(data.detail || 'Gagal reject.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  }
+};
+window.rejectLateArrival = window.rejectLateArrival;
+
+// v94: Render tabel pengajuan izin telat di Panel Super Admin.
+window.renderLateArrivalApproverPanel = () => {
+  const tbody = document.getElementById('sa-latearrival-tbody');
+  const countBadge = document.getElementById('sa-latearrival-count');
+  if (!tbody) return;
+  const all = AppState.__lateArrivalAll || [];
+  const filter = window.__lateArrivalFilter || 'Pending';
+  let rows = all;
+  if (filter) rows = all.filter(function (r) { return String(r.status) === filter; });
+  rows.sort(function (a, b) {
+    if (a.status !== b.status) return a.status === 'Pending' ? -1 : 1;
+    return (a.created_at || '') < (b.created_at || '') ? 1 : -1;
+  });
+  const pendingCount = all.filter(function (r) { return r.status === 'Pending'; }).length;
+  if (countBadge) {
+    countBadge.textContent = pendingCount + ' pending / ' + all.length + ' total';
+    countBadge.style.background = pendingCount > 0 ? '#fef3c7' : '#f1f5f9';
+    countBadge.style.color = pendingCount > 0 ? '#92400e' : '#475569';
+  }
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:18px;">Tidak ada pengajuan dengan status "' + (filter || 'Semua') + '".</td></tr>';
+    return;
+  }
+  const statusColor = { 'Pending': '#f59e0b', 'Approved': '#10b981', 'Rejected': '#ef4444', 'Canceled': '#94a3b8' };
+  tbody.innerHTML = rows.map(function (r) {
+    const created = r.created_at ? new Date(String(r.created_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+    const reasonShort = (r.reason || '').length > 50 ? (r.reason || '').slice(0, 50) + '…' : (r.reason || '');
+    const bgRow = r.status === 'Pending' ? 'background:#fffbeb;' : '';
+    const attachIcon = r.attachment_url ? ' 📎' : '';
+    return '<tr style="' + bgRow + ' cursor:pointer;" onclick="window.openLateArrivalApproval(\'' + r.id + '\')">' +
+      '<td style="padding:8px;"><strong>' + escapeHtml(r.employee_name || '') + '</strong><div style="font-size:10px; color:#94a3b8;">' + escapeHtml(r.division || '') + '</div></td>' +
+      '<td style="padding:8px; font-size:11px;">' + escapeHtml(r.outlet_name || '-') + '</td>' +
+      '<td style="padding:8px; font-size:11px;">' + escapeHtml(r.shift_name || '-') + '<div style="font-size:10px; color:#94a3b8;">' + escapeHtml(r.shift_time || '') + '</div></td>' +
+      '<td style="padding:8px; font-size:11px; text-align:center;">' + (r.estimated_arrival ? escapeHtml(r.estimated_arrival) : '-') + '</td>' +
+      '<td style="padding:8px; font-size:11px; max-width:180px; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(reasonShort) + attachIcon + '</td>' +
+      '<td style="padding:8px; text-align:center;"><span style="padding:3px 10px; border-radius:10px; font-size:10.5px; font-weight:700; background:' + (statusColor[r.status] || '#94a3b8') + '; color:#fff;">' + r.status + '</span></td>' +
+      '<td style="padding:8px; text-align:center; font-size:11px;">' + created + '</td>' +
+      '<td style="padding:8px; text-align:center; font-size:11px;"><a href="#" onclick="event.preventDefault(); event.stopPropagation(); window.openLateArrivalApproval(\'' + r.id + '\')" style="color:var(--burgundy-primary, #8b1e3f); font-weight:600;">Detail →</a></td>' +
+      '</tr>';
+  }).join('');
+};
+window.renderLateArrivalApproverPanel = window.renderLateArrivalApproverPanel;
+
+// v94: Filter tabel pengajuan izin telat by status.
+window.filterLateArrival = (status) => {
+  window.__lateArrivalFilter = status;
+  ['Pending', 'Approved', 'Rejected', ''].forEach(function (s) {
+    const btnId = 'sa-latearrival-filter-' + (s === '' ? 'all' : s.toLowerCase());
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      if (s === status) {
+        btn.style.background = 'var(--burgundy-primary, #8b1e3f)';
+        btn.style.color = '#fff';
+        btn.style.borderColor = 'var(--burgundy-primary, #8b1e3f)';
+      } else {
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }
+    }
+  });
+  window.renderLateArrivalApproverPanel && window.renderLateArrivalApproverPanel();
+};
+window.filterLateArrival = window.filterLateArrival;
 
 const renderAttendanceTable = (logs) => {
   const tbody = document.getElementById('attendance-tbody');
@@ -7576,7 +8080,7 @@ window.saveJoinDate = async () => {
 
 // ---- Tab switching ----
 window.saSwitchTab = (tab) => {
-  ['overview', 'users', 'shifts', 'spk', 'earlycheckout', 'settings'].forEach(t => {
+  ['overview', 'users', 'shifts', 'spk', 'earlycheckout', 'latearrival', 'settings'].forEach(t => {
     const panel = document.getElementById('sa-tab-' + t);
     const btn = document.getElementById('sa-tab-btn-' + t);
     if (panel) panel.style.display = (t === tab) ? '' : 'none';
@@ -7600,6 +8104,13 @@ window.saSwitchTab = (tab) => {
     window.__earlyCheckoutFilter = window.__earlyCheckoutFilter || 'Pending';
     window.loadEarlyCheckoutRequests && window.loadEarlyCheckoutRequests({ scope: 'all' }).then(function () {
       window.renderEarlyCheckoutApproverPanel && window.renderEarlyCheckoutApproverPanel();
+    });
+  }
+  // v94: Tab Izin Telat — load semua pengajuan + render tabel approval
+  if (tab === 'latearrival') {
+    window.__lateArrivalFilter = window.__lateArrivalFilter || 'Pending';
+    window.loadLateArrivalRequests && window.loadLateArrivalRequests({ scope: 'all' }).then(function () {
+      window.renderLateArrivalApproverPanel && window.renderLateArrivalApproverPanel();
     });
   }
   if (tab === 'settings') window.loadSaSettings && window.loadSaSettings();
