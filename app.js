@@ -2435,7 +2435,8 @@ window.renderApprovalQueue = () => {
     totalBadge.style.background = total > 0 ? '#fef3c7' : '#f1f5f9';
     totalBadge.style.color = total > 0 ? '#92400e' : '#475569';
   }
-  ['all', 'leave', 'early_checkout', 'late_arrival', 'attendance_review'].forEach(function (k) {
+  // v96: Hanya 4 counter (all + 3 jenis, GPS Review dihapus)
+  ['all', 'leave', 'early_checkout', 'late_arrival'].forEach(function (k) {
     const el = document.getElementById('aq-count-' + k);
     if (el) el.textContent = k === 'all' ? total : (counts[k] || 0);
   });
@@ -2464,11 +2465,11 @@ window.renderApprovalQueue = () => {
   }
 
   // Render items
+  // v96: GPS Review dihapus dari typeMeta
   const typeMeta = {
     'leave': { label: 'Cuti/Izin', color: '#3b82f6', bg: '#dbeafe', icon: 'calendar' },
     'early_checkout': { label: 'Pulang Awal', color: '#f59e0b', bg: '#fef3c7', icon: 'alert-circle' },
-    'late_arrival': { label: 'Izin Telat', color: '#8b5cf6', bg: '#ede9fe', icon: 'clock' },
-    'attendance_review': { label: 'GPS Review', color: '#ef4444', bg: '#fef2f2', icon: 'alert-triangle' }
+    'late_arrival': { label: 'Izin Telat', color: '#8b5cf6', bg: '#ede9fe', icon: 'clock' }
   };
   listEl.innerHTML = filtered.map(function (it) {
     const meta = typeMeta[it.type] || { label: it.type, color: '#475569', bg: '#f1f5f9', icon: 'file' };
@@ -2500,13 +2501,13 @@ window.renderApprovalQueue = () => {
 window.renderApprovalQueue = window.renderApprovalQueue;
 
 // v95: Approve item dari antrian (panggil endpoint sesuai type).
+// v96: attendance_review dihapus dari antrian.
 window.approveQueueItem = async (type, id) => {
   if (!type || !id) return;
-  let endpoint = '', body = {};
+  let endpoint = '';
   if (type === 'leave') { endpoint = '/api/leaves/' + id + '/approve'; }
   else if (type === 'early_checkout') { endpoint = '/api/early-checkout/' + id + '/approve'; }
   else if (type === 'late_arrival') { endpoint = '/api/late-arrival/' + id + '/approve'; }
-  else if (type === 'attendance_review') { endpoint = '/api/attendance/' + id + '/approve'; }
   else { showToast('Tipe pengajuan tidak dikenal.', 'error'); return; }
 
   const note = prompt('Catatan approver (opsional):', '');
@@ -2533,13 +2534,9 @@ window.approveQueueItem = async (type, id) => {
 window.approveQueueItem = window.approveQueueItem;
 
 // v95: Reject item dari antrian (panggil endpoint sesuai type).
-// attendance_review tidak punya endpoint reject — di-skip (hanya approve/ignore).
+// v96: attendance_review dihapus dari antrian.
 window.rejectQueueItem = async (type, id) => {
   if (!type || !id) return;
-  if (type === 'attendance_review') {
-    showToast('Presensi GPS Review tidak bisa di-reject. Approve untuk konfirmasi hadir, atau biarkan untuk investigasi lebih lanjut.', 'error');
-    return;
-  }
   let endpoint = '';
   if (type === 'leave') { endpoint = '/api/leaves/' + id + '/reject'; }
   else if (type === 'early_checkout') { endpoint = '/api/early-checkout/' + id + '/reject'; }
@@ -4558,6 +4555,7 @@ window.updateEarlyCheckoutUI = () => {
 window.updateEarlyCheckoutUI = window.updateEarlyCheckoutUI;
 
 // v93: Buka modal form pengajuan.
+// v96: Reset field jam pulang rencana juga.
 window.openEarlyCheckoutModal = () => {
   const att = findMyActiveAttendanceToday_();
   if (!att) {
@@ -4574,16 +4572,33 @@ window.openEarlyCheckoutModal = () => {
     return;
   }
   const reasonEl = document.getElementById('early-checkout-reason');
+  const estEl = document.getElementById('early-checkout-estimated');
   if (reasonEl) reasonEl.value = '';
+  if (estEl) estEl.value = '';
   openModal('modal-early-checkout');
-  setTimeout(() => { if (reasonEl) reasonEl.focus(); }, 100);
+  setTimeout(() => { if (estEl) estEl.focus(); }, 100);
 };
 window.openEarlyCheckoutModal = window.openEarlyCheckoutModal;
 
 // v93: Submit pengajuan dari modal form.
+// v96: estimated_checkout (jam pulang rencana) WAJIB diisi.
 window.submitEarlyCheckout = async () => {
   const att = findMyActiveAttendanceToday_();
   if (!att) { showToast('Anda belum presensi masuk hari ini.', 'error'); return; }
+  // v96: Validasi jam pulang rencana (wajib)
+  const estEl = document.getElementById('early-checkout-estimated');
+  const estimatedCheckout = (estEl?.value || '').trim();
+  if (!estimatedCheckout) {
+    showToast('Jam Pulang Rencana wajib diisi.', 'error');
+    estEl?.focus();
+    return;
+  }
+  // Validasi format HH:MM (browser type=time sudah pasti format ini, tapi double-check)
+  const ecMatch = /^(\d{1,2}):(\d{2})$/.exec(estimatedCheckout);
+  if (!ecMatch) {
+    showToast('Jam Pulang Rencana format tidak valid.', 'error');
+    return;
+  }
   const reasonEl = document.getElementById('early-checkout-reason');
   const reason = (reasonEl?.value || '').trim();
   if (reason.length < 10) {
@@ -4600,7 +4615,7 @@ window.submitEarlyCheckout = async () => {
     const res = await fetch('/api/early-checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ attendance_id: att.id, reason: reason })
+      body: JSON.stringify({ attendance_id: att.id, reason: reason, estimated_checkout: estimatedCheckout })
     });
     const data = await res.json();
     if (res.ok && data.status === 'success') {
@@ -4609,7 +4624,8 @@ window.submitEarlyCheckout = async () => {
       await window.loadEarlyCheckoutRequests({ scope: 'mine' });
       window.updateEarlyCheckoutUI && window.updateEarlyCheckoutUI();
       // Tampilkan tombol Kirim WA ke atasan (opsional, supaya karyawan bisa notifikasi manual)
-      window.offerSendWAToApprover && window.offerSendWAToApprover(reason);
+      // v96: include estimatedCheckout di pesan WA
+      window.offerSendWAToApprover && window.offerSendWAToApprover(reason, estimatedCheckout);
     } else {
       showToast(data.detail || 'Gagal mengirim pengajuan.', 'error');
     }
@@ -4643,7 +4659,8 @@ window.cancelMyEarlyCheckout = window.cancelMyEarlyCheckout;
 
 // v93: Tawarkan kirim WA ke atasan setelah pengajuan dibuat.
 // Cari nomor PCD/Super Admin dari AppState.employees, generate wa.me link.
-window.offerSendWAToApprover = (reason) => {
+// v96: include estimatedCheckout (jam pulang rencana) di pesan WA.
+window.offerSendWAToApprover = (reason, estimatedCheckout) => {
   try {
     const emps = AppState.employees || [];
     // Cari approver: divisi PCD atau role SUPER ADMIN
@@ -4659,7 +4676,10 @@ window.offerSendWAToApprover = (reason) => {
     if (phone.startsWith('0')) phone = '62' + phone.slice(1);
     if (!phone.startsWith('62')) phone = '62' + phone;
     const me = AppState.currentUser || {};
-    const msg = 'Halo ' + (approver.name || 'Atasan') + ',\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan PULANG LEBIH AWAL hari ini.\n\nAlasan: ' + reason + '\n\nMohon approval di aplikasi TERTIB DISIPLIN. Terima kasih.';
+    // v96: include jam pulang rencana di pesan WA
+    let msg = 'Halo ' + (approver.name || 'Atasan') + ',\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan PULANG LEBIH AWAL hari ini.';
+    if (estimatedCheckout) msg += '\nRencana jam pulang: ' + estimatedCheckout;
+    msg += '\n\nAlasan: ' + reason + '\n\nMohon approval di aplikasi TERTIB DISIPLIN. Terima kasih.';
     const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
     // Tampilkan toast dengan link
     showToast('📨 Pengajuan terkirim. Klik untuk kirim WA ke atasan: ' + (approver.name || ''), 'success', 8000);
@@ -4694,6 +4714,8 @@ window.openEarlyCheckoutApproval = (reqId) => {
   html += '<div><strong>Shift:</strong> ' + escapeHtml(req.shift_name || '-') + ' (' + escapeHtml(req.shift_time || '-') + ')</div>';
   html += '<div><strong>Tanggal presensi:</strong> ' + escapeHtml(req.attendance_date || '-') + '</div>';
   html += '<div><strong>Jam akhir shift:</strong> ' + escapeHtml(req.scheduled_end || '-') + '</div>';
+  // v96: Tampilkan jam pulang rencana (wajib diisi karyawan)
+  html += '<div style="margin-top:4px; padding:6px 10px; background:#fef3c7; border-radius:6px;"><strong style="color:#92400e;">🕐 Jam Pulang Rencana:</strong> <span style="font-weight:700; color:#92400e; font-size:13px;">' + escapeHtml(req.estimated_checkout || '-') + '</span></div>';
   html += '<div><strong>Diajukan:</strong> ' + created + '</div>';
   if (req.status !== 'Pending') {
     html += '<div><strong>Approver:</strong> ' + escapeHtml(req.approver_name || '-') + '</div>';
@@ -4809,7 +4831,7 @@ window.renderEarlyCheckoutApproverPanel = () => {
   }
   // Render rows
   if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:18px;">Tidak ada pengajuan dengan status "' + (filter || 'Semua') + '".</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:18px;">Tidak ada pengajuan dengan status "' + (filter || 'Semua') + '".</td></tr>';
     return;
   }
   const statusColor = { 'Pending': '#f59e0b', 'Approved': '#10b981', 'Rejected': '#ef4444', 'Canceled': '#94a3b8' };
@@ -4817,10 +4839,13 @@ window.renderEarlyCheckoutApproverPanel = () => {
     const created = r.created_at ? new Date(String(r.created_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
     const reasonShort = (r.reason || '').length > 60 ? (r.reason || '').slice(0, 60) + '…' : (r.reason || '');
     const bgRow = r.status === 'Pending' ? 'background:#fffbeb;' : '';
+    // v96: tampilkan jam pulang rencana (estimated_checkout)
+    const jamPulang = r.estimated_checkout ? '<strong style="color:#92400e; font-size:12px;">' + escapeHtml(r.estimated_checkout) + '</strong>' : '<span style="color:#cbd5e1;">-</span>';
     return '<tr style="' + bgRow + ' cursor:pointer;" onclick="window.openEarlyCheckoutApproval(\'' + r.id + '\')">' +
       '<td style="padding:8px;"><strong>' + escapeHtml(r.employee_name || '') + '</strong><div style="font-size:10px; color:#94a3b8;">' + escapeHtml(r.division || '') + '</div></td>' +
       '<td style="padding:8px; font-size:11px;">' + escapeHtml(r.outlet_name || '-') + '</td>' +
       '<td style="padding:8px; font-size:11px;">' + escapeHtml(r.shift_name || '-') + '<div style="font-size:10px; color:#94a3b8;">' + escapeHtml(r.shift_time || '') + '</div></td>' +
+      '<td style="padding:8px; text-align:center;">' + jamPulang + '</td>' +
       '<td style="padding:8px; font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(reasonShort) + '</td>' +
       '<td style="padding:8px; text-align:center;"><span style="padding:3px 10px; border-radius:10px; font-size:10.5px; font-weight:700; background:' + (statusColor[r.status] || '#94a3b8') + '; color:#fff;">' + r.status + '</span></td>' +
       '<td style="padding:8px; text-align:center; font-size:11px;">' + created + '</td>' +

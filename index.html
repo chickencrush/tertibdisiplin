@@ -404,13 +404,12 @@
                 </div>
                 <span class="card-badge-tag" id="approval-queue-total-badge" style="background:#fef3c7; color:#92400e;">0 pending</span>
               </div>
-              <!-- Filter tabs by type -->
+              <!-- Filter tabs by type (v96: GPS Review dihapus) -->
               <div style="margin-top:14px; display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
                 <button type="button" class="approval-queue-tab" data-filter="all" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('all')" style="padding:6px 12px; font-size:11px; font-weight:600; border:none; background:var(--burgundy-primary, #8b1e3f); color:#fff; border-radius:6px; cursor:pointer;">Semua (<span id="aq-count-all">0</span>)</button>
                 <button type="button" class="approval-queue-tab" data-filter="leave" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('leave')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">🏖️ Cuti (<span id="aq-count-leave">0</span>)</button>
                 <button type="button" class="approval-queue-tab" data-filter="early_checkout" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('early_checkout')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">🚪 Pulang Awal (<span id="aq-count-early_checkout">0</span>)</button>
                 <button type="button" class="approval-queue-tab" data-filter="late_arrival" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('late_arrival')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">🕘 Izin Telat (<span id="aq-count-late_arrival">0</span>)</button>
-                <button type="button" class="approval-queue-tab" data-filter="attendance_review" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('attendance_review')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">⚠️ GPS Review (<span id="aq-count-attendance_review">0</span>)</button>
                 <button type="button" id="aq-refresh-btn" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#fff; color:#475569; border-radius:6px; cursor:pointer; margin-left:auto;" onclick="window.loadApprovalQueue && window.loadApprovalQueue()"><i data-feather="refresh-cw" style="width:12px; height:12px;"></i> Muat Ulang</button>
               </div>
               <!-- List items -->
@@ -1927,6 +1926,7 @@
                     <th style="text-align:left; padding:8px;">Karyawan</th>
                     <th style="text-align:left; padding:8px;">Divisi/Outlet</th>
                     <th style="text-align:left; padding:8px;">Shift</th>
+                    <th style="text-align:center; padding:8px;">Jam Pulang</th>
                     <th style="text-align:left; padding:8px;">Alasan</th>
                     <th style="text-align:center; padding:8px;">Status</th>
                     <th style="text-align:center; padding:8px;">Diajukan</th>
@@ -1934,7 +1934,7 @@
                   </tr>
                 </thead>
                 <tbody id="sa-earlycheckout-tbody">
-                  <tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:18px;">Klik tab ini untuk memuat data...</td></tr>
+                  <tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:18px;">Klik tab ini untuk memuat data...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -3061,6 +3061,12 @@
     <div style="padding:18px 20px;">
       <div style="padding:10px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:8px; font-size:11px; color:#92400e; margin-bottom:14px;">
         <strong>ℹ️ Catatan:</strong> Setelah mengajukan, tombol <strong>Presensi Pulang akan DI-BLOCK</strong> sampai pengajuan disetujui. Pastikan Anda benar-benar ingin pulang lebih awal sebelum mengirim.
+      </div>
+      <!-- v96: Jam Pulang Rencana (WAJIB) -->
+      <div class="form-group">
+        <label class="form-label required">Jam Pulang Rencana (HH:MM)</label>
+        <input type="time" class="form-control" id="early-checkout-estimated" style="font-size:13px; padding:10px;" required>
+        <p style="font-size:10px; color:#94a3b8; margin:4px 0 0 0;">Wajib diisi. Jam rencana Anda pulang hari ini (mis. 14:00).</p>
       </div>
       <div class="form-group">
         <label class="form-label required">Alasan Pulang Lebih Awal</label>
