@@ -4516,7 +4516,10 @@ window.updateEarlyCheckoutUI = () => {
       statusBox.style.background = '#fef3c7';
       statusBox.style.border = '1px solid #fde68a';
       statusBox.style.color = '#92400e';
-      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Pengajuan pulang lebih awal MENUNGGU approval.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Tombol Presensi Pulang di-block sampai disetujui atasan. Kalau berubah pikiran, <a href="#" onclick="window.cancelMyEarlyCheckout(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan pengajuan</a>.</p></div></div>';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Pengajuan pulang lebih awal MENUNGGU approval.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Tombol Presensi Pulang di-block sampai disetujui atasan. Kalau berubah pikiran, <a href="#" onclick="window.cancelMyEarlyCheckout(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan pengajuan</a>.</p>' +
+        '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" style="padding:6px 12px; font-size:11px; font-weight:600; background:#25D366; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.resendEarlyCheckoutWA()"><i data-feather="message-circle" style="width:12px; height:12px; vertical-align:middle;"></i> 📨 Kirim WA ke Atasan</button>' +
+        (req.estimated_checkout ? '<span style="padding:6px 10px; font-size:10.5px; background:#fff; border:1px solid #fde68a; border-radius:6px; color:#92400e;">🕐 Rencana pulang: <strong>' + escapeHtml(req.estimated_checkout) + '</strong></span>' : '') +
+        '</div></div></div>';
       // BLOCK checkout
       btnCheckout.disabled = true;
       btnCheckout.style.opacity = '0.5';
@@ -4658,40 +4661,130 @@ window.cancelMyEarlyCheckout = async (reqId) => {
 window.cancelMyEarlyCheckout = window.cancelMyEarlyCheckout;
 
 // v93: Tawarkan kirim WA ke atasan setelah pengajuan dibuat.
-// Cari nomor PCD/Super Admin dari AppState.employees, generate wa.me link.
 // v96: include estimatedCheckout (jam pulang rencana) di pesan WA.
-window.offerSendWAToApprover = (reason, estimatedCheckout) => {
+// v97: Hapus silent fail — tampilkan pesan error jelas kalau:
+//   - Tidak ada PCD/Super Admin di data karyawan
+//   - Tidak ada PCD/Super Admin yang punya nomor HP
+//   - Popup di-block browser
+// v97: Return { url, approverName, error } supaya caller bisa tampilkan tombol manual.
+
+// v97: Helper — cari approver & generate wa.me URL. Return object dgn info lengkap.
+window.getApproverWAInfo = (customMessage) => {
   try {
     const emps = AppState.employees || [];
+    if (!emps || emps.length === 0) {
+      return { url: null, approverName: null, error: 'Data karyawan belum dimuat. Refresh halaman lalu coba lagi.' };
+    }
     // Cari approver: divisi PCD atau role SUPER ADMIN
     const approvers = emps.filter(function (e) {
       return String(e.division || '').toUpperCase() === 'PCD' || String(e.role || '').toUpperCase() === 'SUPER ADMIN';
     });
-    if (approvers.length === 0) return;
-    // Ambil approver pertama yang punya nomor HP
-    const approver = approvers.find(function (a) { return a.phone && String(a.phone).length >= 8; });
-    if (!approver) return;
+    if (approvers.length === 0) {
+      return { url: null, approverName: null, error: 'Tidak ada karyawan dgn divisi PCD atau role SUPER ADMIN. Tambahkan PCD/Super Admin di Panel Super Admin > Manajemen Pengguna.' };
+    }
+    // Ambil approver pertama yang punya nomor HP (min 8 digit)
+    const approver = approvers.find(function (a) { return a.phone && String(a.phone).replace(/\D/g, '').length >= 8; });
+    if (!approver) {
+      const names = approvers.map(function (a) { return a.name; }).join(', ');
+      return { url: null, approverName: null, error: 'PCD/Super Admin ditemukan (' + names + ') tapi TIDAK ADA yang punya nomor HP. Isi nomor HP/WhatsApp di Panel Super Admin > Manajemen Pengguna > Edit karyawan PCD/Super Admin.' };
+    }
     // Format nomor HP: hapus karakter non-digit, ganti 0 di depan dengan 62
     let phone = String(approver.phone).replace(/\D/g, '');
     if (phone.startsWith('0')) phone = '62' + phone.slice(1);
     if (!phone.startsWith('62')) phone = '62' + phone;
-    const me = AppState.currentUser || {};
-    // v96: include jam pulang rencana di pesan WA
-    let msg = 'Halo ' + (approver.name || 'Atasan') + ',\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan PULANG LEBIH AWAL hari ini.';
-    if (estimatedCheckout) msg += '\nRencana jam pulang: ' + estimatedCheckout;
-    msg += '\n\nAlasan: ' + reason + '\n\nMohon approval di aplikasi TERTIB DISIPLIN. Terima kasih.';
+    const msg = customMessage || '';
     const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
-    // Tampilkan toast dengan link
-    showToast('📨 Pengajuan terkirim. Klik untuk kirim WA ke atasan: ' + (approver.name || ''), 'success', 8000);
-    // Buka WA di tab baru setelah 1.5 detik (kasih waktu toast dibaca)
-    setTimeout(function () {
-      try { window.open(waUrl, '_blank'); } catch (e) { /* abaikan popup blocker */ }
-    }, 1500);
+    return { url: waUrl, approverName: approver.name, approverPhone: phone, error: null };
   } catch (err) {
-    console.warn('offerSendWAToApprover error:', err);
+    console.warn('getApproverWAInfo error:', err);
+    return { url: null, approverName: null, error: 'Gagal membuat link WA: ' + (err.message || 'kesalahan sistem') };
   }
 };
+window.getApproverWAInfo = window.getApproverWAInfo;
+
+// v97: Buka link WA. Coba auto-open + fallback tampilkan toast dgn link manual.
+window.openWAUrl = (waUrl, approverName) => {
+  if (!waUrl) return;
+  let opened = false;
+  try {
+    const win = window.open(waUrl, '_blank');
+    if (win) {
+      opened = true;
+      // Beberapa browser return non-null tapi tetap block — cek closed setelah delay
+      setTimeout(function () {
+        try {
+          if (win.closed) {
+            showToast('⚠️ Popup WA diblokir browser. Klik link ini utk buka manual: ' + waUrl, 'error', 15000);
+          } else {
+            showToast('✅ WhatsApp terbuka. Klik "Kirim" di WhatsApp utk kirim pesan ke ' + (approverName || 'atasan') + '.', 'success', 6000);
+          }
+        } catch (e) { /* abaikan */ }
+      }, 500);
+    }
+  } catch (e) { /* abaikan */ }
+  if (!opened) {
+    // Popup di-block — tampilkan toast dgn link manual yg bisa diklik
+    showToast('⚠️ Popup diblokir browser. Klik link ini utk buka WA manual: ' + waUrl, 'error', 15000);
+  }
+};
+window.openWAUrl = window.openWAUrl;
+
+window.offerSendWAToApprover = (reason, estimatedCheckout) => {
+  const me = AppState.currentUser || {};
+  // v96: include jam pulang rencana di pesan WA
+  let msg = 'Halo {APPROVER_NAME},\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan PULANG LEBIH AWAL hari ini.';
+  if (estimatedCheckout) msg += '\nRencana jam pulang: ' + estimatedCheckout;
+  msg += '\n\nAlasan: ' + reason + '\n\nMohon approval di aplikasi TERTIB DISIPLIN. Terima kasih.';
+
+  const info = window.getApproverWAInfo(msg);
+  if (info.error) {
+    // v97: tampilkan error jelas, bukan silent fail
+    console.warn('[WA] ' + info.error);
+    showToast('⚠️ WA tidak terkirim: ' + info.error, 'error', 12000);
+    return;
+  }
+  // Replace placeholder {APPROVER_NAME} dgn nama asli
+  const finalMsg = msg.replace('{APPROVER_NAME}', info.approverName || 'Atasan');
+  const info2 = window.getApproverWAInfo(finalMsg);
+  if (info2.error) {
+    showToast('⚠️ WA gagal: ' + info2.error, 'error', 12000);
+    return;
+  }
+  console.log('[WA] Approver ditemukan:', info2.approverName, '| Phone:', info2.approverPhone);
+  showToast('📨 Pengajuan terkirim. Membuka WhatsApp ke: ' + (info2.approverName || 'atasan') + '...', 'success', 5000);
+  // v97: auto-open + fallback (tidak pakai setTimeout 1.5s lagi, langsung buka)
+  window.openWAUrl(info2.url, info2.approverName);
+  // v97: simpan info WA ke state supaya tombol di status box bisa pakai
+  AppState.__lastWAUrl = info2.url;
+  AppState.__lastWAApprover = info2.approverName;
+};
 window.offerSendWAToApprover = window.offerSendWAToApprover;
+
+// v97: Tombol manual "Kirim WA ke Atasan" di status box Pulang Awal.
+// User-initiated click → tidak kena popup blocker. Pakai data pengajuan terakhir.
+window.resendEarlyCheckoutWA = () => {
+  // Cari pengajuan Pending milik user hari ini
+  const att = findMyActiveAttendanceToday_();
+  let reason = '', estimatedCheckout = '';
+  if (att) {
+    const req = findMyEarlyCheckoutForAtt_(att.id);
+    if (req) {
+      reason = req.reason || '';
+      estimatedCheckout = req.estimated_checkout || '';
+    }
+  }
+  if (!reason) {
+    // Fallback: pakai state tersimpan
+    if (AppState.__lastWAUrl) {
+      window.openWAUrl(AppState.__lastWAUrl, AppState.__lastWAApprover);
+      return;
+    }
+    showToast('Tidak ada pengajuan aktif untuk dikirim WA.', 'error');
+    return;
+  }
+  window.offerSendWAToApprover(reason, estimatedCheckout);
+};
+window.resendEarlyCheckoutWA = window.resendEarlyCheckoutWA;
 
 // v93: Approver — buka modal approval dengan detail pengajuan.
 window.openEarlyCheckoutApproval = (reqId) => {
@@ -5010,7 +5103,9 @@ window.updateLateArrivalUI = () => {
       statusBox.style.background = '#fef3c7';
       statusBox.style.border = '1px solid #fde68a';
       statusBox.style.color = '#92400e';
-      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Pengajuan izin berangkit telat MENUNGGU approval.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Untuk shift ' + escapeHtml(selectedShift) + '. Kalau berubah pikiran, <a href="#" onclick="window.cancelMyLateArrival(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan pengajuan</a>.</p></div></div>';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Pengajuan izin berangkit telat MENUNGGU approval.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Untuk shift ' + escapeHtml(selectedShift) + '. Kalau berubah pikiran, <a href="#" onclick="window.cancelMyLateArrival(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan pengajuan</a>.</p>' +
+        '<div style="margin-top:8px;"><button type="button" style="padding:6px 12px; font-size:11px; font-weight:600; background:#25D366; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.resendLateArrivalWA()"><i data-feather="message-circle" style="width:12px; height:12px; vertical-align:middle;"></i> 📨 Kirim WA ke Atasan</button></div>' +
+        '</div></div>';
       btnLate.disabled = true;
       btnLate.style.opacity = '0.5';
       btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Pengajuan menunggu approval...';
@@ -5167,32 +5262,49 @@ window.cancelMyLateArrival = async (reqId) => {
 window.cancelMyLateArrival = window.cancelMyLateArrival;
 
 // v94: Tawarkan kirim WA ke atasan setelah pengajuan izin telat dibuat.
+// v97: Pakai helper getApproverWAInfo + openWAUrl (no silent fail, ada fallback).
 window.offerSendWALateArrival = (reason, estimatedArrival, shiftName) => {
-  try {
-    const emps = AppState.employees || [];
-    const approvers = emps.filter(function (e) {
-      return String(e.division || '').toUpperCase() === 'PCD' || String(e.role || '').toUpperCase() === 'SUPER ADMIN';
-    });
-    if (approvers.length === 0) return;
-    const approver = approvers.find(function (a) { return a.phone && String(a.phone).length >= 8; });
-    if (!approver) return;
-    let phone = String(approver.phone).replace(/\D/g, '');
-    if (phone.startsWith('0')) phone = '62' + phone.slice(1);
-    if (!phone.startsWith('62')) phone = '62' + phone;
-    const me = AppState.currentUser || {};
-    let msg = 'Halo ' + (approver.name || 'Atasan') + ',\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan IZIN BERANGKIT TELAT utk shift ' + shiftName + ' hari ini.';
-    if (estimatedArrival) msg += '\nEstimasi jam hadir: ' + estimatedArrival;
-    msg += '\n\nAlasan: ' + reason + '\n\nMohon approval di aplikasi TERTIB DISIPLIN. Terima kasih.';
-    const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
-    showToast('📨 Pengajuan terkirim. Klik untuk kirim WA ke atasan: ' + (approver.name || ''), 'success', 8000);
-    setTimeout(function () {
-      try { window.open(waUrl, '_blank'); } catch (e) { /* abaikan popup blocker */ }
-    }, 1500);
-  } catch (err) {
-    console.warn('offerSendWALateArrival error:', err);
+  const me = AppState.currentUser || {};
+  let msg = 'Halo {APPROVER_NAME},\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan IZIN BERANGKIT TELAT utk shift ' + shiftName + ' hari ini.';
+  if (estimatedArrival) msg += '\nEstimasi jam hadir: ' + estimatedArrival;
+  msg += '\n\nAlasan: ' + reason + '\n\nMohon approval di aplikasi TERTIB DISIPLIN. Terima kasih.';
+
+  const info = window.getApproverWAInfo(msg);
+  if (info.error) {
+    console.warn('[WA Late Arrival] ' + info.error);
+    showToast('⚠️ WA tidak terkirim: ' + info.error, 'error', 12000);
+    return;
   }
+  const finalMsg = msg.replace('{APPROVER_NAME}', info.approverName || 'Atasan');
+  const info2 = window.getApproverWAInfo(finalMsg);
+  if (info2.error) {
+    showToast('⚠️ WA gagal: ' + info2.error, 'error', 12000);
+    return;
+  }
+  console.log('[WA Late Arrival] Approver:', info2.approverName, '| Phone:', info2.approverPhone);
+  showToast('📨 Pengajuan terkirim. Membuka WhatsApp ke: ' + (info2.approverName || 'atasan') + '...', 'success', 5000);
+  window.openWAUrl(info2.url, info2.approverName);
+  AppState.__lastWAUrl = info2.url;
+  AppState.__lastWAApprover = info2.approverName;
 };
 window.offerSendWALateArrival = window.offerSendWALateArrival;
+
+// v97: Tombol manual "Kirim WA ke Atasan" di status box Izin Telat.
+window.resendLateArrivalWA = () => {
+  const shiftSelect = document.getElementById('presensi-shift-select');
+  const selectedShift = shiftSelect ? shiftSelect.value : '';
+  const req = findMyLateArrivalForShift_(selectedShift);
+  if (!req) {
+    if (AppState.__lastWAUrl) {
+      window.openWAUrl(AppState.__lastWAUrl, AppState.__lastWAApprover);
+      return;
+    }
+    showToast('Tidak ada pengajuan aktif untuk dikirim WA.', 'error');
+    return;
+  }
+  window.offerSendWALateArrival(req.reason || '', req.estimated_arrival || '', req.shift_name || selectedShift);
+};
+window.resendLateArrivalWA = window.resendLateArrivalWA;
 
 // v94: Approver — buka modal approval dengan detail pengajuan izin telat.
 window.openLateArrivalApproval = (reqId) => {
