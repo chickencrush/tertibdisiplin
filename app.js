@@ -4290,17 +4290,33 @@ window.submitAttendanceCheckOut = async () => {
   if (!AppState.attendanceLogs || AppState.attendanceLogs.length === 0) {
     await loadAttendanceLogs();
   }
-  // Find today's check-in for this user (any shift)
-  const today = new Date().toISOString().split('T')[0]; // yyyy-mm-dd
-  const myCheckInToday = (AppState.attendanceLogs || []).find(l =>
-    l.employee_id === AppState.currentUser.id && l.date === today && l.check_in_time
-  );
+  // v98: FIX PRESENSI LINTAS TANGGAL (security shift malam)
+  // DULU: cari record dgn l.date === today → gagal kalau check-in kemarin, checkout hari ini.
+  // SEKARANG: cari check-in terbaru yang BELUM checkout dalam 36 jam terakhir
+  // (sama seperti backend h_checkOut_ fallback). Cakup shift malam cross-day:
+  //   - Check-in tgl 24 jam 23:00, checkout tgl 25 jam 07:00 → record date="2026-10-24"
+  //     tetap ditemukan karena cutoff 36 jam.
+  // TIDAK mengubah kalkulasi lembur (backend tetap pakai anchor akhir shift jadwal v89).
+  const nowMs = Date.now();
+  const cutoffMs = nowMs - (36 * 60 * 60 * 1000); // 36 jam lalu
+  const candidates = (AppState.attendanceLogs || []).filter(l => {
+    if (l.employee_id !== AppState.currentUser.id) return false;
+    if (!l.check_in_time) return false;
+    if (l.check_out_time) return false; // belum checkout
+    try {
+      const ciMs = new Date(String(l.check_in_time).replace(/-/g, '/')).getTime();
+      return !isNaN(ciMs) && ciMs >= cutoffMs;
+    } catch (e) { return false; }
+  });
+  // Ambil yang terbaru (terakhir check-in)
+  const myCheckInToday = candidates.length ? candidates[candidates.length - 1] : null;
+
   if (!myCheckInToday) {
-    showToast('Anda belum presensi masuk hari ini. Lakukan presensi masuk terlebih dahulu sebelum pulang.', 'warning');
+    showToast('Anda belum presensi masuk dalam 36 jam terakhir. Lakukan presensi masuk terlebih dahulu sebelum pulang.', 'warning');
     return;
   }
   if (myCheckInToday.check_out_time) {
-    showToast(`Anda sudah presensi pulang hari ini pada ${myCheckInToday.check_out_time.split(' ')[1] || myCheckInToday.check_out_time}.`, 'info');
+    showToast(`Anda sudah presensi pulang untuk shift ini pada ${myCheckInToday.check_out_time.split(' ')[1] || myCheckInToday.check_out_time}.`, 'info');
     return;
   }
 
@@ -4425,14 +4441,22 @@ AppState.__earlyCheckoutAll = [];      // semua pengajuan (untuk approver)
 // v93: Cari attendance_id hari ini milik user (sudah check-in, belum check-out).
 // Dipakai untuk validasi tombol "Ajukan Pulang Lebih Awal".
 function findMyActiveAttendanceToday_() {
-  const today = new Date().toISOString().slice(0, 10);
+  // v98: FIX LINTAS HARI — cari check-in terbaru yang belum checkout dalam 36 jam
+  // (bukan hanya date === today) supaya security shift malam bisa ajukan pulang awal.
+  const nowMs = Date.now();
+  const cutoffMs = nowMs - (36 * 60 * 60 * 1000); // 36 jam lalu
   const logs = AppState.attendanceLogs || [];
-  return logs.find(function (l) {
-    return String(l.employee_id) === String(AppState.currentUser.id)
-      && String(l.date) === today
-      && l.check_in_time
-      && !l.check_out_time;
-  }) || null;
+  const candidates = logs.filter(function (l) {
+    if (String(l.employee_id) !== String(AppState.currentUser.id)) return false;
+    if (!l.check_in_time) return false;
+    if (l.check_out_time) return false; // belum checkout
+    try {
+      const ciMs = new Date(String(l.check_in_time).replace(/-/g, '/')).getTime();
+      return !isNaN(ciMs) && ciMs >= cutoffMs;
+    } catch (e) { return false; }
+  });
+  // Ambil yang terbaru (terakhir check-in)
+  return candidates.length ? candidates[candidates.length - 1] : null;
 }
 
 // v93: Cari pengajuan early checkout untuk attendance_id tertentu (dari cache __earlyCheckoutMine).
@@ -5516,13 +5540,35 @@ const renderAttendanceTable = (logs) => {
   tbody.innerHTML = filtered.map(l => {
     const isLate = l.late_minutes > 0;
     const lateBadge = isLate ? `<span style="color:#ef4444; font-weight:700;">+${l.late_minutes} Menit (Denda: ${formatRupiah(l.late_deduction)})</span>` : '<span style="color:#10b981; font-weight:700;">Tepat Waktu</span>';
-    const checkInTime = l.check_in_time ? l.check_in_time.split(' ')[1] : '-';
-    const checkOutTime = l.check_out_time
-      ? (l.check_out_time.split(' ')[1] || l.check_out_time)
-      : '<span style="color:#94a3b8; font-style:italic;">belum pulang</span>';
-    const checkOutDisplay = l.check_out_time
-      ? `<strong style="color:#92400e;">${checkOutTime}</strong>${(l.overtime_hours > 0) ? `<div style="font-size:10.5px; color:#92400e; font-weight:700;">+${l.overtime_hours} jam lembur</div>` : ''}`
-      : checkOutTime;
+    // v98: Tampilkan jam masuk + tanggal lengkap (utk kasus lintas hari)
+    const checkInParts = l.check_in_time ? l.check_in_time.split(' ') : [];
+    const checkInDate = checkInParts[0] || '';
+    const checkInTime = checkInParts[1] || '-';
+    // v98: Tampilkan jam pulang + tanggal lengkap (utk kasus lintas hari)
+    const checkOutParts = l.check_out_time ? l.check_out_time.split(' ') : [];
+    const checkOutDate = checkOutParts[0] || '';
+    const checkOutTimeOnly = checkOutParts[1] || '';
+    // Deteksi lintas hari: check-in & check-out beda tanggal
+    const isCrossDay = checkInDate && checkOutDate && checkInDate !== checkOutDate;
+
+    // Format display jam masuk
+    const checkInDisplay = l.check_in_time
+      ? `<strong style="color:#1e40af;">${checkInTime}</strong>${isCrossDay ? `<div style="font-size:10px; color:#64748b;">${checkInDate}</div>` : ''}`
+      : '<span style="color:#94a3b8;">-</span>';
+
+    // Format display jam pulang (v98: lebih menonjol + tampil tanggal kalau lintas hari)
+    let checkOutDisplay;
+    if (l.check_out_time) {
+      checkOutDisplay = `<strong style="color:#92400e; font-size:13px;">${checkOutTimeOnly}</strong>`;
+      if (isCrossDay) {
+        checkOutDisplay += `<div style="font-size:10px; color:#dc2626; font-weight:600;">📅 ${checkOutDate}</div>`;
+      }
+      if (l.overtime_hours > 0) {
+        checkOutDisplay += `<div style="font-size:10.5px; color:#92400e; font-weight:700;">+${l.overtime_hours} jam lembur</div>`;
+      }
+    } else {
+      checkOutDisplay = '<span style="color:#94a3b8; font-style:italic;">⏳ belum pulang</span>';
+    }
 
     return `
       <tr>
@@ -5541,7 +5587,7 @@ const renderAttendanceTable = (logs) => {
         </td>
         <td>
           <div>${l.shift_name}</div>
-          <div style="font-size:11px; color:#64748b;">${checkInTime}</div>
+          <div style="font-size:11px;">${checkInDisplay}</div>
         </td>
         <td>${checkOutDisplay}</td>
         <td>${lateBadge}</td>
