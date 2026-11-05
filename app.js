@@ -855,6 +855,8 @@ const loadAllAppData = async () => {
     // Refresh dashboard stats setelah semua data tersedia
     updateDashboardStats && updateDashboardStats();
     if (window.feather) feather.replace();
+    // v95: Load antrian approval untuk PCD & Super Admin (di background, tidak block dashboard)
+    if (window.loadApprovalQueue) window.loadApprovalQueue();
   }).catch(err => console.warn('Background load error:', err));
 };
 
@@ -2379,6 +2381,203 @@ const updateDashboardStats = () => {
     }
   }
 };
+
+// ============================================================================
+// v95: ANTRIAN APPROVAL TERPUSAT — Dashboard PCD & Super Admin
+// ============================================================================
+// Fetch /api/admin/approval-queue (aggregate leaves + early-checkout + late-arrival + attendance review).
+// Tampilkan kartu #dashboard-approval-queue-card hanya utk PCD & Super Admin (isDashboardAdmin).
+// Approve/Reject langsung dari kartu — panggil endpoint masing-masing.
+
+AppState.__approvalQueue = { counts: {}, items: [], filter: 'all' };
+
+// v95: Load antrian approval dari backend.
+window.loadApprovalQueue = async () => {
+  const card = document.getElementById('dashboard-approval-queue-card');
+  if (!card) return;
+  // Hanya tampil utk PCD & Super Admin
+  if (!isDashboardAdmin(AppState.currentUser)) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  const listEl = document.getElementById('approval-queue-list');
+  if (listEl) listEl.innerHTML = '<p style="color:#94a3b8; font-size:12px; text-align:center; padding:20px;">⏳ Memuat antrian approval...</p>';
+  try {
+    const res = await fetch('/api/admin/approval-queue');
+    if (!res.ok) {
+      if (listEl) listEl.innerHTML = '<p style="color:#dc2626; font-size:11px; text-align:center; padding:14px;">Gagal memuat antrian (HTTP ' + res.status + '). Backend mungkin belum v95+.</p>';
+      return;
+    }
+    const data = await res.json();
+    AppState.__approvalQueue = { counts: data.counts || {}, items: data.items || [], filter: AppState.__approvalQueue.filter || 'all' };
+    window.renderApprovalQueue && window.renderApprovalQueue();
+  } catch (err) {
+    if (listEl) listEl.innerHTML = '<p style="color:#dc2626; font-size:11px; text-align:center; padding:14px;">Gagal: ' + (err.message || 'koneksi terputus') + '</p>';
+  }
+};
+window.loadApprovalQueue = window.loadApprovalQueue;
+
+// v95: Render kartu antrian approval berdasarkan filter tab aktif.
+window.renderApprovalQueue = () => {
+  const listEl = document.getElementById('approval-queue-list');
+  const totalBadge = document.getElementById('approval-queue-total-badge');
+  if (!listEl) return;
+  const q = AppState.__approvalQueue || {};
+  const counts = q.counts || {};
+  const items = q.items || [];
+  const filter = q.filter || 'all';
+
+  // Update counter badges
+  const total = counts.total || 0;
+  if (totalBadge) {
+    totalBadge.textContent = total + ' pending';
+    totalBadge.style.background = total > 0 ? '#fef3c7' : '#f1f5f9';
+    totalBadge.style.color = total > 0 ? '#92400e' : '#475569';
+  }
+  ['all', 'leave', 'early_checkout', 'late_arrival', 'attendance_review'].forEach(function (k) {
+    const el = document.getElementById('aq-count-' + k);
+    if (el) el.textContent = k === 'all' ? total : (counts[k] || 0);
+  });
+
+  // Update tab visual
+  document.querySelectorAll('.approval-queue-tab').forEach(function (btn) {
+    const f = btn.getAttribute('data-filter');
+    if (f === filter) {
+      btn.style.background = 'var(--burgundy-primary, #8b1e3f)';
+      btn.style.color = '#fff';
+      btn.style.border = 'none';
+    } else {
+      btn.style.background = '#f1f5f9';
+      btn.style.color = '#475569';
+      btn.style.border = '1px solid #e2e8f0';
+    }
+  });
+
+  // Filter items
+  const filtered = filter === 'all' ? items : items.filter(function (it) { return it.type === filter; });
+
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<div style="text-align:center; padding:30px 14px; color:#94a3b8;"><div style="font-size:36px; margin-bottom:8px;">✅</div><p style="font-size:13px; font-weight:600; margin:0;">Tidak ada pengajuan pending</p><p style="font-size:11px; margin:4px 0 0 0;">Semua pengajuan sudah diproses.</p></div>';
+    if (window.feather) feather.replace();
+    return;
+  }
+
+  // Render items
+  const typeMeta = {
+    'leave': { label: 'Cuti/Izin', color: '#3b82f6', bg: '#dbeafe', icon: 'calendar' },
+    'early_checkout': { label: 'Pulang Awal', color: '#f59e0b', bg: '#fef3c7', icon: 'alert-circle' },
+    'late_arrival': { label: 'Izin Telat', color: '#8b5cf6', bg: '#ede9fe', icon: 'clock' },
+    'attendance_review': { label: 'GPS Review', color: '#ef4444', bg: '#fef2f2', icon: 'alert-triangle' }
+  };
+  listEl.innerHTML = filtered.map(function (it) {
+    const meta = typeMeta[it.type] || { label: it.type, color: '#475569', bg: '#f1f5f9', icon: 'file' };
+    const created = it.created_at ? new Date(String(it.created_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+    const reasonShort = (it.reason || '').length > 80 ? (it.reason || '').slice(0, 80) + '…' : (it.reason || '');
+    const attachLink = it.attachment_url ? ' <a href="' + escapeHtml(it.attachment_url) + '" target="_blank" style="color:#2563eb; text-decoration:underline; font-size:10px;" onclick="event.stopPropagation();">📎 Lihat lampiran</a>' : '';
+    return '<div style="padding:12px; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:8px; background:#fff;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:6px;">' +
+        '<div style="flex:1;">' +
+          '<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">' +
+            '<span style="padding:2px 8px; border-radius:8px; font-size:10px; font-weight:700; background:' + meta.bg + '; color:' + meta.color + ';">' + meta.label + '</span>' +
+            '<strong style="font-size:13px; color:#0f172a;">' + escapeHtml(it.employee_name || '') + '</strong>' +
+            '<span style="font-size:10px; color:#94a3b8;">' + escapeHtml(it.division || '') + (it.outlet_name ? ' • ' + escapeHtml(it.outlet_name) : '') + '</span>' +
+          '</div>' +
+          '<div style="font-size:12px; color:#1e293b; font-weight:600; margin-bottom:2px;">' + escapeHtml(it.title || '') + '</div>' +
+          '<div style="font-size:11px; color:#64748b;">' + escapeHtml(it.detail || '') + '</div>' +
+          (reasonShort ? '<div style="font-size:11px; color:#475569; margin-top:4px; font-style:italic;">"' + escapeHtml(reasonShort) + '"</div>' : '') +
+          '<div style="font-size:10px; color:#94a3b8; margin-top:4px;">Diajukan: ' + created + attachLink + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px dashed #e2e8f0;">' +
+        '<button type="button" style="flex:1; padding:7px; font-size:11.5px; font-weight:600; background:#10b981; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.approveQueueItem(\'' + it.type + '\', \'' + it.id + '\')"><i data-feather="check" style="width:12px; height:12px; vertical-align:middle;"></i> APPROVE</button>' +
+        '<button type="button" style="flex:1; padding:7px; font-size:11.5px; font-weight:600; background:#ef4444; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.rejectQueueItem(\'' + it.type + '\', \'' + it.id + '\')"><i data-feather="x" style="width:12px; height:12px; vertical-align:middle;"></i> REJECT</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  if (window.feather) feather.replace();
+};
+window.renderApprovalQueue = window.renderApprovalQueue;
+
+// v95: Approve item dari antrian (panggil endpoint sesuai type).
+window.approveQueueItem = async (type, id) => {
+  if (!type || !id) return;
+  let endpoint = '', body = {};
+  if (type === 'leave') { endpoint = '/api/leaves/' + id + '/approve'; }
+  else if (type === 'early_checkout') { endpoint = '/api/early-checkout/' + id + '/approve'; }
+  else if (type === 'late_arrival') { endpoint = '/api/late-arrival/' + id + '/approve'; }
+  else if (type === 'attendance_review') { endpoint = '/api/attendance/' + id + '/approve'; }
+  else { showToast('Tipe pengajuan tidak dikenal.', 'error'); return; }
+
+  const note = prompt('Catatan approver (opsional):', '');
+  if (note === null) return; // user cancel
+
+  if (!confirm('APPROVE pengajuan ini?\n\nKaryawan akan diberi tahu via sistem.')) return;
+  try {
+    const res = await fetch(endpoint, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note || '' })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + (data.message || 'Pengajuan disetujui.'), 'success');
+      await window.loadApprovalQueue();
+    } else {
+      showToast(data.detail || 'Gagal approve.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  }
+};
+window.approveQueueItem = window.approveQueueItem;
+
+// v95: Reject item dari antrian (panggil endpoint sesuai type).
+// attendance_review tidak punya endpoint reject — di-skip (hanya approve/ignore).
+window.rejectQueueItem = async (type, id) => {
+  if (!type || !id) return;
+  if (type === 'attendance_review') {
+    showToast('Presensi GPS Review tidak bisa di-reject. Approve untuk konfirmasi hadir, atau biarkan untuk investigasi lebih lanjut.', 'error');
+    return;
+  }
+  let endpoint = '';
+  if (type === 'leave') { endpoint = '/api/leaves/' + id + '/reject'; }
+  else if (type === 'early_checkout') { endpoint = '/api/early-checkout/' + id + '/reject'; }
+  else if (type === 'late_arrival') { endpoint = '/api/late-arrival/' + id + '/reject'; }
+  else { showToast('Tipe pengajuan tidak dikenal.', 'error'); return; }
+
+  const note = prompt('Alasan penolakan (WAJIB, min. 3 karakter):', '');
+  if (note === null) return;
+  if (!note || note.trim().length < 3) {
+    showToast('Alasan penolakan wajib diisi (min. 3 karakter).', 'error');
+    return;
+  }
+  if (!confirm('REJECT pengajuan ini?\n\nKaryawan akan diberi tahu alasan penolakan.')) return;
+  try {
+    const res = await fetch(endpoint, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note.trim() })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + (data.message || 'Pengajuan ditolak.'), 'success');
+      await window.loadApprovalQueue();
+    } else {
+      showToast(data.detail || 'Gagal reject.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  }
+};
+window.rejectQueueItem = window.rejectQueueItem;
+
+// v95: Switch filter tab antrian approval.
+window.switchApprovalQueueFilter = (filter) => {
+  AppState.__approvalQueue.filter = filter;
+  window.renderApprovalQueue && window.renderApprovalQueue();
+};
+window.switchApprovalQueueFilter = window.switchApprovalQueueFilter;
 
 const renderDashboardReportsStream = (filterStatus = 'All') => {
   const container = document.getElementById('dashboard-reports-stream');

@@ -395,6 +395,30 @@
           <!-- Left Column (Overview, Stat cards, Branch rating, Customer issues, Activities) -->
           <div class="dashboard-left-col">
             
+            <!-- v95: Kartu Antrian Approval (hanya untuk PCD & Super Admin) -->
+            <div class="modern-card" id="dashboard-approval-queue-card" style="display:none; margin-bottom:20px; border-left:4px solid var(--burgundy-primary, #8b1e3f);">
+              <div class="card-title-row">
+                <div>
+                  <h3>🔔 Antrian Approval</h3>
+                  <p style="font-size:12px; color:#64748b;">Semua pengajuan yang menunggu persetujuan Anda. Approve/Reject langsung dari sini.</p>
+                </div>
+                <span class="card-badge-tag" id="approval-queue-total-badge" style="background:#fef3c7; color:#92400e;">0 pending</span>
+              </div>
+              <!-- Filter tabs by type -->
+              <div style="margin-top:14px; display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+                <button type="button" class="approval-queue-tab" data-filter="all" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('all')" style="padding:6px 12px; font-size:11px; font-weight:600; border:none; background:var(--burgundy-primary, #8b1e3f); color:#fff; border-radius:6px; cursor:pointer;">Semua (<span id="aq-count-all">0</span>)</button>
+                <button type="button" class="approval-queue-tab" data-filter="leave" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('leave')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">🏖️ Cuti (<span id="aq-count-leave">0</span>)</button>
+                <button type="button" class="approval-queue-tab" data-filter="early_checkout" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('early_checkout')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">🚪 Pulang Awal (<span id="aq-count-early_checkout">0</span>)</button>
+                <button type="button" class="approval-queue-tab" data-filter="late_arrival" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('late_arrival')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">🕘 Izin Telat (<span id="aq-count-late_arrival">0</span>)</button>
+                <button type="button" class="approval-queue-tab" data-filter="attendance_review" onclick="window.switchApprovalQueueFilter && window.switchApprovalQueueFilter('attendance_review')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">⚠️ GPS Review (<span id="aq-count-attendance_review">0</span>)</button>
+                <button type="button" id="aq-refresh-btn" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#fff; color:#475569; border-radius:6px; cursor:pointer; margin-left:auto;" onclick="window.loadApprovalQueue && window.loadApprovalQueue()"><i data-feather="refresh-cw" style="width:12px; height:12px;"></i> Muat Ulang</button>
+              </div>
+              <!-- List items -->
+              <div id="approval-queue-list" style="margin-top:12px; max-height:500px; overflow-y:auto;">
+                <p style="color:#94a3b8; font-size:12px; text-align:center; padding:20px;">Memuat antrian approval...</p>
+              </div>
+            </div>
+            
             <!-- Metrics Row (Yellow, Blue, Coral Cards from Mockup) -->
             <div class="metrics-row">
               <!-- Ratings Card -->
