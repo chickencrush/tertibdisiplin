@@ -2125,6 +2125,15 @@ const loadAttendanceLogs = async () => {
     // v75: Sync dashboard attendance stats setelah data presensi di-update.
     // Sebelumnya dashboard "hari presensi" tetap stale sampai user pindah ke dashboard.
     if (typeof updateDashboardStats === 'function') updateDashboardStats();
+    // v93: Load pengajuan early checkout milik user + update UI kartu presensi.
+    // Dipanggil setelah attendanceLogs ter-update supaya tombol "Ajukan Pulang
+    // Lebih Awal" & status box sinkron dengan check-in/check-out terbaru.
+    if (window.loadEarlyCheckoutRequests) {
+      await window.loadEarlyCheckoutRequests({ scope: 'mine' });
+    }
+    if (window.updateEarlyCheckoutUI) {
+      window.updateEarlyCheckoutUI();
+    }
   } catch (err) {
     console.error('Failed loading attendance:', err);
   }
@@ -4201,6 +4210,442 @@ window.submitAttendanceCheckOut = async () => {
   }
 };
 const submitAttendanceCheckOut = window.submitAttendanceCheckOut;
+
+// ============================================================================
+// v93: PENGAJUAN PULANG LEBIH AWAL — APPROVAL ATASAN
+// ============================================================================
+
+// v93: State global — cache pengajuan saya & semua (untuk approver)
+AppState.__earlyCheckoutMine = [];     // pengajuan milik user sendiri
+AppState.__earlyCheckoutAll = [];      // semua pengajuan (untuk approver)
+
+// v93: Cari attendance_id hari ini milik user (sudah check-in, belum check-out).
+// Dipakai untuk validasi tombol "Ajukan Pulang Lebih Awal".
+function findMyActiveAttendanceToday_() {
+  const today = new Date().toISOString().slice(0, 10);
+  const logs = AppState.attendanceLogs || [];
+  return logs.find(function (l) {
+    return String(l.employee_id) === String(AppState.currentUser.id)
+      && String(l.date) === today
+      && l.check_in_time
+      && !l.check_out_time;
+  }) || null;
+}
+
+// v93: Cari pengajuan early checkout untuk attendance_id tertentu (dari cache __earlyCheckoutMine).
+function findMyEarlyCheckoutForAtt_(attendanceId) {
+  if (!attendanceId) return null;
+  return (AppState.__earlyCheckoutMine || []).find(function (r) {
+    return String(r.attendance_id) === String(attendanceId);
+  }) || null;
+}
+
+// v93: Load pengajuan early checkout dari backend → cache ke AppState.
+// Param opts.scope: 'mine' (default) | 'all' (utk approver lihat semua).
+window.loadEarlyCheckoutRequests = async (opts) => {
+  opts = opts || {};
+  try {
+    const url = '/api/early-checkout' + (opts.status ? ('?status=' + encodeURIComponent(opts.status)) : '');
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (opts.scope === 'all') {
+      AppState.__earlyCheckoutAll = data;
+    } else {
+      AppState.__earlyCheckoutMine = data;
+    }
+    return data;
+  } catch (err) {
+    console.warn('loadEarlyCheckoutRequests error:', err);
+    return [];
+  }
+};
+window.loadEarlyCheckoutRequests = window.loadEarlyCheckoutRequests;
+
+// v93: Update UI kartu presensi berdasarkan status pengajuan.
+// Dipanggil setelah loadAttendanceLogs() & loadEarlyCheckoutRequests().
+// Logic:
+//   - Kalau belum check-in → tombol "Ajukan Pulang Awal" disembunyikan.
+//   - Kalau sudah check-in + belum check-out → tampilkan tombol.
+//   - Kalau ada pengajuan Pending → DISABLE tombol checkout + tampilkan status kuning.
+//   - Kalau ada pengajuan Approved → ENABLE tombol checkout + tampilkan status hijau.
+//   - Kalau ada pengajuan Rejected → ENABLE tombol checkout + tampilkan status merah.
+//   - Kalau tidak ada pengajuan → ENABLE tombol checkout normal.
+window.updateEarlyCheckoutUI = () => {
+  const btnEarly = document.getElementById('btn-early-checkout');
+  const btnCheckout = document.getElementById('btn-submit-checkout');
+  const statusBox = document.getElementById('early-checkout-status-box');
+  if (!btnEarly || !btnCheckout) return;
+
+  const att = findMyActiveAttendanceToday_();
+  if (!att) {
+    // Belum check-in atau sudah check-out → sembunyikan tombol & status
+    btnEarly.style.display = 'none';
+    if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    btnCheckout.disabled = false;
+    btnCheckout.style.opacity = '1';
+    btnCheckout.style.cursor = 'pointer';
+    return;
+  }
+
+  // Sudah check-in, belum check-out → tampilkan tombol ajukan
+  btnEarly.style.display = '';
+
+  // Cek pengajuan untuk attendance_id ini
+  const req = findMyEarlyCheckoutForAtt_(att.id);
+  if (!req) {
+    // Tidak ada pengajuan → checkout normal, sembunyikan status
+    if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    btnCheckout.disabled = false;
+    btnCheckout.style.opacity = '1';
+    btnCheckout.style.cursor = 'pointer';
+    btnEarly.innerHTML = '<i data-feather="alert-circle" style="width:14px; height:14px;"></i> Ajukan Pulang Lebih Awal';
+    btnEarly.disabled = false;
+    btnEarly.style.opacity = '1';
+    if (window.feather) feather.replace();
+    return;
+  }
+
+  // Ada pengajuan → tampilkan status sesuai status-nya
+  if (statusBox) {
+    statusBox.style.display = '';
+    if (String(req.status) === 'Pending') {
+      statusBox.style.background = '#fef3c7';
+      statusBox.style.border = '1px solid #fde68a';
+      statusBox.style.color = '#92400e';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Pengajuan pulang lebih awal MENUNGGU approval.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Tombol Presensi Pulang di-block sampai disetujui atasan. Kalau berubah pikiran, <a href="#" onclick="window.cancelMyEarlyCheckout(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan pengajuan</a>.</p></div></div>';
+      // BLOCK checkout
+      btnCheckout.disabled = true;
+      btnCheckout.style.opacity = '0.5';
+      btnCheckout.style.cursor = 'not-allowed';
+      btnEarly.disabled = true;
+      btnEarly.style.opacity = '0.5';
+      btnEarly.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Pengajuan menunggu approval...';
+    } else if (String(req.status) === 'Approved') {
+      statusBox.style.background = '#ecfdf5';
+      statusBox.style.border = '1px solid #a7f3d0';
+      statusBox.style.color = '#065f46';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">✅</span><div><strong>Izin pulang lebih awal DISETUJUI.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda sekarang bisa presensi pulang kapan saja — jam aktual akan dicatat.' + (req.approver_note ? ' Catatan atasan: ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
+      // ENABLE checkout
+      btnCheckout.disabled = false;
+      btnCheckout.style.opacity = '1';
+      btnCheckout.style.cursor = 'pointer';
+      btnEarly.disabled = true;
+      btnEarly.style.opacity = '0.5';
+      btnEarly.innerHTML = '<i data-feather="check-circle" style="width:14px; height:14px;"></i> Pengajuan disetujui';
+    } else if (String(req.status) === 'Rejected') {
+      statusBox.style.background = '#fef2f2';
+      statusBox.style.border = '1px solid #fecaca';
+      statusBox.style.color = '#991b1b';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">❌</span><div><strong>Pengajuan pulang lebih awal DITOLAK.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda harus presensi pulang sesuai jam akhir shift.' + (req.approver_note ? ' Alasan penolakan: ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
+      // ENABLE checkout (karyawan harus checkout normal)
+      btnCheckout.disabled = false;
+      btnCheckout.style.opacity = '1';
+      btnCheckout.style.cursor = 'pointer';
+      btnEarly.disabled = false;
+      btnEarly.style.opacity = '1';
+      btnEarly.innerHTML = '<i data-feather="alert-circle" style="width:14px; height:14px;"></i> Ajukan Ulang Pulang Lebih Awal';
+    }
+    if (window.feather) feather.replace();
+  }
+};
+window.updateEarlyCheckoutUI = window.updateEarlyCheckoutUI;
+
+// v93: Buka modal form pengajuan.
+window.openEarlyCheckoutModal = () => {
+  const att = findMyActiveAttendanceToday_();
+  if (!att) {
+    showToast('Anda belum presensi masuk hari ini. Lakukan presensi masuk dahulu.', 'error');
+    return;
+  }
+  const existing = findMyEarlyCheckoutForAtt_(att.id);
+  if (existing && String(existing.status) === 'Pending') {
+    showToast('Anda sudah mengajukan pulang lebih awal dan masih menunggu approval.', 'error');
+    return;
+  }
+  if (existing && String(existing.status) === 'Approved') {
+    showToast('Pengajuan Anda sudah disetujui. Anda sudah bisa presensi pulang.', 'success');
+    return;
+  }
+  const reasonEl = document.getElementById('early-checkout-reason');
+  if (reasonEl) reasonEl.value = '';
+  openModal('modal-early-checkout');
+  setTimeout(() => { if (reasonEl) reasonEl.focus(); }, 100);
+};
+window.openEarlyCheckoutModal = window.openEarlyCheckoutModal;
+
+// v93: Submit pengajuan dari modal form.
+window.submitEarlyCheckout = async () => {
+  const att = findMyActiveAttendanceToday_();
+  if (!att) { showToast('Anda belum presensi masuk hari ini.', 'error'); return; }
+  const reasonEl = document.getElementById('early-checkout-reason');
+  const reason = (reasonEl?.value || '').trim();
+  if (reason.length < 10) {
+    showToast('Alasan minimal 10 karakter.', 'error');
+    return;
+  }
+  if (reason.length > 500) {
+    showToast('Alasan maksimal 500 karakter.', 'error');
+    return;
+  }
+  const btn = document.getElementById('btn-early-checkout-submit');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-feather="loader" style="width:13px; height:13px; animation:spin 1s linear infinite;"></i> Mengirim...'; if (window.feather) feather.replace(); }
+  try {
+    const res = await fetch('/api/early-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ attendance_id: att.id, reason: reason })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      closeModal('modal-early-checkout');
+      await window.loadEarlyCheckoutRequests({ scope: 'mine' });
+      window.updateEarlyCheckoutUI && window.updateEarlyCheckoutUI();
+      // Tampilkan tombol Kirim WA ke atasan (opsional, supaya karyawan bisa notifikasi manual)
+      window.offerSendWAToApprover && window.offerSendWAToApprover(reason);
+    } else {
+      showToast(data.detail || 'Gagal mengirim pengajuan.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-feather="send" style="width:13px; height:13px;"></i> KIRIM PENGAJUAN'; if (window.feather) feather.replace(); }
+  }
+};
+window.submitEarlyCheckout = window.submitEarlyCheckout;
+
+// v93: Karyawan batalkan pengajuan sendiri (status harus Pending).
+window.cancelMyEarlyCheckout = async (reqId) => {
+  if (!reqId) return;
+  if (!confirm('Batalkan pengajuan pulang lebih awal ini? Tombol Presensi Pulang akan kembali aktif normal.')) return;
+  try {
+    const res = await fetch('/api/early-checkout/' + reqId + '/cancel', { method: 'PUT' });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      await window.loadEarlyCheckoutRequests({ scope: 'mine' });
+      window.updateEarlyCheckoutUI && window.updateEarlyCheckoutUI();
+    } else {
+      showToast(data.detail || 'Gagal membatalkan.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  }
+};
+window.cancelMyEarlyCheckout = window.cancelMyEarlyCheckout;
+
+// v93: Tawarkan kirim WA ke atasan setelah pengajuan dibuat.
+// Cari nomor PCD/Super Admin dari AppState.employees, generate wa.me link.
+window.offerSendWAToApprover = (reason) => {
+  try {
+    const emps = AppState.employees || [];
+    // Cari approver: divisi PCD atau role SUPER ADMIN
+    const approvers = emps.filter(function (e) {
+      return String(e.division || '').toUpperCase() === 'PCD' || String(e.role || '').toUpperCase() === 'SUPER ADMIN';
+    });
+    if (approvers.length === 0) return;
+    // Ambil approver pertama yang punya nomor HP
+    const approver = approvers.find(function (a) { return a.phone && String(a.phone).length >= 8; });
+    if (!approver) return;
+    // Format nomor HP: hapus karakter non-digit, ganti 0 di depan dengan 62
+    let phone = String(approver.phone).replace(/\D/g, '');
+    if (phone.startsWith('0')) phone = '62' + phone.slice(1);
+    if (!phone.startsWith('62')) phone = '62' + phone;
+    const me = AppState.currentUser || {};
+    const msg = 'Halo ' + (approver.name || 'Atasan') + ',\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan PULANG LEBIH AWAL hari ini.\n\nAlasan: ' + reason + '\n\nMohon approval di aplikasi TERTIB DISIPLIN. Terima kasih.';
+    const waUrl = 'https://wa.me/' + phone + '?text=' + encodeURIComponent(msg);
+    // Tampilkan toast dengan link
+    showToast('📨 Pengajuan terkirim. Klik untuk kirim WA ke atasan: ' + (approver.name || ''), 'success', 8000);
+    // Buka WA di tab baru setelah 1.5 detik (kasih waktu toast dibaca)
+    setTimeout(function () {
+      try { window.open(waUrl, '_blank'); } catch (e) { /* abaikan popup blocker */ }
+    }, 1500);
+  } catch (err) {
+    console.warn('offerSendWAToApprover error:', err);
+  }
+};
+window.offerSendWAToApprover = window.offerSendWAToApprover;
+
+// v93: Approver — buka modal approval dengan detail pengajuan.
+window.openEarlyCheckoutApproval = (reqId) => {
+  const req = (AppState.__earlyCheckoutAll || []).find(function (r) { return r.id === reqId; });
+  if (!req) { showToast('Pengajuan tidak ditemukan.', 'error'); return; }
+  const content = document.getElementById('early-checkout-approval-content');
+  if (!content) return;
+  const statusColor = { 'Pending': '#f59e0b', 'Approved': '#10b981', 'Rejected': '#ef4444', 'Canceled': '#94a3b8' };
+  const statusBg = { 'Pending': '#fef3c7', 'Approved': '#ecfdf5', 'Rejected': '#fef2f2', 'Canceled': '#f1f5f9' };
+  const created = req.created_at ? new Date(String(req.created_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+  const approved = req.approved_at ? new Date(String(req.approved_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-';
+  let html = '<div style="display:grid; gap:10px;">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; background:' + (statusBg[req.status] || '#f1f5f9') + '; border-radius:8px;">';
+  html += '<strong style="font-size:13px;">' + escapeHtml(req.employee_name || '') + '</strong>';
+  html += '<span style="padding:3px 10px; border-radius:10px; font-size:11px; font-weight:700; background:' + (statusColor[req.status] || '#94a3b8') + '; color:#fff;">' + req.status + '</span>';
+  html += '</div>';
+  html += '<div style="padding:10px 12px; background:#f8fafc; border-radius:8px; font-size:11.5px;">';
+  html += '<div><strong>Divisi:</strong> ' + escapeHtml(req.division || '-') + '</div>';
+  html += '<div><strong>Outlet:</strong> ' + escapeHtml(req.outlet_name || '-') + '</div>';
+  html += '<div><strong>Shift:</strong> ' + escapeHtml(req.shift_name || '-') + ' (' + escapeHtml(req.shift_time || '-') + ')</div>';
+  html += '<div><strong>Tanggal presensi:</strong> ' + escapeHtml(req.attendance_date || '-') + '</div>';
+  html += '<div><strong>Jam akhir shift:</strong> ' + escapeHtml(req.scheduled_end || '-') + '</div>';
+  html += '<div><strong>Diajukan:</strong> ' + created + '</div>';
+  if (req.status !== 'Pending') {
+    html += '<div><strong>Approver:</strong> ' + escapeHtml(req.approver_name || '-') + '</div>';
+    html += '<div><strong>Waktu proses:</strong> ' + approved + '</div>';
+    if (req.approver_note) html += '<div><strong>Catatan:</strong> ' + escapeHtml(req.approver_note) + '</div>';
+  }
+  html += '</div>';
+  html += '<div style="padding:10px 12px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px;">';
+  html += '<strong style="font-size:11px; color:#92400e;">Alasan:</strong>';
+  html += '<p style="margin:6px 0 0 0; font-size:12px; line-height:1.6; color:#1e293b;">' + escapeHtml(req.reason || '') + '</p>';
+  html += '</div>';
+  if (String(req.status) === 'Pending') {
+    html += '<div class="form-group" style="margin-top:6px;">';
+    html += '<label class="form-label" style="font-size:11px;">Catatan Approver (opsional utk approve, wajib utk reject)</label>';
+    html += '<textarea class="form-control" id="early-checkout-approver-note" rows="2" placeholder="Catatan untuk karyawan..." style="font-size:12px; padding:8px;"></textarea>';
+    html += '</div>';
+    html += '<div style="display:flex; gap:8px; margin-top:6px;">';
+    html += '<button type="button" class="btn-primary" style="flex:1; padding:11px; font-size:12.5px; background:#10b981; justify-content:center;" onclick="window.approveEarlyCheckout(\'' + req.id + '\')"><i data-feather="check" style="width:13px; height:13px;"></i> SETUJUI</button>';
+    html += '<button type="button" class="btn-primary" style="flex:1; padding:11px; font-size:12.5px; background:#ef4444; justify-content:center;" onclick="window.rejectEarlyCheckout(\'' + req.id + '\')"><i data-feather="x" style="width:13px; height:13px;"></i> TOLAK</button>';
+    html += '<button type="button" class="btn-secondary" style="padding:11px 16px; font-size:12.5px;" onclick="closeModal(\'modal-early-checkout-approval\')">Tutup</button>';
+    html += '</div>';
+  } else {
+    html += '<div style="display:flex; justify-content:flex-end; margin-top:6px;">';
+    html += '<button type="button" class="btn-secondary" style="padding:10px 16px; font-size:12.5px;" onclick="closeModal(\'modal-early-checkout-approval\')">Tutup</button>';
+    html += '</div>';
+  }
+  html += '</div>';
+  content.innerHTML = html;
+  if (window.feather) feather.replace();
+  openModal('modal-early-checkout-approval');
+};
+window.openEarlyCheckoutApproval = window.openEarlyCheckoutApproval;
+
+// v93: Approver — setujui pengajuan.
+window.approveEarlyCheckout = async (reqId) => {
+  const noteEl = document.getElementById('early-checkout-approver-note');
+  const note = (noteEl?.value || '').trim();
+  if (!confirm('SETUJUI pengajuan pulang lebih awal ini?\n\nKaryawan akan bisa presensi pulang kapan saja setelah ini.')) return;
+  try {
+    const res = await fetch('/api/early-checkout/' + reqId + '/approve', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      closeModal('modal-early-checkout-approval');
+      await window.loadEarlyCheckoutRequests({ scope: 'all' });
+      window.renderEarlyCheckoutApproverPanel && window.renderEarlyCheckoutApproverPanel();
+    } else {
+      showToast(data.detail || 'Gagal approve.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  }
+};
+window.approveEarlyCheckout = window.approveEarlyCheckout;
+
+// v93: Approver — tolak pengajuan.
+window.rejectEarlyCheckout = async (reqId) => {
+  const noteEl = document.getElementById('early-checkout-approver-note');
+  const note = (noteEl?.value || '').trim();
+  if (note.length < 3) {
+    showToast('Alasan penolakan wajib diisi (min. 3 karakter).', 'error');
+    noteEl?.focus();
+    return;
+  }
+  if (!confirm('TOLAK pengajuan pulang lebih awal ini?\n\nKaryawan harus presensi pulang sesuai jam akhir shift.')) return;
+  try {
+    const res = await fetch('/api/early-checkout/' + reqId + '/reject', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ ' + data.message, 'success');
+      closeModal('modal-early-checkout-approval');
+      await window.loadEarlyCheckoutRequests({ scope: 'all' });
+      window.renderEarlyCheckoutApproverPanel && window.renderEarlyCheckoutApproverPanel();
+    } else {
+      showToast(data.detail || 'Gagal reject.', 'error');
+    }
+  } catch (err) {
+    showToast('Gagal: koneksi terputus.', 'error');
+  }
+};
+window.rejectEarlyCheckout = window.rejectEarlyCheckout;
+
+// v93: Render tabel pengajuan di Panel Super Admin (tab "🚪 Pulang Awal").
+// Pakai AppState.__earlyCheckoutAll + filter by __earlyCheckoutFilter.
+window.renderEarlyCheckoutApproverPanel = () => {
+  const tbody = document.getElementById('sa-earlycheckout-tbody');
+  const countBadge = document.getElementById('sa-earlycheckout-count');
+  if (!tbody) return;
+  const all = AppState.__earlyCheckoutAll || [];
+  const filter = window.__earlyCheckoutFilter || 'Pending';
+  // Filter
+  let rows = all;
+  if (filter) rows = all.filter(function (r) { return String(r.status) === filter; });
+  // Sort: Pending dulu, lalu terbaru
+  rows.sort(function (a, b) {
+    if (a.status !== b.status) return a.status === 'Pending' ? -1 : 1;
+    return (a.created_at || '') < (b.created_at || '') ? 1 : -1;
+  });
+  // Update badge
+  const pendingCount = all.filter(function (r) { return r.status === 'Pending'; }).length;
+  if (countBadge) {
+    countBadge.textContent = pendingCount + ' pending / ' + all.length + ' total';
+    countBadge.style.background = pendingCount > 0 ? '#fef3c7' : '#f1f5f9';
+    countBadge.style.color = pendingCount > 0 ? '#92400e' : '#475569';
+  }
+  // Render rows
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:18px;">Tidak ada pengajuan dengan status "' + (filter || 'Semua') + '".</td></tr>';
+    return;
+  }
+  const statusColor = { 'Pending': '#f59e0b', 'Approved': '#10b981', 'Rejected': '#ef4444', 'Canceled': '#94a3b8' };
+  tbody.innerHTML = rows.map(function (r) {
+    const created = r.created_at ? new Date(String(r.created_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+    const reasonShort = (r.reason || '').length > 60 ? (r.reason || '').slice(0, 60) + '…' : (r.reason || '');
+    const bgRow = r.status === 'Pending' ? 'background:#fffbeb;' : '';
+    return '<tr style="' + bgRow + ' cursor:pointer;" onclick="window.openEarlyCheckoutApproval(\'' + r.id + '\')">' +
+      '<td style="padding:8px;"><strong>' + escapeHtml(r.employee_name || '') + '</strong><div style="font-size:10px; color:#94a3b8;">' + escapeHtml(r.division || '') + '</div></td>' +
+      '<td style="padding:8px; font-size:11px;">' + escapeHtml(r.outlet_name || '-') + '</td>' +
+      '<td style="padding:8px; font-size:11px;">' + escapeHtml(r.shift_name || '-') + '<div style="font-size:10px; color:#94a3b8;">' + escapeHtml(r.shift_time || '') + '</div></td>' +
+      '<td style="padding:8px; font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis;">' + escapeHtml(reasonShort) + '</td>' +
+      '<td style="padding:8px; text-align:center;"><span style="padding:3px 10px; border-radius:10px; font-size:10.5px; font-weight:700; background:' + (statusColor[r.status] || '#94a3b8') + '; color:#fff;">' + r.status + '</span></td>' +
+      '<td style="padding:8px; text-align:center; font-size:11px;">' + created + '</td>' +
+      '<td style="padding:8px; text-align:center; font-size:11px;"><a href="#" onclick="event.preventDefault(); event.stopPropagation(); window.openEarlyCheckoutApproval(\'' + r.id + '\')" style="color:var(--burgundy-primary, #8b1e3f); font-weight:600;">Detail →</a></td>' +
+      '</tr>';
+  }).join('');
+};
+window.renderEarlyCheckoutApproverPanel = window.renderEarlyCheckoutApproverPanel;
+
+// v93: Filter tabel pengajuan by status. Dipanggil dari tombol filter di tab SA.
+window.filterEarlyCheckout = (status) => {
+  window.__earlyCheckoutFilter = status;
+  // Update visual tombol filter
+  ['Pending', 'Approved', 'Rejected', ''].forEach(function (s) {
+    const btnId = 'sa-earlycheckout-filter-' + (s === '' ? 'all' : s.toLowerCase());
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      if (s === status) {
+        btn.style.background = 'var(--burgundy-primary, #8b1e3f)';
+        btn.style.color = '#fff';
+        btn.style.borderColor = 'var(--burgundy-primary, #8b1e3f)';
+      } else {
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
+      }
+    }
+  });
+  window.renderEarlyCheckoutApproverPanel && window.renderEarlyCheckoutApproverPanel();
+};
+window.filterEarlyCheckout = window.filterEarlyCheckout;
 
 const renderAttendanceTable = (logs) => {
   const tbody = document.getElementById('attendance-tbody');
@@ -7131,7 +7576,7 @@ window.saveJoinDate = async () => {
 
 // ---- Tab switching ----
 window.saSwitchTab = (tab) => {
-  ['overview', 'users', 'shifts', 'spk', 'settings'].forEach(t => {
+  ['overview', 'users', 'shifts', 'spk', 'earlycheckout', 'settings'].forEach(t => {
     const panel = document.getElementById('sa-tab-' + t);
     const btn = document.getElementById('sa-tab-btn-' + t);
     if (panel) panel.style.display = (t === tab) ? '' : 'none';
@@ -7149,6 +7594,13 @@ window.saSwitchTab = (tab) => {
     window.loadSaSpkStatus && window.loadSaSpkStatus();
     // Pastikan mode default = Form Cepat
     window.saSpkSwitchMode && window.saSpkSwitchMode('form');
+  }
+  // v93: Tab Pulang Awal — load semua pengajuan + render tabel approval
+  if (tab === 'earlycheckout') {
+    window.__earlyCheckoutFilter = window.__earlyCheckoutFilter || 'Pending';
+    window.loadEarlyCheckoutRequests && window.loadEarlyCheckoutRequests({ scope: 'all' }).then(function () {
+      window.renderEarlyCheckoutApproverPanel && window.renderEarlyCheckoutApproverPanel();
+    });
   }
   if (tab === 'settings') window.loadSaSettings && window.loadSaSettings();
 };
