@@ -6915,6 +6915,42 @@ window.openEditEmployeeModal = (employeeId) => {
   setVal('dc-edit-transport-allowance', emp.transport_allowance || 0);
   setVal('dc-edit-rating', emp.rating);
   setVal('dc-edit-kpi-score', emp.kpi_score);
+  // v99: Field dari Panel SA — populate field akun & akses
+  setVal('dc-edit-nip', emp.nip); // v99: editable (sebelumnya readonly display)
+  setVal('dc-edit-email', emp.email);
+  setVal('dc-edit-superrole', String(emp.role || '').toUpperCase() === 'SUPER ADMIN' ? 'SUPER ADMIN' : '');
+  setVal('dc-edit-account-status', emp.account_status || 'Aktif');
+  setVal('dc-edit-join-date', emp.join_date || '');
+  setVal('dc-edit-leave-adjustment', emp.leave_adjustment || 0);
+  setVal('dc-edit-tunjangan-jabatan', emp.tunjangan_jabatan || 0);
+  setVal('dc-edit-tunjangan-bonus', emp.tunjangan_bonus || 0);
+  const geofenceCb = document.getElementById('dc-edit-geofence-exempt');
+  if (geofenceCb) geofenceCb.checked = Number(emp.geofence_exempt) === 1;
+  // v99: Contract upload status
+  const contractStatus = document.getElementById('dc-edit-contract-status');
+  const contractLink = document.getElementById('dc-edit-contract-link');
+  if (emp.contract_url) {
+    if (contractStatus) contractStatus.textContent = '✅ Kontrak sudah diupload';
+    if (contractLink) { contractLink.href = emp.contract_url; contractLink.style.display = ''; }
+  } else {
+    if (contractStatus) contractStatus.textContent = 'Belum ada file kontrak';
+    if (contractLink) contractLink.style.display = 'none';
+  }
+  // v99: Self-edit guard — kalau edit diri sendiri, disable superrole & account_status
+  const isSelf = AppState.currentUser && emp.id === AppState.currentUser.id;
+  if (isSelf) {
+    const srEl = document.getElementById('dc-edit-superrole');
+    const asEl = document.getElementById('dc-edit-account-status');
+    if (srEl) srEl.disabled = true;
+    if (asEl) asEl.disabled = true;
+  } else {
+    const srEl = document.getElementById('dc-edit-superrole');
+    const asEl = document.getElementById('dc-edit-account-status');
+    if (srEl) srEl.disabled = false;
+    if (asEl) asEl.disabled = false;
+  }
+  // v99: Simpan employee id yang sedang diedit (utk contract upload)
+  AppState.__dcEditingUserId = emp.id;
   // Update header
   const titleEl = document.getElementById('dc-modal-emp-name');
   if (titleEl) titleEl.textContent = emp.name + ' (' + emp.nip + ')';
@@ -6952,8 +6988,26 @@ window.submitEditEmployee = async (e) => {
     meal_allowance: Number(getVal('dc-edit-meal-allowance')) || 0,
     transport_allowance: Number(getVal('dc-edit-transport-allowance')) || 0,
     rating: Number(getVal('dc-edit-rating')) || 0,
-    kpi_score: Number(getVal('dc-edit-kpi-score')) || 0
+    kpi_score: Number(getVal('dc-edit-kpi-score')) || 0,
+    // v99: Field dari Panel SA
+    nip: getVal('dc-edit-nip') || undefined,
+    email: getVal('dc-edit-email') || undefined,
+    account_status: getVal('dc-edit-account-status') || undefined,
+    join_date: getVal('dc-edit-join-date') || undefined,
+    leave_adjustment: getVal('dc-edit-leave-adjustment') === '' ? undefined : Number(getVal('dc-edit-leave-adjustment')),
+    tunjangan_jabatan: getVal('dc-edit-tunjangan-jabatan') === '' ? undefined : Number(getVal('dc-edit-tunjangan-jabatan')),
+    tunjangan_bonus: getVal('dc-edit-tunjangan-bonus') === '' ? undefined : Number(getVal('dc-edit-tunjangan-bonus')),
+    geofence_exempt: document.getElementById('dc-edit-geofence-exempt')?.checked ? 1 : 0
   };
+  // v99: Handle superrole — kalau SUPER ADMIN, override role jadi 'SUPER ADMIN'
+  const superroleVal = getVal('dc-edit-superrole');
+  if (superroleVal === 'SUPER ADMIN') {
+    body.role = 'SUPER ADMIN';
+  } else if (superroleVal === '' && String(body.role || '').toUpperCase() === 'SUPER ADMIN') {
+    // Kalau sebelumnya Super Admin, sekarang di-unset → butuh role baru
+    // Pakai role dari dc-edit-role field (karyawan biasa)
+    body.role = getVal('dc-edit-role') || 'Karyawan';
+  }
 
   try {
     const res = await fetch(`/api/employees/${empId}`, {
@@ -7000,6 +7054,75 @@ window.dcSyncDivisions = () => {
   // Restore previous value if still valid
   if (list.indexOf(currentVal) >= 0) divSel.value = currentVal;
 };
+
+// v99: Sync role field berdasarkan superrole (dari Panel SA)
+// Kalau superrole = SUPER ADMIN → role field readonly & set ke "SUPER ADMIN"
+// Kalau superrole = "" → role field editable (karyawan biasa)
+window.dcSyncRoleField = () => {
+  const srSel = document.getElementById('dc-edit-superrole');
+  const roleInput = document.getElementById('dc-edit-role');
+  if (!srSel || !roleInput) return;
+  if (srSel.value === 'SUPER ADMIN') {
+    roleInput.value = 'SUPER ADMIN';
+    roleInput.readOnly = true;
+    roleInput.style.background = '#f1f5f9';
+    roleInput.style.color = '#64748b';
+  } else {
+    roleInput.readOnly = false;
+    roleInput.style.background = '';
+    roleInput.style.color = '';
+    // Kalau sebelumnya "SUPER ADMIN", clear supaya user input role baru
+    if (String(roleInput.value || '').toUpperCase() === 'SUPER ADMIN') {
+      roleInput.value = '';
+    }
+  }
+};
+window.dcSyncRoleField = window.dcSyncRoleField;
+
+// v99: Upload kontrak kerja dari DC (dipindahkan dari SA)
+// Pakai endpoint POST /api/employees/:id/contract (RBAC: SA atau PCD, sama dgn DC)
+window.uploadDcUserContract = async (inputEl) => {
+  if (!inputEl || !inputEl.files || !inputEl.files[0]) return;
+  const empId = AppState.__dcEditingUserId;
+  if (!empId) { showToast('ID karyawan tidak ditemukan.', 'error'); return; }
+  const file = inputEl.files[0];
+  if (file.size > 5 * 1024 * 1024) { showToast('File kontrak maksimal 5MB.', 'error'); return; }
+  if (file.type !== 'application/pdf') { showToast('Kontrak harus berupa PDF.', 'error'); return; }
+  const statusEl = document.getElementById('dc-edit-contract-status');
+  if (statusEl) statusEl.textContent = '⏳ Mengupload kontrak...';
+  try {
+    const base64 = await new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result).split(',')[1] || ''); };
+      reader.onerror = function () { reject(new Error('Gagal baca file')); };
+      reader.readAsDataURL(file);
+    });
+    const res = await fetch('/api/employees/' + empId + '/contract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contract_base64: base64, filename: file.name })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast('✅ Kontrak berhasil diupload.', 'success');
+      if (statusEl) statusEl.textContent = '✅ Kontrak sudah diupload';
+      const linkEl = document.getElementById('dc-edit-contract-link');
+      if (linkEl && data.contract_url) { linkEl.href = data.contract_url; linkEl.style.display = ''; }
+      // Update AppState.employees supaya refresh tabel menampilkan kontrak baru
+      const emp = (AppState.employees || []).find(function (e) { return e.id === empId; });
+      if (emp) emp.contract_url = data.contract_url;
+    } else {
+      showToast(data.detail || 'Gagal upload kontrak.', 'error');
+      if (statusEl) statusEl.textContent = 'Gagal upload. Coba lagi.';
+    }
+  } catch (err) {
+    showToast('Gagal: ' + (err.message || 'koneksi terputus'), 'error');
+    if (statusEl) statusEl.textContent = 'Gagal upload. Coba lagi.';
+  }
+  // Reset input supaya bisa upload lagi kalau perlu
+  inputEl.value = '';
+};
+window.uploadDcUserContract = window.uploadDcUserContract;
 
 // ================= PROFIL SAYA (Edit Data Diri) =================
 // Semua karyawan bisa akses. Bisa ubah: nama, no. HP, foto profil, info bank, password, PIN.

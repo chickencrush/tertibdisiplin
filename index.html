@@ -2639,7 +2639,7 @@
         </div>
 
         <!-- Section 3: Data KPI -->
-        <div style="background:#ecfdf5; padding:12px 14px; border-radius:10px;">
+        <div style="background:#ecfdf5; padding:12px 14px; border-radius:10px; margin-bottom:14px;">
           <p style="font-size:11px; color:#065f46; font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">📊 3. Data KPI & Rating</p>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
             <div class="form-group">
@@ -2652,6 +2652,74 @@
               <input type="number" class="form-control" id="dc-edit-kpi-score" min="0" max="100" step="1" required>
               <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Penilaian performa keseluruhan (0-100%)</p>
             </div>
+          </div>
+        </div>
+
+        <!-- v99: Section 4: Data Akun & Akses (dipindahkan dari form SA) -->
+        <div style="background:#ede9fe; padding:12px 14px; border-radius:10px; margin-bottom:14px;">
+          <p style="font-size:11px; color:#5b21b6; font-weight:700; text-transform:uppercase; margin:0 0 10px 0;">🔐 4. Data Akun & Akses (v99 — dari Panel SA)</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">NIP (untuk login)</label>
+              <input type="text" class="form-control" id="dc-edit-nip" maxlength="30" placeholder="NIP untuk login karyawan">
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">v99: Sekarang bisa diubah (sebelumnya readonly).</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input type="email" class="form-control" id="dc-edit-email" placeholder="email@chickencrush.com">
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Role Khusus</label>
+              <select class="form-control" id="dc-edit-superrole" onchange="window.dcSyncRoleField && window.dcSyncRoleField()">
+                <option value="">Karyawan Biasa</option>
+                <option value="SUPER ADMIN">SUPER ADMIN (akses penuh)</option>
+              </select>
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">v99: PCD/Super Admin bisa set role Super Admin.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Status Akun</label>
+              <select class="form-control" id="dc-edit-account-status">
+                <option value="Aktif">Aktif</option>
+                <option value="Nonaktif">Nonaktif</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Tanggal Bergabung (join_date)</label>
+              <input type="date" class="form-control" id="dc-edit-join-date">
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dipakai untuk hitung cuti prorata.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Penyesuaian Cuti Tahunan (±hari)</label>
+              <input type="number" class="form-control" id="dc-edit-leave-adjustment" min="-30" max="30" step="0.5" placeholder="0">
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Negatif = kurangi sisa cuti, positif = tambah.</p>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Tunjangan Jabatan (per bulan, Rp)</label>
+              <input type="number" class="form-control" id="dc-edit-tunjangan-jabatan" min="0" max="50000000" step="50000" placeholder="0">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tunjangan Bonus Tambahan (per bulan, Rp)</label>
+              <input type="number" class="form-control" id="dc-edit-tunjangan-bonus" min="0" max="50000000" step="50000" placeholder="0">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Presensi Semua Titik Lokasi (Geofence Exempt)</label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#475569; cursor:pointer;">
+              <input type="checkbox" id="dc-edit-geofence-exempt" style="transform:scale(1.2);">
+              <span>Boleh presensi di titik lokasi manapun (Kantor/Outlet) — bukan hanya outlet penugasan. Auto-checked untuk Management.</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Kontrak Kerja (PDF, opsional)</label>
+            <input type="file" class="form-control" id="dc-edit-contract-input" accept="application/pdf" onchange="window.uploadDcUserContract && window.uploadDcUserContract(this)">
+            <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;" id="dc-edit-contract-status">Belum ada file kontrak</p>
+            <a href="#" target="_blank" id="dc-edit-contract-link" style="display:none; font-size:11px; color:#2563eb; text-decoration:underline;">Lihat Kontrak Sa Ini</a>
           </div>
         </div>
 
