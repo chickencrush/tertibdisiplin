@@ -3250,14 +3250,13 @@ select.form-control {
 
 
 /* ========================================================================
-   v100.3: FULL-SCREEN CAMERA VIEW (fix ukuran & posisi di semua device)
+   v100.4: FULL-SCREEN CAMERA VIEW (kamera pas di tengah)
    ------------------------------------------------------------------------
-   Pakai position:fixed + 100dvh (dynamic viewport) supaya konsisten
-   di PC, Android, iPhone. Semua elemen pakai persentase viewport
-   (bukan px fixed) supaya tidak keluar layar.
+   Camera feed & face box keduanya di tengah viewport (center vertically
+   & horizontally). Semua elemen kontrol pakai persentase viewport.
    ======================================================================== */
 
-/* Full-screen overlay — fixed ke viewport, bukan absolute di view-panel */
+/* Full-screen overlay */
 #presensi-fullscreen {
   position: fixed !important;
   inset: 0 !important;
@@ -3265,7 +3264,7 @@ select.form-control {
   background: #000 !important;
   width: 100vw !important;
   height: 100vh !important;
-  height: 100dvh !important; /* dynamic viewport — fix Android/iPhone address bar */
+  height: 100dvh !important;
 }
 
 .presensi-fullscreen-container {
@@ -3274,12 +3273,16 @@ select.form-control {
   height: 100%;
   background: #000;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Camera background — full cover */
+/* Camera background — pas di tengah, object-fit: cover */
 .presensi-camera-bg {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -3288,14 +3291,14 @@ select.form-control {
   -webkit-transform: scaleX(-1);
 }
 
-/* Face detection box — KOTAK, posisi center atas */
+/* Face detection box — KOTAK, pas di tengah viewport */
 .presensi-face-ring {
   position: absolute;
-  top: 18%;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
-  width: 60%;
-  max-width: 280px;
+  transform: translate(-50%, -60%);
+  width: 55%;
+  max-width: 260px;
   aspect-ratio: 3/4;
   border: 3px solid rgba(255, 255, 255, 0.7);
   border-radius: 12px;
@@ -3350,12 +3353,13 @@ select.form-control {
   max-width: 92%;
 }
 
-/* Face hint — posisi di bawah face box, di atas controls */
+/* Face hint — di bawah face box */
 .presensi-face-hint {
   position: absolute;
-  top: 60%;
+  top: 50%;
   left: 50%;
   transform: translateX(-50%);
+  margin-top: 50px;
   z-index: 10;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(10px);
@@ -3370,7 +3374,7 @@ select.form-control {
   text-align: center;
 }
 
-/* Controls row (shutter + side buttons) — pakai bottom persentase */
+/* Controls row (shutter + side buttons) */
 .presensi-controls-row {
   position: absolute;
   bottom: 22%;
@@ -3422,7 +3426,7 @@ select.form-control {
 }
 .presensi-side-btn:hover { background: rgba(255, 255, 255, 0.15); transform: scale(1.05); }
 
-/* Info panel — di bawah controls */
+/* Info panel */
 .presensi-info-panel {
   position: absolute;
   bottom: 10%;
@@ -3448,7 +3452,7 @@ select.form-control {
 .presensi-info-item strong { color: #f1f5f9; }
 .presensi-info-divider { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.1); }
 
-/* GPS banner — paling bawah */
+/* GPS banner */
 .presensi-gps-banner {
   position: absolute;
   bottom: 2%;
@@ -3494,23 +3498,21 @@ select.form-control {
 }
 .presensi-start-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(112, 28, 52, 0.4) !important; }
 
-/* Mobile responsive — adjust untuk layar kecil */
+/* Mobile responsive */
 @media (max-width: 600px) {
   .presensi-controls-row { gap: 20px; bottom: 20%; }
   .presensi-shutter-btn { width: 56px; height: 56px; font-size: 19px; border-width: 3px; }
   .presensi-side-btn { width: 40px; height: 40px; font-size: 14px; }
-  .presensi-face-hint { font-size: 10px; padding: 4px 12px; top: 58%; }
+  .presensi-face-hint { margin-top: 40px; font-size: 10px; padding: 4px 12px; }
   .presensi-info-panel { font-size: 10px; gap: 6px; padding: 5px 8px; bottom: 9%; }
   .presensi-gps-banner { font-size: 10px; padding: 5px 10px; bottom: 1.5%; }
-  .presensi-face-ring { width: 65%; max-width: 240px; top: 15%; }
+  .presensi-face-ring { width: 60%; max-width: 220px; }
   .presensi-corner { width: 25px; height: 25px; }
 }
-
-/* Very small screens (iPhone SE, dll) */
 @media (max-width: 380px) {
   .presensi-controls-row { gap: 14px; bottom: 18%; }
   .presensi-shutter-btn { width: 50px; height: 50px; font-size: 17px; }
   .presensi-side-btn { width: 36px; height: 36px; font-size: 12px; }
   .presensi-info-panel { font-size: 9px; gap: 4px; }
-  .presensi-face-ring { width: 70%; max-width: 200px; }
+  .presensi-face-ring { width: 65%; max-width: 190px; }
 }
