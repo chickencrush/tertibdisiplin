@@ -637,39 +637,38 @@
               <button id="btn-submit-checkout" onclick="window.submitAttendanceCheckOut && window.submitAttendanceCheckOut()"></button>
             </div>
 
-            <!-- Side buttons: switch camera + guide -->
-            <button type="button" class="presensi-side-btn presensi-side-btn-left" onclick="window.retryCamera && window.retryCamera()" title="Buka/Ulangi Kamera">
-              <i data-feather="refresh-cw" style="width:18px; height:18px;"></i>
-            </button>
-
-            <!-- Shutter button (auto-detect: check-in atau check-out) -->
-            <button type="button" class="presensi-shutter-btn" id="presensi-shutter" onclick="window.presensiShutterClick && window.presensiShutterClick()">
-              <i data-feather="camera" style="width:28px; height:28px;"></i>
-            </button>
-
-            <button type="button" class="presensi-side-btn presensi-side-btn-right" onclick="window.detectDeviceGPS && window.detectDeviceGPS()" title="Deteksi GPS">
-              <i data-feather="map-pin" style="width:18px; height:18px;"></i>
-            </button>
+            <!-- Side buttons + Shutter (dalam flex row, sesuai gambar referensi) -->
+            <div class="presensi-controls-row">
+              <button type="button" class="presensi-side-btn" onclick="window.retryCamera && window.retryCamera()" title="Buka/Ulangi Kamera">
+                <i data-feather="refresh-cw" style="width:18px; height:18px;"></i>
+              </button>
+              <button type="button" class="presensi-shutter-btn" id="presensi-shutter" onclick="window.presensiShutterClick && window.presensiShutterClick()">
+                <i data-feather="camera" style="width:24px; height:24px;"></i>
+              </button>
+              <button type="button" class="presensi-side-btn" onclick="window.detectDeviceGPS && window.detectDeviceGPS()" title="Deteksi GPS">
+                <i data-feather="map-pin" style="width:18px; height:18px;"></i>
+              </button>
+            </div>
 
             <!-- Info panel: date/time + shift + outlet -->
-            <div class="presensi-overlay-panel presensi-info-panel">
+            <div class="presensi-info-panel">
               <div class="presensi-info-item">
-                <i data-feather="calendar" style="width:14px; height:14px; color:var(--neon-cyan);"></i>
+                <i data-feather="calendar" style="width:13px; height:13px; color:#06b6d4;"></i>
                 <span id="presensi-fs-date">-</span>
               </div>
-              <div style="width:1px; height:20px; background:var(--fut-border);"></div>
+              <div class="presensi-info-divider"></div>
               <div class="presensi-info-item">
-                <i data-feather="clock" style="width:14px; height:14px; color:var(--neon-violet);"></i>
+                <i data-feather="clock" style="width:13px; height:13px; color:#8b5cf6;"></i>
                 <strong id="presensi-fs-time">--:--:--</strong> WIB
               </div>
-              <div style="width:1px; height:20px; background:var(--fut-border);"></div>
+              <div class="presensi-info-divider"></div>
               <div class="presensi-info-item">
-                <i data-feather="briefcase" style="width:14px; height:14px; color:var(--neon-amber);"></i>
+                <i data-feather="briefcase" style="width:13px; height:13px; color:#f59e0b;"></i>
                 <strong id="presensi-fs-shift">-</strong>
               </div>
-              <div style="width:1px; height:20px; background:var(--fut-border);"></div>
+              <div class="presensi-info-divider"></div>
               <div class="presensi-info-item">
-                <i data-feather="map-pin" style="width:14px; height:14px; color:var(--neon-green);"></i>
+                <i data-feather="map-pin" style="width:13px; height:13px; color:#10b981;"></i>
                 <strong id="presensi-fs-outlet">-</strong>
               </div>
             </div>
@@ -703,9 +702,10 @@
             </button>
 
             <!-- Hidden: tombol check-in/out lama (dipertahankan untuk kompatibilitas app.js) -->
-            <div style="display:none;">
-              <button id="btn-early-checkout" onclick="window.openEarlyCheckoutModal && window.openEarlyCheckoutModal()"></button>
-              <button id="btn-late-arrival" onclick="window.openLateArrivalModal && window.openLateArrivalModal()"></button>
+            <!-- v100.2: Tidak pakai display:none parent (block sync ke -card). Pakai posisi off-screen. -->
+            <div style="position:absolute; left:-9999px; top:-9999px; opacity:0; pointer-events:none;">
+              <button id="btn-early-checkout" style="display:none;" onclick="window.openEarlyCheckoutModal && window.openEarlyCheckoutModal()"></button>
+              <button id="btn-late-arrival" style="display:none;" onclick="window.openLateArrivalModal && window.openLateArrivalModal()"></button>
             </div>
 
             <!-- v93/v94: Status pengajuan (tampil di kartu) -->
