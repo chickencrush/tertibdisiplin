@@ -3134,15 +3134,27 @@ html, body {
   }
 }
 
-/* Fix: iOS Safari backdrop-filter support */
-@supports not (backdrop-filter: blur(20px)) {
-  .topbar, .auth-card, .modal-overlay {
-    background: rgba(255, 255, 255, 0.95) !important;
-  }
-  .topbar {
+/* Fix: browser TANPA backdrop-filter sama sekali (fallback solid, tetap terbaca).
+   v100.12: kondisi diperbaiki — iOS Safari lama hanya kenal -webkit-backdrop-filter,
+   jadi cek KEDUA properti sebelum mematikan blur. Modal overlay fallback kini
+   gelap burgundy (sebelumnya dipaksa putih → tampak janggal di belakang kartu). */
+@supports not ((backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px))) {
+  .topbar, .auth-card, .modal-card {
+    background: rgba(255, 255, 255, 0.96) !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
+  .modal-overlay {
+    background: rgba(42, 9, 20, 0.78) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .sidebar {
+    background-image: linear-gradient(160deg, #8b2341 0%, #4a0e21 100%) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .modern-card { background: rgba(255, 255, 255, 0.96) !important; }
 }
 
 /* Fix: iOS Safari select dropdown arrow */
@@ -3413,4 +3425,249 @@ select.form-control {
   .presensi-shutter-btn { width: 50px; height: 50px; font-size: 18px; }
   .presensi-side-btn { width: 36px; height: 36px; font-size: 12px; }
   .presensi-info-panel { font-size: 9px; gap: 4px; }
+}
+
+/* ========================================================================
+   v100.12: GLASSY BURGUNDY — efek kaca (glassmorphism) di atas tema burgundy
+   PRINSIP AMAN (pelajaran v100 & v82.2):
+   1. Tema TETAP TERANG — teks gelap di atas panel terang-transparan, kontras
+      tinggi. TIDAK mengulang tema gelap v100 yang bikin teks tak terbaca.
+   2. backdrop-filter HANYA di kontainer top-level: sidebar, topbar, card,
+      modal. Elemen kecil nested tidak ditambah blur (hemat GPU).
+   3. Kartu kanban Daily Report memakai inline style solid #fff → otomatis
+      lolos dari efek glass (anti-flicker v82.2 tetap terjaga).
+   4. Browser tanpa backdrop-filter dapat fallback solid (blok @supports di atas).
+   5. Layout fullscreen presensi v100.10 TIDAK diubah — hanya warna latar.
+   ======================================================================== */
+
+:root {
+  /* Token glass diperbarui: lebih transparan agar efek kaca terlihat jelas */
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.72);
+  --glass-blur: blur(18px) saturate(160%);
+  --glass-card-bg: rgba(255, 255, 255, 0.66);
+  --glass-card-blur: blur(14px) saturate(150%);
+}
+
+/* Latar aplikasi: blob warna lembut (burgundy/gold/sky) supaya blur kaca
+   terlihat. background-attachment: fixed — blob tidak ikut scroll sehingga
+   panel transparan benar-benar "memotong" warna di belakangnya. */
+body {
+  background-color: #f7f1f3;
+  background-image:
+    radial-gradient(at 8% 6%, rgba(112, 28, 52, 0.11) 0px, transparent 42%),
+    radial-gradient(at 94% 10%, rgba(245, 158, 11, 0.09) 0px, transparent 40%),
+    radial-gradient(at 82% 92%, rgba(14, 165, 233, 0.08) 0px, transparent 45%),
+    radial-gradient(at 12% 88%, rgba(139, 35, 65, 0.08) 0px, transparent 42%),
+    linear-gradient(180deg, #f6f1f3 0%, #f8fafc 52%, #f5eef2 100%);
+  background-attachment: fixed;
+}
+
+/* SIDEBAR: burgundy frosted glass — dasar TETAP gelap (teks putih terbaca),
+   hanya sedikit tembus pandang + blur latar di belakangnya. */
+.sidebar {
+  background-color: #4a0e21;
+  background-image:
+    radial-gradient(at top left, rgba(255, 255, 255, 0.10), transparent 55%),
+    radial-gradient(at bottom right, rgba(245, 158, 11, 0.12), transparent 55%),
+    linear-gradient(160deg, rgba(139, 35, 65, 0.90) 0%, rgba(74, 14, 33, 0.94) 100%);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* TOPBAR: ikuti token glass baru (lebih transparan dari 0.72 → 0.62) */
+.topbar {
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset, 0 6px 24px rgba(112, 28, 52, 0.06);
+}
+
+/* CARD UTAMA (modern-card): kaca putih transparan + blur + highlight tepi atas */
+.modern-card {
+  background: var(--glass-card-bg);
+  backdrop-filter: var(--glass-card-blur);
+  -webkit-backdrop-filter: var(--glass-card-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 8px 28px rgba(112, 28, 52, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+#sa-overview-stats .modern-card { border: 1px solid var(--glass-border); }
+
+/* STAT CARDS: gradasi warna dibuat transparan supaya efek kaca tetap terlihat */
+.stat-card {
+  backdrop-filter: var(--glass-card-blur);
+  -webkit-backdrop-filter: var(--glass-card-blur);
+  border: 1px solid var(--glass-border);
+}
+.stat-card-yellow {
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.82) 0%, rgba(254, 243, 199, 0.62) 100%);
+}
+.stat-card-blue {
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.82) 0%, rgba(219, 234, 254, 0.62) 100%);
+}
+.stat-card-coral {
+  background: linear-gradient(135deg, rgba(255, 241, 242, 0.82) 0%, rgba(255, 228, 230, 0.62) 100%);
+}
+
+/* MODAL: dim overlay lebih hangat (burgundy) + kartu modal kaca pekat agar
+   teks form tetap jelas di atas latar gelap */
+.modal-overlay {
+  background: rgba(42, 9, 20, 0.55);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+}
+.modal-card {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 24px 60px rgba(42, 9, 20, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.modal-header {
+  background: linear-gradient(135deg, rgba(252, 241, 243, 0.92), rgba(255, 255, 255, 0.45));
+}
+
+/* TABEL: header semi-transparan (teks tetap gelap, terbaca) */
+.payslip-table thead th {
+  background: linear-gradient(135deg, rgba(252, 241, 243, 0.88), rgba(254, 247, 249, 0.72));
+}
+.payslip-table tbody tr:hover { background: rgba(252, 241, 243, 0.75); }
+
+/* LOGIN: kartu login lebih transparan + blur lebih kuat, latar lebih hidup */
+.auth-card {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+}
+.auth-gate-screen {
+  background-image:
+    radial-gradient(at 15% 18%, rgba(245, 158, 11, 0.13), transparent 45%),
+    radial-gradient(at 85% 72%, rgba(244, 63, 94, 0.15), transparent 50%),
+    radial-gradient(at 50% 112%, rgba(139, 35, 65, 0.38), transparent 58%),
+    radial-gradient(circle at 10% 20%, #8b2341 0%, #701c34 40%, #3e0b1a 100%);
+}
+
+/* FULLSCREEN PRESENSI: latar hitam diberi rona burgundy lembut di area atas.
+   HANYA warna latar — layout & posisi kamera v100.10 TIDAK disentuh. */
+#presensi-fullscreen,
+.presensi-fullscreen-container {
+  background: radial-gradient(circle at 50% 15%, rgba(112, 28, 52, 0.32), rgba(10, 10, 10, 0) 55%), #0a0a0a;
+}
+
+/* Scrollbar konten: aksen burgundy halus */
+.content-body::-webkit-scrollbar-thumb {
+  background: rgba(112, 28, 52, 0.28);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.content-body::-webkit-scrollbar-thumb:hover { background: rgba(112, 28, 52, 0.45); background-clip: padding-box; }
+
+/* PERFORMA MOBILE: blur dikurangi di layar kecil (hemat GPU Android low-end) */
+@media (max-width: 768px) {
+  :root {
+    --glass-blur: blur(12px) saturate(140%);
+    --glass-card-blur: blur(10px) saturate(140%);
+  }
+  .modal-card {
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+  }
+}
+
+/* iOS Safari: background-attachment: fixed tidak andal di body (latar bisa
+   "melompat" saat scroll) — pakai scroll attachment; efek kaca tetap muncul
+   karena blur mengambil warna apa pun yang ada di belakang panel. */
+@supports (-webkit-touch-callout: none) {
+  body { background-attachment: scroll; }
+}
+
+/* ========================================================================
+   v100.13: GLASSY MOTION — animasi & transisi halus di atas Glassy Burgundy
+   PRINSIP AMAN (anti-flicker v76 & v82.2):
+   1. .view-panel TIDAK disentuh — animasi panel ditangani staggerViewCards
+      (app.js, sekali per view). Animasi CSS di situ = flicker saat ganti view.
+   2. Tidak ada animasi pada elemen yang innerHTML-nya sering di-rewrite
+      (kanban card Daily Report, tabel riwayat, antrian approval).
+   3. Animasi hanya di: latar (1 layer, transform-only = murah di GPU),
+      modal & fullscreen presensi SAAT DIBUKA, tombol saat ditekan,
+      hover glow kartu.
+   4. "prefers-reduced-motion" global sudah mematikan semua animasi utk
+      user yang mengaktifkan reduce motion di HP-nya.
+   ======================================================================== */
+
+@keyframes fadeSoft {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes blobDrift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(-2%, 1.5%, 0) scale(1.06); }
+  100% { transform: translate3d(1.5%, -1%, 0) scale(1.02); }
+}
+
+/* Boot halus: kerangka aplikasi & layar login fade-in sekali saat tampil.
+   Elemen ini persisten (tidak di-rewrite JS) → animasi tidak re-trigger. */
+.app-layout,
+.auth-gate-screen {
+  animation: fadeSoft 0.45s var(--ease-smooth);
+}
+
+/* Latar blob hidup: 1 layer fixed di BELAKANG semua konten (z-index:-1),
+   animasi transform-only (GPU murah). Panel kaca ikut memburamkan layer
+   ini lewat backdrop-filter → kedalaman glassmorphism terasa hidup. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -10%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 22%, rgba(112, 28, 52, 0.10), transparent 42%),
+    radial-gradient(circle at 80% 16%, rgba(245, 158, 11, 0.08), transparent 40%),
+    radial-gradient(circle at 72% 82%, rgba(14, 165, 233, 0.08), transparent 44%),
+    radial-gradient(circle at 15% 78%, rgba(139, 35, 65, 0.08), transparent 40%);
+  animation: blobDrift 36s ease-in-out infinite alternate;
+  transform: translateZ(0);
+}
+
+/* Modal: overlay fade halus saat dibuka (kartu sudah punya modalPop).
+   Class .active di-remove saat tutup → animasi replay tiap buka modal. */
+.modal-overlay.active {
+  animation: fadeSoft 0.25s var(--ease-smooth);
+}
+
+/* Fullscreen presensi: fade-in tiap dibuka (display none → block).
+   HANYA opacity, TANPA transform — layout kamera v100.10 tidak tersentuh
+   dan kontrol position:fixed di dalamnya tetap patuh viewport. */
+#presensi-fullscreen {
+  animation: fadeSoft 0.28s var(--ease-smooth);
+}
+
+/* Umpan balik sentuh (tactile): tombol mengecil halus saat ditekan.
+   Semua tombol ini persisten & punya transition di rule dasarnya. */
+.btn-primary:active { transform: translateY(0) scale(0.97); }
+.btn-secondary:active { transform: translateY(0) scale(0.97); }
+.auth-submit-btn:active { transform: scale(0.97); }
+.presensi-start-btn:active { transform: scale(0.97); }
+.presensi-shutter-btn:active { transform: scale(0.92); }
+.presensi-side-btn:active { transform: scale(0.9); }
+.mode-btn:active { transform: scale(0.96); }
+.tab-pill-btn:active { transform: scale(0.95); }
+.icon-action-btn:active { transform: scale(0.94); }
+.nav-item:active { transform: translateX(2px) scale(0.98); }
+
+/* Hover glow lembut pada kartu: TANPA transform — panel/kartu besar tidak
+   ikut "melompat", hanya cahaya tepi & bayangan menguat (sudah ada transition
+   box-shadow di rule dasar modern-card). */
+.modern-card:hover {
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12px 34px rgba(112, 28, 52, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* PERFORMA: di HP, drift blob diperlambat & layer dikunci 1x per frame —
+   tetap murah; prefers-reduced-motion otomatis membekukannya. */
+@media (max-width: 768px) {
+  body::before { animation-duration: 48s; }
 }

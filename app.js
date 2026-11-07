@@ -2136,7 +2136,7 @@ const loadAttendanceLogs = async () => {
     if (window.updateEarlyCheckoutUI) {
       window.updateEarlyCheckoutUI();
     }
-    // v94: Load pengajuan izin berangkit telat milik user + update UI.
+    // v94: Load pengajuan izin telat milik user + update UI.
     if (window.loadLateArrivalRequests) {
       await window.loadLateArrivalRequests({ scope: 'mine' });
     }
@@ -5083,7 +5083,7 @@ window.filterEarlyCheckout = (status) => {
 window.filterEarlyCheckout = window.filterEarlyCheckout;
 
 // ============================================================================
-// v94: PENGAJUAN IZIN BERANGKIT TELAT — APPROVAL ATASAN
+// v94: PENGAJUAN IZIN TELAT — APPROVAL ATASAN
 // ============================================================================
 // HANYA untuk user Management. Pola mirip v93 early checkout.
 // Mekanisme denda: backend findApprovedLateArrival_ cek saat h_checkIn_,
@@ -5227,7 +5227,7 @@ window.updateLateArrivalUI = window.updateLateArrivalUI;
 // v94: Buka modal form pengajuan izin telat.
 window.openLateArrivalModal = () => {
   if (!isManagementUser_(AppState.currentUser)) {
-    showToast('Pengajuan izin berangkit telat HANYA untuk user Management.', 'error');
+    showToast('Pengajuan izin telat HANYA untuk user Management.', 'error');
     return;
   }
   // Isi dropdown shift dari #presensi-shift-select
@@ -5339,7 +5339,7 @@ window.submitLateArrival = window.submitLateArrival;
 // v94: Karyawan batalkan pengajuan izin telat sendiri (status harus Pending).
 window.cancelMyLateArrival = async (reqId) => {
   if (!reqId) return;
-  if (!confirm('Batalkan pengajuan izin berangkit telat ini?')) return;
+  if (!confirm('Batalkan pengajuan izin telat ini?')) return;
   try {
     const res = await fetch('/api/late-arrival/' + reqId + '/cancel', { method: 'PUT' });
     const data = await res.json();
@@ -5360,7 +5360,7 @@ window.cancelMyLateArrival = window.cancelMyLateArrival;
 // v97: Pakai helper getApproverWAInfo + openWAUrl (no silent fail, ada fallback).
 window.offerSendWALateArrival = (reason, estimatedArrival, shiftName) => {
   const me = AppState.currentUser || {};
-  let msg = 'Halo {APPROVER_NAME},\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan IZIN BERANGKIT TELAT utk shift ' + shiftName + ' hari ini.';
+  let msg = 'Halo {APPROVER_NAME},\n\nSaya ' + (me.name || '') + ' (NIP: ' + (me.nip || '') + ') mengajukan IZIN TELAT utk shift ' + shiftName + ' hari ini.';
   if (estimatedArrival) msg += '\nEstimasi jam hadir: ' + estimatedArrival;
   msg += '\n\nAlasan: ' + reason + '\n\nMohon approval di aplikasi TERTIB DISIPLIN. Terima kasih.';
 
@@ -5464,7 +5464,7 @@ window.openLateArrivalApproval = window.openLateArrivalApproval;
 window.approveLateArrival = async (reqId) => {
   const noteEl = document.getElementById('late-arrival-approver-note');
   const note = (noteEl?.value || '').trim();
-  if (!confirm('SETUJUI pengajuan izin berangkit telat ini?\n\nKaryawan bisa absen masuk telat tanpa denda keterlambatan utk shift tsb.')) return;
+  if (!confirm('SETUJUI pengajuan izin telat ini?\n\nKaryawan bisa absen masuk telat tanpa denda keterlambatan utk shift tsb.')) return;
   try {
     const res = await fetch('/api/late-arrival/' + reqId + '/approve', {
       method: 'PUT',
@@ -5495,7 +5495,7 @@ window.rejectLateArrival = async (reqId) => {
     noteEl?.focus();
     return;
   }
-  if (!confirm('TOLAK pengajuan izin berangkit telat ini?\n\nKaryawan harus absen tepat waktu atau dikenakan denda normal.')) return;
+  if (!confirm('TOLAK pengajuan izin telat ini?\n\nKaryawan harus absen tepat waktu atau dikenakan denda normal.')) return;
   try {
     const res = await fetch('/api/late-arrival/' + reqId + '/reject', {
       method: 'PUT',

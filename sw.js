@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v88-geofence-role';  // v88: Aturan presensi per role — Management presensi di semua titik terdaftar (Kantor+Outlet), Tim Operasional hanya di outlet penugasan sendiri
+const CACHE_NAME = 'tertib-disiplin-v100.13-glassy-motion';  // v100.13: Tema Glassy Burgundy + animasi transisi halus (blob latar hidup, fade modal & fullscreen presensi, umpan balik sentuh tombol) + rename "Izin Telat". Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',
