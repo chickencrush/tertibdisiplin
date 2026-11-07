@@ -90,13 +90,12 @@
         }
       }
       if (r.status === 401 && path.indexOf('/api/auth/login') !== 0 && path.indexOf('/api/auth/register') !== 0 && path.indexOf('/api/auth/me') !== 0 && path.indexOf('/verify-pin') < 0) {
-        // v78: Jangan dispatch td-session-expired untuk /api/auth/me — itu dipakai
-        // oleh initAuthSession utk cek session validity. Kalau 401, biarkan
-        // initAuthSession handle (show login screen, NO reload). Dispatch event di sini
-        // akan trigger restartToLogin → window.location.reload → initAuthSession lagi
-        // → 401 lagi → INFINITE RELOAD LOOP.
-        lsSet('td_token', null); ssSet('td_payslip_token', null);
-        window.dispatchEvent(new Event('td-session-expired'));
+        // v100.16: NO AUTO-LOGOUT. Sebelumnya, 401 sporadis dari Apps Script
+        // (hiccup/auth lock) langsung clear token + dispatch td-session-expired
+        // → user di-kick ke layar login tanpa sebab jelas. Sekarang token
+        // DIPERTAHANKAN, event TIDAK dispatch. Response 401 tetap diteruskan ke
+        // caller (akan tampil toast "gagal" di app.js) tapi sesi login utuh.
+        // User logout HANYA via tombol Logout eksplisit (logoutUser di app.js).
       }
       var status = (r.status >= 200 && r.status <= 599) ? r.status : 500;
       return jsonResponse(status, b);
@@ -112,4 +111,8 @@
     document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   };
+
+  // v85.3: Flag agar app.js bisa cek apakah api-client.js sudah termuat
+  // (dipakai oleh diagnoseApiSetup())
+  window._tdApiClientLoaded = true;
 })();

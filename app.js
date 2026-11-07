@@ -879,13 +879,11 @@ const initAuthSession = () => {
           // v78: Jika 401 (token expired/invalid), jangan reload — tampilkan login screen.
           // Return null supaya freshUser check di then-chain skip update.
           if (r.status === 401) {
-            console.warn('Token expired/invalid (401 dari /api/auth/me). Clearing session, showing login screen (NO reload).');
-            // Clear stale token & user data
-            try { localStorage.removeItem('td_token'); } catch (e) { /* ignore */ }
-            try { localStorage.removeItem('tertib_disiplin_auth_user'); } catch (e) { /* ignore */ }
-            AppState.currentUser = null;
-            const authScreen = document.getElementById('auth-gate-screen');
-            if (authScreen) authScreen.classList.remove('hidden');
+            // v100.16: NO AUTO-LOGOUT. Tetap pakai cached user — jangan clear token/
+            // user data, jangan tampilkan login screen. User logout hanya via tombol
+            // Logout eksplisit. Sebelumnya, 401 sporadis dari Apps Script langsung
+            // kick user ke login screen.
+            console.warn('401 dari /api/auth/me — tetap pakai cached user (no auto-logout v100.16).');
             return null;
           }
           return r.ok ? r.json() : null;
@@ -1243,23 +1241,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // paralel, semua 401 → dispatch 5x td-session-expired → reload 5x).
   let __lastSessionExpiredReload_ = 0;
   window.addEventListener('td-session-expired', () => {
-    const now = Date.now();
-    if (now - __lastSessionExpiredReload_ < 10000) {
-      // Sudah reload dalam 10 detik terakhir — skip (anti-loop)
-      console.warn('td-session-expired di-skip (cooldown 10s, anti-reload-loop)');
-      return;
-    }
-    __lastSessionExpiredReload_ = now;
-    clearSessionData();
-    setSidebarOpen(false);
-    const authScreen = document.getElementById('auth-gate-screen');
-    if (authScreen) authScreen.classList.remove('hidden');
-    switchAuthTab('login');
-    showToast('Sesi berakhir. Silakan login kembali.', 'warning');
-    // v81: TIDAK reload halaman. Sebelumnya restartToLogin() = location.reload() —
-    // 401 sporadis dari Apps Script (hiccup/auth lock) memicu reload penuh yang
-    // terlihat sbg "flicker" seluruh aplikasi. Auth screen sudah ditampilkan di atas,
-    // state sudah dibersihkan — reload tidak diperlukan dan justru merusak UX.
+    // v100.16: NO AUTO-LOGOUT. Event ini tidak lagi di-dispatch oleh api-client.js
+    // (sejak v100.16). Listener dibiarkan sebagai safety no-op kalau ada kode lama
+    // yang masih dispatch manual. Sesi user TIDAK dibersihkan — logout hanya via
+    // tombol Logout eksplisit (logoutUser).
+    console.warn('td-session-expired diterima — diabaikan (no auto-logout v100.16).');
+    return;
   });
 
   // Pesan dari sebelum halaman dimuat ulang (keluar / sesi berakhir)
@@ -3114,8 +3101,10 @@ const _tdCompressImage_ = (file, maxDim, quality) => {
 };
 
 // Submit Daily Report with MANDATORY proof check
+let __dailyReportSubmitting = false;  // v100.16: anti dobel-submit
 const submitDailyReportForm = async (e) => {
   e.preventDefault();
+  if (__dailyReportSubmitting) return;  // v100.16: anti dobel-submit
   const status = document.getElementById('rep-form-status').value;
   const proofUrl = document.getElementById('rep-form-proof-url').value;
   const holdReason = document.getElementById('rep-form-hold-reason').value;
@@ -3155,6 +3144,12 @@ const submitDailyReportForm = async (e) => {
     deadline_duration: deadlineDuration || null
   };
 
+  __dailyReportSubmitting = true;  // v100.16: anti dobel-submit
+  // v100.16: Loading MAKSIMAL 2 DETIK. Spinner di tombol "Simpan Laporan" +
+  // indikator global lepas di 2 detik. Fetch tetap berjalan di background;
+  // toast sukses/error muncul saat response sampai.
+  const __drBtn = document.getElementById('btn-save-report');
+  if (window.TDLoading && window.TDLoading.capBusy && __drBtn) window.TDLoading.capBusy(__drBtn, 2000);
   try {
     const res = await fetch('/api/daily-reports', {
       method: 'POST',
@@ -3173,6 +3168,8 @@ const submitDailyReportForm = async (e) => {
     }
   } catch (err) {
     showToast('Terjadi kesalahan koneksi server', 'error');
+  } finally {
+    __dailyReportSubmitting = false;  // v100.16: lepas guard
   }
 };
 
@@ -4246,6 +4243,11 @@ window.presensiShutterClick = async () => {
   const hasActiveCheckIn = candidates.length > 0;
   const shutter = document.getElementById('presensi-shutter');
   if (shutter) shutter.disabled = true;
+  // v100.16: Loading MAKSIMAL 2 DETIK. Spinner di shutter + garis progres + pil
+  // status lepas di 2 detik, walaupun server masih memproses upload foto. Shutter
+  // tetap disabled sampai fetch benar-benar selesai (anti dobel-klik). Toast
+  // sukses/error akan muncul saat response sampai.
+  if (window.TDLoading && window.TDLoading.capBusy && shutter) window.TDLoading.capBusy(shutter, 2000);
   try {
     if (hasActiveCheckIn) await window.submitAttendanceCheckOut();
     else await window.submitAttendanceCheckIn();
@@ -10767,7 +10769,23 @@ window.viewSaSpkEmployeeDocs = window.viewSaSpkEmployeeDocs;
   // API manual (opsional): window.TDLoading.setBusy(el, true|false)
   window.TDLoading = {
     setBusy: function (el, on) { if (on) markBusy(el); else releaseBusy(el); },
-    clearAll: releaseAllBusy
+    clearAll: releaseAllBusy,
+    // v100.16: capBusy — lepas indikator busy (spinner tombol + garis progres +
+    // pil status) setelah `ms` (default 2000ms). Dipakai untuk daily report &
+    // presensi foto supaya loading maksimal 2 detik. Request tetap berjalan di
+    // background; toast sukses/error muncul saat response benar-benar sampai.
+    capBusy: function (el, ms) {
+      if (!el) return null;
+      markBusy(el);
+      return setTimeout(function () {
+        releaseBusy(el);
+        // Kalau tidak ada request aktif lain, sembunyikan indikator global juga
+        if (netCount() === 0) {
+          if (bar) bar.classList.remove('active');
+          if (pill) pill.classList.remove('show');
+        }
+      }, ms || 2000);
+    }
   };
 
   // --- kandidat: elemen seperti-tombol yang baru diklik user ---
