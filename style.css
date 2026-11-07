@@ -3248,352 +3248,22 @@ select.form-control {
   }
 }
 
+
 /* ========================================================================
-   v100: GLASSY MODERN FUTURISTIC THEME
+   v100.1: FULL-SCREEN CAMERA VIEW (tema burgundy original, bukan dark)
    ------------------------------------------------------------------------
-   Tema gelap glassmorphism dengan neon accents untuk seluruh aplikasi.
-   Override layer — tidak menghapus style lama, hanya override.
-   Pertahankan: contain, transform: translateZ(0), anti-flicker rules.
+   Hanya CSS untuk full-screen camera view. Tema aplikasi tetap burgundy
+   original (light background). Tidak override tema lama.
    ======================================================================== */
 
-:root {
-  /* === FUTURISTIC DARK PALETTE === */
-  --fut-bg-deep: #0a0e1a;
-  --fut-bg-mid: #0f172a;
-  --fut-bg-soft: #1e293b;
-  --fut-surface: rgba(30, 41, 59, 0.6);
-  --fut-surface-light: rgba(51, 65, 85, 0.5);
-  --fut-border: rgba(148, 163, 184, 0.15);
-  --fut-border-bright: rgba(148, 163, 184, 0.3);
-
-  /* === NEON ACCENTS === */
-  --neon-cyan: #06b6d4;
-  --neon-blue: #3b82f6;
-  --neon-violet: #8b5cf6;
-  --neon-pink: #ec4899;
-  --neon-green: #10b981;
-  --neon-amber: #f59e0b;
-  --neon-red: #ef4444;
-
-  /* === GLASS DARK === */
-  --glass-dark-bg: rgba(15, 23, 42, 0.65);
-  --glass-dark-border: rgba(148, 163, 184, 0.2);
-  --glass-dark-blur: blur(24px) saturate(180%);
-
-  /* === AURORA GRADIENT (background) === */
-  --aurora: radial-gradient(ellipse at 20% 0%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
-            radial-gradient(ellipse at 80% 100%, rgba(6, 182, 212, 0.12) 0%, transparent 50%),
-            radial-gradient(ellipse at 50% 50%, rgba(236, 72, 153, 0.08) 0%, transparent 60%);
-
-  /* === NEON GLOW === */
-  --glow-cyan: 0 0 20px rgba(6, 182, 212, 0.4), 0 0 40px rgba(6, 182, 212, 0.2);
-  --glow-violet: 0 0 20px rgba(139, 92, 246, 0.4), 0 0 40px rgba(139, 92, 246, 0.2);
-  --glow-green: 0 0 20px rgba(16, 185, 129, 0.4), 0 0 40px rgba(16, 185, 129, 0.2);
-  --glow-amber: 0 0 20px rgba(245, 158, 11, 0.4), 0 0 40px rgba(245, 158, 11, 0.2);
-
-  /* Override text colors for dark theme */
-  --text-dark: #f1f5f9;
-  --text-muted: #94a3b8;
-  --text-soft: #64748b;
-  --bg-main: #0a0e1a;
-  --bg-elevated: #0f172a;
-  --card-bg: rgba(30, 41, 59, 0.6);
-  --border-color: rgba(148, 163, 184, 0.15);
-  --glass-bg: rgba(15, 23, 42, 0.65);
-  --glass-border: rgba(148, 163, 184, 0.2);
-  --glass-blur: blur(24px) saturate(180%);
-}
-
-/* === BODY: DARK AURORA BACKGROUND === */
-body {
-  background: var(--fut-bg-deep) !important;
-  color: var(--text-dark) !important;
-  background-image: var(--aurora) !important;
-  background-attachment: fixed !important;
-  min-height: 100vh;
-}
-
-/* === SIDEBAR: DARK GLASS === */
-.sidebar {
-  background: var(--glass-dark-bg) !important;
-  backdrop-filter: var(--glass-dark-blur) !important;
-  -webkit-backdrop-filter: var(--glass-dark-blur) !important;
-  border-right: 1px solid var(--fut-border) !important;
-  background-image: none !important;
-}
-
-.brand-area, .brand-info h1, .brand-info p {
-  color: #f1f5f9 !important;
-}
-
-.sidebar-user {
-  background: var(--fut-surface-light) !important;
-  border: 1px solid var(--fut-border) !important;
-}
-
-.sidebar-user .user-name-label { color: #f1f5f9 !important; }
-.sidebar-user .user-role-label { color: var(--neon-cyan) !important; }
-
-/* Nav items */
-.nav-item {
-  color: var(--text-muted) !important;
-  background: transparent !important;
-  border: 1px solid transparent !important;
-}
-.nav-item:hover {
-  background: var(--fut-surface-light) !important;
-  color: #f1f5f9 !important;
-}
-.nav-item.active {
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.15)) !important;
-  color: #f1f5f9 !important;
-  border-color: rgba(6, 182, 212, 0.3) !important;
-  box-shadow: var(--glow-cyan) !important;
-}
-.nav-item.active::before {
-  background: linear-gradient(180deg, var(--neon-cyan), var(--neon-violet)) !important;
-  box-shadow: var(--glow-cyan) !important;
-}
-.nav-section-title { color: var(--text-soft) !important; }
-.sidebar-footer .promo-card {
-  background: var(--fut-surface-light) !important;
-  border: 1px solid var(--fut-border) !important;
-  color: var(--text-muted) !important;
-}
-
-/* === TOPBAR: DARK GLASS === */
-.topbar {
-  background: var(--glass-dark-bg) !important;
-  backdrop-filter: var(--glass-dark-blur) !important;
-  -webkit-backdrop-filter: var(--glass-dark-blur) !important;
-  border-bottom: 1px solid var(--fut-border) !important;
-}
-.topbar #page-title { color: #f1f5f9 !important; }
-.topbar #page-subtitle { color: var(--text-muted) !important; }
-
-/* Search pill */
-.search-pill {
-  background: var(--fut-surface) !important;
-  border: 1px solid var(--fut-border) !important;
-  color: var(--text-muted) !important;
-}
-.search-pill:focus-within {
-  border-color: var(--neon-cyan) !important;
-  box-shadow: var(--glow-cyan) !important;
-}
-
-/* Icon action buttons */
-.icon-action-btn {
-  background: var(--fut-surface) !important;
-  border: 1px solid var(--fut-border) !important;
-  color: var(--text-muted) !important;
-}
-.icon-action-btn:hover {
-  background: var(--fut-surface-light) !important;
-  color: var(--neon-cyan) !important;
-  border-color: var(--neon-cyan) !important;
-}
-
-/* User profile pill */
-.user-profile-pill {
-  background: var(--fut-surface) !important;
-  border: 1px solid var(--fut-border) !important;
-}
-.user-profile-pill:hover {
-  border-color: var(--neon-cyan) !important;
-  box-shadow: var(--glow-cyan) !important;
-}
-.user-name-label { color: #f1f5f9 !important; }
-.user-role-label { color: var(--neon-cyan) !important; }
-
-/* === CONTENT BODY === */
-.content-body {
-  background: transparent !important;
-}
-
-/* === MODERN CARDS: DARK GLASS === */
-.modern-card {
-  background: var(--glass-dark-bg) !important;
-  backdrop-filter: var(--glass-dark-blur) !important;
-  -webkit-backdrop-filter: var(--glass-dark-blur) !important;
-  border: 1px solid var(--fut-border) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
-  color: var(--text-dark) !important;
-}
-.modern-card::before {
-  background: linear-gradient(90deg, transparent, rgba(6, 182, 212, 0.3), transparent) !important;
-}
-.modern-card h3 { color: #f1f5f9 !important; }
-.modern-card p { color: var(--text-muted) !important; }
-.modern-card .card-title-row p { color: var(--text-muted) !important; }
-.card-badge-tag {
-  background: var(--fut-surface-light) !important;
-  color: var(--neon-cyan) !important;
-  border: 1px solid var(--fut-border) !important;
-}
-
-/* === STAT CARDS: DARK GLASS WITH NEON === */
-.stat-card {
-  background: var(--glass-dark-bg) !important;
-  backdrop-filter: var(--glass-dark-blur) !important;
-  border: 1px solid var(--fut-border) !important;
-  color: var(--text-dark) !important;
-}
-.stat-card .stat-title { color: var(--text-muted) !important; }
-.stat-card .stat-main-number { color: #f1f5f9 !important; }
-.stat-card .stat-subtitle { color: var(--text-soft) !important; }
-.stat-card .stat-icon-badge {
-  background: var(--fut-surface-light) !important;
-  border: 1px solid var(--fut-border) !important;
-  color: var(--neon-cyan) !important;
-}
-.stat-card-yellow .stat-icon-badge { color: var(--neon-amber) !important; }
-.stat-card-blue .stat-icon-badge { color: var(--neon-blue) !important; }
-.stat-card-coral .stat-icon-badge { color: var(--neon-pink) !important; }
-
-/* === BUTTONS: NEON GLASS === */
-.btn-primary {
-  background: linear-gradient(135deg, var(--neon-cyan), var(--neon-blue)) !important;
-  color: #fff !important;
-  border: none !important;
-  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.3) !important;
-}
-.btn-primary:hover {
-  box-shadow: var(--glow-cyan) !important;
-  transform: translateY(-1px);
-}
-.btn-secondary {
-  background: var(--fut-surface) !important;
-  backdrop-filter: var(--glass-dark-blur) !important;
-  color: #f1f5f9 !important;
-  border: 1px solid var(--fut-border-bright) !important;
-}
-.btn-secondary:hover {
-  background: var(--fut-surface-light) !important;
-  border-color: var(--neon-cyan) !important;
-  color: var(--neon-cyan) !important;
-}
-.btn-logout {
-  background: rgba(239, 68, 68, 0.15) !important;
-  color: var(--neon-red) !important;
-  border: 1px solid rgba(239, 68, 68, 0.3) !important;
-}
-.btn-logout:hover {
-  background: rgba(239, 68, 68, 0.25) !important;
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3) !important;
-}
-
-/* === FORM CONTROLS: DARK GLASS === */
-.form-control {
-  background: var(--fut-surface) !important;
-  border: 1.5px solid var(--fut-border) !important;
-  color: #f1f5f9 !important;
-}
-.form-control::placeholder { color: var(--text-soft) !important; }
-.form-control:focus {
-  border-color: var(--neon-cyan) !important;
-  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15) !important;
-  background: var(--fut-surface-light) !important;
-}
-.form-control:read-only {
-  background: rgba(15, 23, 42, 0.4) !important;
-  color: var(--text-soft) !important;
-}
-.form-label { color: var(--text-muted) !important; }
-select.form-control option {
-  background: var(--fut-bg-mid) !important;
-  color: #f1f5f9 !important;
-}
-
-/* === TABLES: DARK === */
-.data-table, .payslip-table {
-  background: transparent !important;
-  color: var(--text-dark) !important;
-}
-.data-table thead th, .payslip-table thead th {
-  background: var(--fut-surface) !important;
-  color: var(--neon-cyan) !important;
-  border-bottom: 2px solid var(--fut-border-bright) !important;
-}
-.data-table tbody td, .payslip-table tbody td {
-  border-bottom: 1px solid var(--fut-border) !important;
-  color: var(--text-dark) !important;
-}
-.data-table tbody tr, .payslip-table tbody tr {
-  background: transparent !important;
-}
-.data-table tbody tr:hover, .payslip-table tbody tr:hover {
-  background: var(--fut-surface-light) !important;
-}
-
-/* === MODAL: DARK GLASS === */
-.modal-overlay {
-  background: rgba(10, 14, 26, 0.8) !important;
-  backdrop-filter: blur(8px) saturate(150%) !important;
-}
-.modal-card {
-  background: var(--glass-dark-bg) !important;
-  backdrop-filter: var(--glass-dark-blur) !important;
-  -webkit-backdrop-filter: var(--glass-dark-blur) !important;
-  border: 1px solid var(--fut-border) !important;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5) !important;
-  color: var(--text-dark) !important;
-}
-.modal-header h3 { color: #f1f5f9 !important; }
-.modal-close-btn { color: var(--text-muted) !important; }
-.modal-close-btn:hover { color: var(--neon-red) !important; }
-
-/* === TOAST: DARK GLASS === */
-.toast {
-  background: var(--glass-dark-bg) !important;
-  backdrop-filter: var(--glass-dark-blur) !important;
-  border: 1px solid var(--fut-border) !important;
-  color: var(--text-dark) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
-}
-
-/* === MISC === */
-.card-title-row h3 { color: #f1f5f9 !important; }
-.geofence-alert {
-  background: var(--fut-surface) !important;
-  border: 1px solid var(--fut-border) !important;
-  color: var(--text-dark) !important;
-}
-.geofence-success { border-color: var(--neon-green) !important; }
-.geofence-warning { border-color: var(--neon-amber) !important; }
-.geofence-error { border-color: var(--neon-red) !important; }
-
-/* Tab pills */
-.tab-pill-btn {
-  background: var(--fut-surface) !important;
-  color: var(--text-muted) !important;
-  border: 1px solid var(--fut-border) !important;
-}
-.tab-pill-btn.active {
-  background: linear-gradient(135deg, var(--neon-cyan), var(--neon-blue)) !important;
-  color: #fff !important;
-  border-color: transparent !important;
-  box-shadow: 0 4px 16px rgba(6, 182, 212, 0.3) !important;
-}
-
-/* Status badges */
-.status-badge-pill {
-  border: 1px solid var(--fut-border) !important;
-}
-.status-selesai { background: rgba(16, 185, 129, 0.15) !important; color: var(--neon-green) !important; }
-.status-hold { background: rgba(245, 158, 11, 0.15) !important; color: var(--neon-amber) !important; }
-
-/* === FULL-SCREEN CAMERA VIEW (v100) === */
 #view-presensi {
   padding: 0 !important;
   position: relative;
-  min-height: calc(100vh - 80px);
-  overflow: hidden;
 }
 .presensi-fullscreen-container {
   position: relative;
   width: 100%;
-  height: calc(100vh - 80px);
+  height: 100vh;
   background: #000;
   overflow: hidden;
 }
@@ -3604,41 +3274,40 @@ select.form-control option {
   height: 100%;
   object-fit: cover;
   z-index: 1;
+  /* v100.1: UN-MIRROR kamera depan — tampil natural seperti foto selfie */
+  transform: scaleX(-1);
+  -webkit-transform: scaleX(-1);
 }
-/* Camera NOT mirrored — selfie mode natural */
-.presensi-camera-bg video {
-  transform: none !important;
-}
-/* Face detection overlay */
+/* Face detection overlay — KOTAK (bukan bulat) */
 .presensi-face-ring {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 60%;
-  max-width: 300px;
+  width: 70%;
+  max-width: 320px;
   aspect-ratio: 3/4;
-  border: 3px solid rgba(6, 182, 212, 0.6);
-  border-radius: 50% 50% 45% 45% / 60% 60% 40% 40%;
-  box-shadow: 0 0 30px rgba(6, 182, 212, 0.3), inset 0 0 30px rgba(6, 182, 212, 0.1);
+  border: 3px solid rgba(255, 255, 255, 0.7);
+  border-radius: 16px;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
   z-index: 2;
   pointer-events: none;
   transition: all 0.3s ease;
 }
 .presensi-face-ring.detected {
-  border-color: var(--neon-green);
-  box-shadow: var(--glow-green), inset 0 0 30px rgba(16, 185, 129, 0.1);
+  border-color: #10b981;
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.5);
 }
 .presensi-face-ring.no-face {
-  border-color: var(--neon-amber);
-  box-shadow: var(--glow-amber);
+  border-color: #f59e0b;
+  box-shadow: 0 0 25px rgba(245, 158, 11, 0.4);
 }
 /* Corner brackets */
 .presensi-corner {
   position: absolute;
   width: 40px;
   height: 40px;
-  border: 3px solid var(--neon-cyan);
+  border: 3px solid rgba(255, 255, 255, 0.6);
   z-index: 3;
   pointer-events: none;
 }
@@ -3646,18 +3315,18 @@ select.form-control option {
 .presensi-corner-tr { top: 20px; right: 20px; border-left: none; border-bottom: none; border-radius: 0 12px 0 0; }
 .presensi-corner-bl { bottom: 20px; left: 20px; border-right: none; border-top: none; border-radius: 0 0 0 12px; }
 .presensi-corner-br { bottom: 20px; right: 20px; border-left: none; border-top: none; border-radius: 0 0 12px 0; }
-
-/* Floating glass panels */
+/* Floating glass panels (light glass, bukan dark) */
 .presensi-overlay-panel {
   position: absolute;
   z-index: 10;
-  background: var(--glass-dark-bg);
-  backdrop-filter: var(--glass-dark-blur);
-  -webkit-backdrop-filter: var(--glass-dark-blur);
-  border: 1px solid var(--fut-border);
-  border-radius: var(--radius-lg);
-  padding: 14px 18px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 18px;
+  padding: 12px 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  color: #1e293b;
 }
 .presensi-header-panel {
   top: 16px;
@@ -3669,105 +3338,104 @@ select.form-control option {
   max-width: 90%;
 }
 .presensi-info-panel {
-  bottom: 100px;
+  bottom: 110px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 16px;
+  gap: 14px;
   align-items: center;
   flex-wrap: wrap;
   justify-content: center;
-  max-width: 90%;
+  max-width: 95%;
+  font-size: 12px;
 }
 .presensi-info-item {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
+  color: #64748b;
 }
-.presensi-info-item strong { color: #f1f5f9; }
+.presensi-info-item strong { color: #1e293b; }
+.presensi-info-divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.1);
+}
+/* GPS banner */
 .presensi-gps-banner {
-  bottom: 16px;
+  position: absolute;
+  bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid var(--neon-green);
-  border-radius: var(--radius-lg);
+  background: rgba(16, 185, 129, 0.9);
+  backdrop-filter: blur(10px);
+  border: 1px solid #10b981;
+  border-radius: 14px;
   padding: 10px 18px;
-  color: var(--neon-green);
+  color: #fff;
   font-size: 12px;
   font-weight: 600;
-  box-shadow: var(--glow-green);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
   max-width: 90%;
 }
 .presensi-gps-banner.error {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: var(--neon-red);
-  color: var(--neon-red);
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.9);
+  border-color: #ef4444;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
 }
 .presensi-gps-banner.warning {
-  background: rgba(245, 158, 11, 0.15);
-  border-color: var(--neon-amber);
-  color: var(--neon-amber);
-  box-shadow: var(--glow-amber);
+  background: rgba(245, 158, 11, 0.9);
+  border-color: #f59e0b;
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
 }
-
 /* Shutter button */
 .presensi-shutter-btn {
   position: absolute;
-  bottom: 180px;
+  bottom: 170px;
   left: 50%;
   transform: translateX(-50%);
-  width: 80px;
-  height: 80px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   border: 4px solid #fff;
-  background: linear-gradient(135deg, var(--neon-cyan), var(--neon-violet));
+  background: linear-gradient(135deg, #701c34, #4a0e21);
   cursor: pointer;
   z-index: 11;
-  box-shadow: 0 0 30px rgba(6, 182, 212, 0.5), 0 0 60px rgba(139, 92, 246, 0.3);
+  box-shadow: 0 0 20px rgba(112, 28, 52, 0.5), 0 4px 16px rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  font-size: 28px;
+  font-size: 24px;
   transition: all 0.2s ease;
-  animation: pulse-shutter 2s infinite;
 }
 .presensi-shutter-btn:hover {
-  transform: translateX(-50%) scale(1.1);
-  box-shadow: 0 0 40px rgba(6, 182, 212, 0.7), 0 0 80px rgba(139, 92, 246, 0.5);
+  transform: translateX(-50%) scale(1.08);
+  box-shadow: 0 0 30px rgba(112, 28, 52, 0.7), 0 6px 20px rgba(0, 0, 0, 0.5);
 }
 .presensi-shutter-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  animation: none;
 }
 .presensi-shutter-btn.checkout {
-  background: linear-gradient(135deg, var(--neon-amber), var(--neon-red));
-  box-shadow: 0 0 30px rgba(245, 158, 11, 0.5), 0 0 60px rgba(239, 68, 68, 0.3);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.5), 0 4px 16px rgba(0, 0, 0, 0.4);
 }
-@keyframes pulse-shutter {
-  0%, 100% { box-shadow: 0 0 30px rgba(6, 182, 212, 0.5), 0 0 60px rgba(139, 92, 246, 0.3); }
-  50% { box-shadow: 0 0 40px rgba(6, 182, 212, 0.7), 0 0 80px rgba(139, 92, 246, 0.5); }
-}
-
-/* Side buttons (switch camera, guide) */
+/* Side buttons */
 .presensi-side-btn {
   position: absolute;
   bottom: 180px;
-  width: 50px;
-  height: 50px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  background: var(--glass-dark-bg);
-  backdrop-filter: var(--glass-dark-blur);
-  border: 1px solid var(--fut-border-bright);
-  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  color: #1e293b;
   cursor: pointer;
   z-index: 11;
   display: flex;
@@ -3775,76 +3443,52 @@ select.form-control option {
   justify-content: center;
   font-size: 18px;
   transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 .presensi-side-btn:hover {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-  box-shadow: var(--glow-cyan);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--burgundy-primary);
+  transform: scale(1.05);
 }
-.presensi-side-btn-left { left: calc(50% - 100px); }
-.presensi-side-btn-right { right: calc(50% - 100px); }
-
-/* Face status text */
+.presensi-side-btn-left { left: calc(50% - 90px); }
+.presensi-side-btn-right { right: calc(50% - 90px); }
+/* Face hint text — posisi di ATAS shutter, tidak tertumpuk */
 .presensi-face-hint {
   position: absolute;
-  bottom: 280px;
+  bottom: 255px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
-  background: var(--glass-dark-bg);
-  backdrop-filter: var(--glass-dark-blur);
-  border: 1px solid var(--fut-border);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 20px;
   padding: 6px 16px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: #fff;
   white-space: nowrap;
+  max-width: 90%;
+  text-align: center;
 }
-
-/* Presensi start button (di kartu presensi lama, sebelum full-screen) */
+/* Presensi start button (di kartu presensi) */
 .presensi-start-btn {
-  background: linear-gradient(135deg, var(--neon-cyan), var(--neon-violet)) !important;
+  background: linear-gradient(135deg, #701c34, #4a0e21) !important;
   color: #fff !important;
   border: none !important;
   padding: 16px 24px !important;
   font-size: 16px !important;
   font-weight: 700 !important;
-  border-radius: var(--radius-lg) !important;
+  border-radius: 14px !important;
   cursor: pointer;
-  box-shadow: 0 0 30px rgba(6, 182, 212, 0.4) !important;
+  box-shadow: 0 4px 16px rgba(112, 28, 52, 0.3) !important;
   transition: all 0.3s ease;
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  animation: pulse-start 3s infinite;
 }
 .presensi-start-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 40px rgba(6, 182, 212, 0.6) !important;
+  box-shadow: 0 6px 20px rgba(112, 28, 52, 0.4) !important;
 }
-@keyframes pulse-start {
-  0%, 100% { box-shadow: 0 0 30px rgba(6, 182, 212, 0.4); }
-  50% { box-shadow: 0 0 40px rgba(6, 182, 212, 0.6); }
-}
-
-/* Scrollbar dark */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: var(--fut-bg-deep); }
-::-webkit-scrollbar-thumb { background: var(--fut-surface-light); border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: var(--neon-cyan); }
-
-/* Auth screen dark */
-.auth-gate-screen {
-  background: var(--fut-bg-deep) !important;
-  background-image: var(--aurora) !important;
-}
-.auth-card, .auth-card-modern {
-  background: var(--glass-dark-bg) !important;
-  backdrop-filter: var(--glass-dark-blur) !important;
-  border: 1px solid var(--fut-border) !important;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5) !important;
-}
-.auth-title { color: #f1f5f9 !important; }
-

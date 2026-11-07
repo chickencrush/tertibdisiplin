@@ -4096,7 +4096,13 @@ const captureSelfieSnapshot = () => {
   canvas.width = video.videoWidth || 480;
   canvas.height = video.videoHeight || 360;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // v100.1: Flip horizontal supaya snapshot cocok dgn preview video yang
+  // sudah di-un-mirror (transform: scaleX(-1) di CSS). Tanpa ini, selfie
+  // base64 akan mirror (kanan-kiri terbalik) berbeda dari yang user lihat.
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+  ctx.restore();
 
   // Stamp current time & GPS on the snapshot
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
