@@ -3827,3 +3827,106 @@ button.is-busy::after,
   }
   #td-loading-pill.show { transform: translateX(-50%) translateY(0); }
 }
+
+/* ========================================================================
+   v100.15: SMOOTHER MOTION — perhalus durasi & easing transisi v100.13
+   ------------------------------------------------------------------------
+   Keluhan "transisi terlalu cepat, kurang smooth" diperbaiki TANPA
+   menyentuh rule lama (append-only — aman terhadap kode existing).
+   Perubahan:
+   1. Token easing baru --ease-glassy = easeOutQuint (tail panjang,
+      lebih halus & terasa "mendarat" lembut) — dipakai di animasi
+      Glassy Motion v100.13/v100.14.
+   2. fadeSoft diperpanjang + ditambah slide-up halus 8px → 0
+      (sebelumnya fade-only 0.25–0.45s, sekarang 0.45–0.65s dgn slide).
+   3. Modal overlay + kartu: fade & scale lebih halus (0.32s ease-glassy),
+      modal-card scale 0.96→1 dgn slide-up 6px (sebelumnya instan scale).
+   4. Fullscreen presensi: fade+slide lebih lama (0.5s).
+   5. :active tombol: tambah transition: transform 0.18s var(--ease-glassy)
+      agar penekanan & pelepasan TIDAK instan (terasa halus, bukan "jolt").
+   6. Hover kartu: perpanjang box-shadow/border 0.3s ease-glassy.
+   7. prefers-reduced-motion global (di atas) tetap membekukan semua.
+   PRINSIP AMAN: layout kamera v100.10 TIDAK disentuh, hanya properti
+   opacity/transform/box-shadow/border — anti-flicker v82.2 tetap aman.
+   ======================================================================== */
+
+:root {
+  --ease-glassy: cubic-bezier(0.22, 1, 0.36, 1);   /* easeOutQuint — tail panjang */
+  --ease-soft-in: cubic-bezier(0.4, 0, 1, 1);       /* easeIn untuk fade-out */
+}
+
+/* fadeSoft diperkaya: fade + slide-up 8px (sangat halus, GPU-friendly) */
+@keyframes fadeSoft {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* fadeSoftFlat: untuk elemen yang TIDAK boleh slide (kamera, container
+   yang offset-nya sensitif terhadap transform) — fade-only, lebih lama */
+@keyframes fadeSoftFlat {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Boot: kerangka aplikasi & login muncul lebih lama + slide halus */
+.app-layout,
+.auth-gate-screen {
+  animation: fadeSoft 0.7s var(--ease-glassy);
+}
+
+/* Modal overlay: fade lebih halus & lebih lama */
+.modal-overlay.active {
+  animation: fadeSoftFlat 0.32s var(--ease-glassy);
+}
+
+/* Modal card: tambah slide-up + scale halus (sebelumnya hanya scale 0.25s)
+   Override animation di .modal-card (line 1067) — specificity sama, muncul
+   setelahnya → menang. Hanya opacity+transform (anti-flicker aman). */
+.modal-card {
+  animation: modalPopSmooth 0.4s var(--ease-glassy);
+}
+@keyframes modalPopSmooth {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* Fullscreen presensi: fade-only LEBIH LAMA (TANPA transform — layout
+   kamera v100.10 patuh viewport, tidak boleh digeser transform) */
+#presensi-fullscreen {
+  animation: fadeSoftFlat 0.5s var(--ease-glassy);
+}
+
+/* Tactile :active tombol: tambah TRANSITION (sebelumnya hanya scale instan).
+   Sekarang penekanan & pelepasan ikut ease halus — terasa "nyesel" lembut. */
+.btn-primary,
+.btn-secondary,
+.auth-submit-btn,
+.presensi-start-btn,
+.presensi-shutter-btn,
+.presensi-side-btn,
+.presensi-close-btn,
+.mode-btn,
+.tab-pill-btn,
+.icon-action-btn {
+  transition: transform 0.18s var(--ease-glassy),
+              box-shadow 0.22s var(--ease-glassy),
+              background-color 0.22s var(--ease-glassy),
+              border-color 0.22s var(--ease-glassy),
+              opacity 0.22s var(--ease-glassy);
+}
+.nav-item {
+  transition: transform 0.18s var(--ease-glassy),
+              background-color 0.22s var(--ease-glassy),
+              color 0.22s var(--ease-glassy);
+}
+
+/* Hover kartu: box-shadow & border-color lebih halus (lebih lama, ease-glassy)
+   — override transition inline di rule .modern-card (sebelumnya 0.2s ease). */
+.modern-card {
+  transition: box-shadow 0.32s var(--ease-glassy),
+              border-color 0.32s var(--ease-glassy),
+              transform 0.32s var(--ease-glassy);
+}
+.stat-card {
+  transition: transform 0.28s var(--ease-glassy),
+              box-shadow 0.28s var(--ease-glassy);
+}
