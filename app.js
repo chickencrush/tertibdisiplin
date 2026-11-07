@@ -4251,10 +4251,14 @@ window.presensiShutterClick = async () => {
   try {
     if (hasActiveCheckIn) await window.submitAttendanceCheckOut();
     else await window.submitAttendanceCheckIn();
+    // v100.16.1: Delay dikurangi dari 2000ms → 600ms. Toast container position:fixed
+    // (tetap kelihatan walau pindah view) → delay 2 detik tidak diperlukan, cukup
+    // beri jeda singkat supaya user sempat baca toast "Presensi berhasil!" sebelum
+    // layar kamera tertutup. Total presensi cepat ~1.4 detik lebih ringan.
     setTimeout(function () {
       window.closePresensiFullscreen && window.closePresensiFullscreen();
       if (typeof switchView === 'function') switchView('dashboard');
-    }, 2000);
+    }, 600);
   } catch (err) { console.error('Presensi shutter error:', err); }
   finally { if (shutter) shutter.disabled = false; }
 };

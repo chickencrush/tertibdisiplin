@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.16-no-autoload-fast-loading';  // v100.16: (1) NO auto-logout — 401 sporadis dari Apps Script tidak lagi kick user ke login screen. (2) Loading kirim Daily Report & foto presensi MAKSIMAL 2 DETIK (spinner + indikator global lepas di 2s, fetch tetap jalan di background). Mencakup v100.12-v100.15. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.16.1-fast-presensi-switch';  // v100.16.1: presensi shutter delay post-fetch dikurangi 2000ms → 600ms (toast position:fixed tetap kelihatan walau pindah view). Mencakup v100.12-v100.16 (Glassy Burgundy + motion + loading state + smoother + no auto-logout + loading 2s). Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',
