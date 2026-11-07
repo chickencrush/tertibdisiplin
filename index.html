@@ -697,6 +697,38 @@
               <i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Surat Perintah Lembur (SPL) Digital
             </button>
           </div>
+
+          <!-- Right: Today's Attendance Logs & Late Calculation -->
+          <div class="modern-card">
+            <div class="card-title-row">
+              <div>
+                <h3>Riwayat Presensi Hari Ini</h3>
+                <p style="font-size:11px; color:#64748b;">Perhitungan otomatis jam masuk, jam pulang, keterlambatan, dan denda lembur</p>
+              </div>
+              <button class="btn-secondary" onclick="loadAttendanceLogs()">
+                <i data-feather="refresh-cw" style="width:12px; height:12px;"></i> Segarkan
+              </button>
+            </div>
+
+            <div style="overflow-x:auto;">
+              <table class="payslip-table" id="attendance-table">
+                <thead>
+                  <tr>
+                    <th>Foto Selfie</th>
+                    <th>Nama & Divisi</th>
+                    <th>Outlet & Jarak</th>
+                    <th>Shift & Jam Masuk</th>
+                    <th>Jam Pulang</th>
+                    <th>Keterlambatan</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="attendance-tbody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
 
