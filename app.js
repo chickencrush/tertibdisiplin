@@ -4142,6 +4142,122 @@ const captureSelfieViaNativeCamera = () => new Promise((resolve) => {
 });
 
 // --- Submit Attendance (Check-in) with full UX feedback ---
+// ============================================================================
+// v100: FULL-SCREEN CAMERA VIEW
+// ============================================================================
+
+AppState.__presensiFullscreenOpen = false;
+
+window.openPresensiFullscreen = async () => {
+  const fs = document.getElementById('presensi-fullscreen');
+  if (!fs) { showToast('Elemen presensi tidak ditemukan.', 'error'); return; }
+  const h = window.innerHeight;
+  fs.style.display = 'block';
+  fs.style.height = h + 'px';
+  const container = fs.querySelector('.presensi-fullscreen-container');
+  if (container) container.style.height = h + 'px';
+  if (!AppState.__presensiResizeHandler) {
+    AppState.__presensiResizeHandler = function () {
+      if (AppState.__presensiFullscreenOpen) {
+        const newH = window.innerHeight;
+        fs.style.height = newH + 'px';
+        if (container) container.style.height = newH + 'px';
+      }
+    };
+    window.addEventListener('resize', AppState.__presensiResizeHandler);
+    window.addEventListener('orientationchange', function () { setTimeout(AppState.__presensiResizeHandler, 200); });
+  }
+  AppState.__presensiFullscreenOpen = true;
+  window.updatePresensiInfoPanel && window.updatePresensiInfoPanel();
+  window.startPresensiClock && window.startPresensiClock();
+  if (!AppState.gpsOk) { if (window.detectDeviceGPS) window.detectDeviceGPS(); }
+  if (window.startCamera) { try { await window.startCamera(); } catch (e) { console.warn('Camera start error:', e); } }
+  window.updatePresensiShutterLabel && window.updatePresensiShutterLabel();
+  if (window.feather) feather.replace();
+};
+window.openPresensiFullscreen = window.openPresensiFullscreen;
+
+window.closePresensiFullscreen = () => {
+  const fs = document.getElementById('presensi-fullscreen');
+  if (!fs) return;
+  fs.style.display = 'none';
+  AppState.__presensiFullscreenOpen = false;
+  if (AppState.__presensiClockInterval) { clearInterval(AppState.__presensiClockInterval); AppState.__presensiClockInterval = null; }
+  if (window.stopCamera) window.stopCamera();
+};
+window.closePresensiFullscreen = window.closePresensiFullscreen;
+
+window.updatePresensiInfoPanel = () => {
+  const now = new Date();
+  const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const dateStr = days[now.getDay()] + ', ' + now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear();
+  const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const dateEl = document.getElementById('presensi-fs-date');
+  const timeEl = document.getElementById('presensi-fs-time');
+  if (dateEl) dateEl.textContent = dateStr;
+  if (timeEl) timeEl.textContent = timeStr;
+  const shiftSel = document.getElementById('presensi-shift-select');
+  const shiftEl = document.getElementById('presensi-fs-shift');
+  if (shiftEl && shiftSel) shiftEl.textContent = shiftSel.value || 'Pilih shift';
+  const outletSel = document.getElementById('presensi-outlet-select');
+  const outletEl = document.getElementById('presensi-fs-outlet');
+  if (outletEl && outletSel) { outletEl.textContent = outletSel.selectedIndex >= 0 ? outletSel.options[outletSel.selectedIndex].text : '-'; }
+};
+window.updatePresensiInfoPanel = window.updatePresensiInfoPanel;
+
+window.startPresensiClock = () => {
+  if (AppState.__presensiClockInterval) clearInterval(AppState.__presensiClockInterval);
+  AppState.__presensiClockInterval = setInterval(function () {
+    window.updatePresensiInfoPanel && window.updatePresensiInfoPanel();
+    if (AppState.gpsOk) {
+      const banner = document.getElementById('presensi-fs-gps-banner');
+      if (banner && banner.style.display === 'none') { banner.style.display = 'flex'; }
+    }
+  }, 1000);
+};
+window.startPresensiClock = window.startPresensiClock;
+
+window.updatePresensiShutterLabel = () => {
+  const shutter = document.getElementById('presensi-shutter');
+  if (!shutter) return;
+  const nowMs = Date.now();
+  const cutoffMs = nowMs - (36 * 60 * 60 * 1000);
+  const candidates = (AppState.attendanceLogs || []).filter(l => {
+    if (l.employee_id !== AppState.currentUser.id) return false;
+    if (!l.check_in_time) return false;
+    if (l.check_out_time) return false;
+    try { const ciMs = new Date(String(l.check_in_time).replace(/-/g, '/')).getTime(); return !isNaN(ciMs) && ciMs >= cutoffMs; } catch (e) { return false; }
+  });
+  if (candidates.length > 0) { shutter.classList.add('checkout'); shutter.title = 'Presensi Pulang'; }
+  else { shutter.classList.remove('checkout'); shutter.title = 'Presensi Masuk'; }
+};
+window.updatePresensiShutterLabel = window.updatePresensiShutterLabel;
+
+window.presensiShutterClick = async () => {
+  const nowMs = Date.now();
+  const cutoffMs = nowMs - (36 * 60 * 60 * 1000);
+  const candidates = (AppState.attendanceLogs || []).filter(l => {
+    if (l.employee_id !== AppState.currentUser.id) return false;
+    if (!l.check_in_time) return false;
+    if (l.check_out_time) return false;
+    try { const ciMs = new Date(String(l.check_in_time).replace(/-/g, '/')).getTime(); return !isNaN(ciMs) && ciMs >= cutoffMs; } catch (e) { return false; }
+  });
+  const hasActiveCheckIn = candidates.length > 0;
+  const shutter = document.getElementById('presensi-shutter');
+  if (shutter) shutter.disabled = true;
+  try {
+    if (hasActiveCheckIn) await window.submitAttendanceCheckOut();
+    else await window.submitAttendanceCheckIn();
+    setTimeout(function () {
+      window.closePresensiFullscreen && window.closePresensiFullscreen();
+      if (typeof switchView === 'function') switchView('dashboard');
+    }, 2000);
+  } catch (err) { console.error('Presensi shutter error:', err); }
+  finally { if (shutter) shutter.disabled = false; }
+};
+window.presensiShutterClick = window.presensiShutterClick;
+
 window.submitAttendanceCheckIn = async () => {
   const outletSelect = document.getElementById('presensi-outlet-select');
   const shiftSelect = document.getElementById('presensi-shift-select');
