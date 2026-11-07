@@ -4142,6 +4142,163 @@ const captureSelfieViaNativeCamera = () => new Promise((resolve) => {
 });
 
 // --- Submit Attendance (Check-in) with full UX feedback ---
+// ============================================================================
+// v100: FULL-SCREEN CAMERA VIEW (glassy futuristic)
+// ============================================================================
+// Tombol "Presensi Sekarang" → buka full-screen camera view
+// Shutter button → auto-detect check-in atau check-out
+// Setelah sukses → auto-tutup full-screen + toast + kembali ke dashboard
+
+AppState.__presensiFullscreenOpen = false;
+
+// v100: Buka full-screen camera view
+window.openPresensiFullscreen = async () => {
+  const fs = document.getElementById('presensi-fullscreen');
+  if (!fs) { showToast('Elemen presensi tidak ditemukan.', 'error'); return; }
+  fs.style.display = 'block';
+  AppState.__presensiFullscreenOpen = true;
+  // Update info panel (date, time, shift, outlet)
+  window.updatePresensiInfoPanel && window.updatePresensiInfoPanel();
+  // Start live clock
+  window.startPresensiClock && window.startPresensiClock();
+  // Auto-detect GPS
+  if (!AppState.gpsOk) {
+    if (window.detectDeviceGPS) window.detectDeviceGPS();
+  }
+  // Start camera
+  if (window.startCamera) {
+    try { await window.startCamera(); } catch (e) { console.warn('Camera start error:', e); }
+  }
+  // Update shutter button label (check-in atau check-out)
+  window.updatePresensiShutterLabel && window.updatePresensiShutterLabel();
+  if (window.feather) feather.replace();
+};
+window.openPresensiFullscreen = window.openPresensiFullscreen;
+
+// v100: Tutup full-screen camera view
+window.closePresensiFullscreen = () => {
+  const fs = document.getElementById('presensi-fullscreen');
+  if (!fs) return;
+  fs.style.display = 'none';
+  AppState.__presensiFullscreenOpen = false;
+  // Stop clock
+  if (AppState.__presensiClockInterval) { clearInterval(AppState.__presensiClockInterval); AppState.__presensiClockInterval = null; }
+  // Stop camera (hemat baterai)
+  if (window.stopCamera) window.stopCamera();
+};
+window.closePresensiFullscreen = window.closePresensiFullscreen;
+
+// v100: Update info panel (date, time, shift, outlet)
+window.updatePresensiInfoPanel = () => {
+  const now = new Date();
+  const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const dateStr = days[now.getDay()] + ', ' + now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear();
+  const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const dateEl = document.getElementById('presensi-fs-date');
+  const timeEl = document.getElementById('presensi-fs-time');
+  if (dateEl) dateEl.textContent = dateStr;
+  if (timeEl) timeEl.textContent = timeStr;
+  // Shift
+  const shiftSel = document.getElementById('presensi-shift-select');
+  const shiftEl = document.getElementById('presensi-fs-shift');
+  if (shiftEl && shiftSel) shiftEl.textContent = shiftSel.value || 'Pilih shift';
+  // Outlet
+  const outletSel = document.getElementById('presensi-outlet-select');
+  const outletEl = document.getElementById('presensi-fs-outlet');
+  if (outletEl && outletSel) {
+    const outletText = outletSel.selectedIndex >= 0 ? outletSel.options[outletSel.selectedIndex].text : '-';
+    outletEl.textContent = outletText;
+  }
+};
+window.updatePresensiInfoPanel = window.updatePresensiInfoPanel;
+
+// v100: Live clock (update setiap detik)
+window.startPresensiClock = () => {
+  if (AppState.__presensiClockInterval) clearInterval(AppState.__presensiClockInterval);
+  AppState.__presensiClockInterval = setInterval(function () {
+    window.updatePresensiInfoPanel && window.updatePresensiInfoPanel();
+    // Update GPS banner kalau GPS sudah ok
+    if (AppState.gpsOk) {
+      const banner = document.getElementById('presensi-fs-gps-banner');
+      const bannerText = document.getElementById('presensi-fs-gps-text');
+      if (banner && banner.style.display === 'none') {
+        banner.style.display = 'flex';
+        if (bannerText) bannerText.textContent = 'Lokasi terdeteksi sesuai GPS Chicken Crush';
+      }
+    }
+  }, 1000);
+};
+window.startPresensiClock = window.startPresensiClock;
+
+// v100: Update shutter button label — check-in atau check-out
+window.updatePresensiShutterLabel = () => {
+  const shutter = document.getElementById('presensi-shutter');
+  if (!shutter) return;
+  // Cek apakah user sudah check-in hari ini (atau dalam 36 jam) tapi belum check-out
+  const nowMs = Date.now();
+  const cutoffMs = nowMs - (36 * 60 * 60 * 1000);
+  const candidates = (AppState.attendanceLogs || []).filter(l => {
+    if (l.employee_id !== AppState.currentUser.id) return false;
+    if (!l.check_in_time) return false;
+    if (l.check_out_time) return false;
+    try {
+      const ciMs = new Date(String(l.check_in_time).replace(/-/g, '/')).getTime();
+      return !isNaN(ciMs) && ciMs >= cutoffMs;
+    } catch (e) { return false; }
+  });
+  const hasActiveCheckIn = candidates.length > 0;
+  if (hasActiveCheckIn) {
+    // Mode check-out
+    shutter.classList.add('checkout');
+    shutter.title = 'Presensi Pulang';
+  } else {
+    // Mode check-in
+    shutter.classList.remove('checkout');
+    shutter.title = 'Presensi Masuk';
+  }
+};
+window.updatePresensiShutterLabel = window.updatePresensiShutterLabel;
+
+// v100: Shutter click — auto-detect check-in atau check-out
+window.presensiShutterClick = async () => {
+  const nowMs = Date.now();
+  const cutoffMs = nowMs - (36 * 60 * 60 * 1000);
+  const candidates = (AppState.attendanceLogs || []).filter(l => {
+    if (l.employee_id !== AppState.currentUser.id) return false;
+    if (!l.check_in_time) return false;
+    if (l.check_out_time) return false;
+    try {
+      const ciMs = new Date(String(l.check_in_time).replace(/-/g, '/')).getTime();
+      return !isNaN(ciMs) && ciMs >= cutoffMs;
+    } catch (e) { return false; }
+  });
+  const hasActiveCheckIn = candidates.length > 0;
+  // Disable shutter saat proses
+  const shutter = document.getElementById('presensi-shutter');
+  if (shutter) { shutter.disabled = true; }
+  try {
+    if (hasActiveCheckIn) {
+      // Check-out
+      await window.submitAttendanceCheckOut();
+    } else {
+      // Check-in
+      await window.submitAttendanceCheckIn();
+    }
+    // v100: Auto-tutup setelah sukses + kembali ke dashboard
+    setTimeout(function () {
+      window.closePresensiFullscreen && window.closePresensiFullscreen();
+      // Switch ke dashboard
+      if (typeof switchView === 'function') switchView('dashboard');
+    }, 2000);
+  } catch (err) {
+    console.error('Presensi shutter error:', err);
+  } finally {
+    if (shutter) { shutter.disabled = false; }
+  }
+};
+window.presensiShutterClick = window.presensiShutterClick;
+
 window.submitAttendanceCheckIn = async () => {
   const outletSelect = document.getElementById('presensi-outlet-select');
   const shiftSelect = document.getElementById('presensi-shift-select');
@@ -4502,6 +4659,9 @@ window.updateEarlyCheckoutUI = () => {
   const btnEarly = document.getElementById('btn-early-checkout');
   const btnCheckout = document.getElementById('btn-submit-checkout');
   const statusBox = document.getElementById('early-checkout-status-box');
+  // v100: Juga sync ke elemen kartu presensi (bukan hanya full-screen)
+  const btnEarlyCard = document.getElementById('btn-early-checkout-card');
+  const statusBoxCard = document.getElementById('early-checkout-status-box-card');
   if (!btnEarly || !btnCheckout) return;
 
   const att = findMyActiveAttendanceToday_();
@@ -4577,6 +4737,20 @@ window.updateEarlyCheckoutUI = () => {
       btnEarly.innerHTML = '<i data-feather="alert-circle" style="width:14px; height:14px;"></i> Ajukan Ulang Pulang Lebih Awal';
     }
     if (window.feather) feather.replace();
+  }
+  // v100: Sync ke elemen kartu presensi (bukan hanya full-screen)
+  if (btnEarlyCard) {
+    btnEarlyCard.style.display = btnEarly.style.display;
+    btnEarlyCard.disabled = btnEarly.disabled;
+    btnEarlyCard.style.opacity = btnEarly.style.opacity;
+    btnEarlyCard.innerHTML = btnEarly.innerHTML;
+  }
+  if (statusBoxCard && statusBox) {
+    statusBoxCard.style.display = statusBox.style.display;
+    statusBoxCard.style.background = statusBox.style.background;
+    statusBoxCard.style.border = statusBox.style.border;
+    statusBoxCard.style.color = statusBox.style.color;
+    statusBoxCard.innerHTML = statusBox.innerHTML;
   }
 };
 window.updateEarlyCheckoutUI = window.updateEarlyCheckoutUI;
@@ -5070,12 +5244,18 @@ window.loadLateArrivalRequests = window.loadLateArrivalRequests;
 window.updateLateArrivalUI = () => {
   const btnLate = document.getElementById('btn-late-arrival');
   const statusBox = document.getElementById('late-arrival-status-box');
+  // v100: Juga sync ke elemen kartu presensi (bukan hanya full-screen)
+  const btnLateCard = document.getElementById('btn-late-arrival-card');
+  const statusBoxCard = document.getElementById('late-arrival-status-box-card');
   if (!btnLate) return;
 
   // HANYA utk user Management
   if (!isManagementUser_(AppState.currentUser)) {
     btnLate.style.display = 'none';
     if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    // v100: sync kartu
+    if (btnLateCard) btnLateCard.style.display = 'none';
+    if (statusBoxCard) { statusBoxCard.style.display = 'none'; statusBoxCard.innerHTML = ''; }
     return;
   }
 
@@ -5149,6 +5329,20 @@ window.updateLateArrivalUI = () => {
       btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Ulang Izin Telat';
     }
     if (window.feather) feather.replace();
+  }
+  // v100: Sync ke elemen kartu presensi (bukan hanya full-screen)
+  if (btnLateCard) {
+    btnLateCard.style.display = btnLate.style.display;
+    btnLateCard.disabled = btnLate.disabled;
+    btnLateCard.style.opacity = btnLate.style.opacity;
+    btnLateCard.innerHTML = btnLate.innerHTML;
+  }
+  if (statusBoxCard && statusBox) {
+    statusBoxCard.style.display = statusBox.style.display;
+    statusBoxCard.style.background = statusBox.style.background;
+    statusBoxCard.style.border = statusBox.style.border;
+    statusBoxCard.style.color = statusBox.style.color;
+    statusBoxCard.innerHTML = statusBox.innerHTML;
   }
 };
 window.updateLateArrivalUI = window.updateLateArrivalUI;
