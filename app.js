@@ -4096,13 +4096,7 @@ const captureSelfieSnapshot = () => {
   canvas.width = video.videoWidth || 480;
   canvas.height = video.videoHeight || 360;
   const ctx = canvas.getContext('2d');
-  // v100.1: Flip horizontal supaya snapshot cocok dgn preview video yang
-  // sudah di-un-mirror (transform: scaleX(-1) di CSS). Tanpa ini, selfie
-  // base64 akan mirror (kanan-kiri terbalik) berbeda dari yang user lihat.
-  ctx.save();
-  ctx.scale(-1, 1);
-  ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-  ctx.restore();
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
   // Stamp current time & GPS on the snapshot
   ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
@@ -4148,181 +4142,6 @@ const captureSelfieViaNativeCamera = () => new Promise((resolve) => {
 });
 
 // --- Submit Attendance (Check-in) with full UX feedback ---
-// ============================================================================
-// v100: FULL-SCREEN CAMERA VIEW (glassy futuristic)
-// ============================================================================
-// Tombol "Presensi Sekarang" → buka full-screen camera view
-// Shutter button → auto-detect check-in atau check-out
-// Setelah sukses → auto-tutup full-screen + toast + kembali ke dashboard
-
-AppState.__presensiFullscreenOpen = false;
-
-// v100: Buka full-screen camera view
-window.openPresensiFullscreen = async () => {
-  const fs = document.getElementById('presensi-fullscreen');
-  if (!fs) { showToast('Elemen presensi tidak ditemukan.', 'error'); return; }
-  // v100.5: Set tinggi container = window.innerHeight (sudah exclude address bar Android/iPhone).
-  // CSS 100vh/100dvh tidak reliable di Android Chrome — address bar bikin viewport salah hitung.
-  const h = window.innerHeight;
-  fs.style.display = 'block';
-  fs.style.height = h + 'px';
-  const container = fs.querySelector('.presensi-fullscreen-container');
-  if (container) container.style.height = h + 'px';
-  // Listen resize (mis. saat address bar show/hide)
-  if (!AppState.__presensiResizeHandler) {
-    AppState.__presensiResizeHandler = function () {
-      if (AppState.__presensiFullscreenOpen) {
-        const newH = window.innerHeight;
-        fs.style.height = newH + 'px';
-        if (container) container.style.height = newH + 'px';
-      }
-    };
-    window.addEventListener('resize', AppState.__presensiResizeHandler);
-    window.addEventListener('orientationchange', function () { setTimeout(AppState.__presensiResizeHandler, 200); });
-  }
-  AppState.__presensiFullscreenOpen = true;
-  // Update info panel (date, time, shift, outlet)
-  window.updatePresensiInfoPanel && window.updatePresensiInfoPanel();
-  // Start live clock
-  window.startPresensiClock && window.startPresensiClock();
-  // Auto-detect GPS
-  if (!AppState.gpsOk) {
-    if (window.detectDeviceGPS) window.detectDeviceGPS();
-  }
-  // Start camera
-  if (window.startCamera) {
-    try { await window.startCamera(); } catch (e) { console.warn('Camera start error:', e); }
-  }
-  // Update shutter button label (check-in atau check-out)
-  window.updatePresensiShutterLabel && window.updatePresensiShutterLabel();
-  if (window.feather) feather.replace();
-};
-window.openPresensiFullscreen = window.openPresensiFullscreen;
-
-// v100: Tutup full-screen camera view
-window.closePresensiFullscreen = () => {
-  const fs = document.getElementById('presensi-fullscreen');
-  if (!fs) return;
-  fs.style.display = 'none';
-  AppState.__presensiFullscreenOpen = false;
-  // Stop clock
-  if (AppState.__presensiClockInterval) { clearInterval(AppState.__presensiClockInterval); AppState.__presensiClockInterval = null; }
-  // Stop camera (hemat baterai)
-  if (window.stopCamera) window.stopCamera();
-};
-window.closePresensiFullscreen = window.closePresensiFullscreen;
-
-// v100: Update info panel (date, time, shift, outlet)
-window.updatePresensiInfoPanel = () => {
-  const now = new Date();
-  const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-  const dateStr = days[now.getDay()] + ', ' + now.getDate() + ' ' + months[now.getMonth()] + ' ' + now.getFullYear();
-  const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  const dateEl = document.getElementById('presensi-fs-date');
-  const timeEl = document.getElementById('presensi-fs-time');
-  if (dateEl) dateEl.textContent = dateStr;
-  if (timeEl) timeEl.textContent = timeStr;
-  // Shift
-  const shiftSel = document.getElementById('presensi-shift-select');
-  const shiftEl = document.getElementById('presensi-fs-shift');
-  if (shiftEl && shiftSel) shiftEl.textContent = shiftSel.value || 'Pilih shift';
-  // Outlet
-  const outletSel = document.getElementById('presensi-outlet-select');
-  const outletEl = document.getElementById('presensi-fs-outlet');
-  if (outletEl && outletSel) {
-    const outletText = outletSel.selectedIndex >= 0 ? outletSel.options[outletSel.selectedIndex].text : '-';
-    outletEl.textContent = outletText;
-  }
-};
-window.updatePresensiInfoPanel = window.updatePresensiInfoPanel;
-
-// v100: Live clock (update setiap detik)
-window.startPresensiClock = () => {
-  if (AppState.__presensiClockInterval) clearInterval(AppState.__presensiClockInterval);
-  AppState.__presensiClockInterval = setInterval(function () {
-    window.updatePresensiInfoPanel && window.updatePresensiInfoPanel();
-    // Update GPS banner kalau GPS sudah ok
-    if (AppState.gpsOk) {
-      const banner = document.getElementById('presensi-fs-gps-banner');
-      const bannerText = document.getElementById('presensi-fs-gps-text');
-      if (banner && banner.style.display === 'none') {
-        banner.style.display = 'flex';
-        if (bannerText) bannerText.textContent = 'Lokasi terdeteksi sesuai GPS Chicken Crush';
-      }
-    }
-  }, 1000);
-};
-window.startPresensiClock = window.startPresensiClock;
-
-// v100: Update shutter button label — check-in atau check-out
-window.updatePresensiShutterLabel = () => {
-  const shutter = document.getElementById('presensi-shutter');
-  if (!shutter) return;
-  // Cek apakah user sudah check-in hari ini (atau dalam 36 jam) tapi belum check-out
-  const nowMs = Date.now();
-  const cutoffMs = nowMs - (36 * 60 * 60 * 1000);
-  const candidates = (AppState.attendanceLogs || []).filter(l => {
-    if (l.employee_id !== AppState.currentUser.id) return false;
-    if (!l.check_in_time) return false;
-    if (l.check_out_time) return false;
-    try {
-      const ciMs = new Date(String(l.check_in_time).replace(/-/g, '/')).getTime();
-      return !isNaN(ciMs) && ciMs >= cutoffMs;
-    } catch (e) { return false; }
-  });
-  const hasActiveCheckIn = candidates.length > 0;
-  if (hasActiveCheckIn) {
-    // Mode check-out
-    shutter.classList.add('checkout');
-    shutter.title = 'Presensi Pulang';
-  } else {
-    // Mode check-in
-    shutter.classList.remove('checkout');
-    shutter.title = 'Presensi Masuk';
-  }
-};
-window.updatePresensiShutterLabel = window.updatePresensiShutterLabel;
-
-// v100: Shutter click — auto-detect check-in atau check-out
-window.presensiShutterClick = async () => {
-  const nowMs = Date.now();
-  const cutoffMs = nowMs - (36 * 60 * 60 * 1000);
-  const candidates = (AppState.attendanceLogs || []).filter(l => {
-    if (l.employee_id !== AppState.currentUser.id) return false;
-    if (!l.check_in_time) return false;
-    if (l.check_out_time) return false;
-    try {
-      const ciMs = new Date(String(l.check_in_time).replace(/-/g, '/')).getTime();
-      return !isNaN(ciMs) && ciMs >= cutoffMs;
-    } catch (e) { return false; }
-  });
-  const hasActiveCheckIn = candidates.length > 0;
-  // Disable shutter saat proses
-  const shutter = document.getElementById('presensi-shutter');
-  if (shutter) { shutter.disabled = true; }
-  try {
-    if (hasActiveCheckIn) {
-      // Check-out
-      await window.submitAttendanceCheckOut();
-    } else {
-      // Check-in
-      await window.submitAttendanceCheckIn();
-    }
-    // v100: Auto-tutup setelah sukses + kembali ke dashboard
-    setTimeout(function () {
-      window.closePresensiFullscreen && window.closePresensiFullscreen();
-      // Switch ke dashboard
-      if (typeof switchView === 'function') switchView('dashboard');
-    }, 2000);
-  } catch (err) {
-    console.error('Presensi shutter error:', err);
-  } finally {
-    if (shutter) { shutter.disabled = false; }
-  }
-};
-window.presensiShutterClick = window.presensiShutterClick;
-
 window.submitAttendanceCheckIn = async () => {
   const outletSelect = document.getElementById('presensi-outlet-select');
   const shiftSelect = document.getElementById('presensi-shift-select');
@@ -4683,99 +4502,53 @@ window.updateEarlyCheckoutUI = () => {
   const btnEarly = document.getElementById('btn-early-checkout');
   const btnCheckout = document.getElementById('btn-submit-checkout');
   const statusBox = document.getElementById('early-checkout-status-box');
-  // v100: Juga sync ke elemen kartu presensi (bukan hanya full-screen)
   const btnEarlyCard = document.getElementById('btn-early-checkout-card');
   const statusBoxCard = document.getElementById('early-checkout-status-box-card');
   if (!btnEarly || !btnCheckout) return;
-
   const att = findMyActiveAttendanceToday_();
   if (!att) {
-    // Belum check-in atau sudah check-out → sembunyikan tombol & status
     btnEarly.style.display = 'none';
+    if (btnEarlyCard) btnEarlyCard.style.display = 'none';
     if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    if (statusBoxCard) { statusBoxCard.style.display = 'none'; statusBoxCard.innerHTML = ''; }
     btnCheckout.disabled = false;
-    btnCheckout.style.opacity = '1';
-    btnCheckout.style.cursor = 'pointer';
     return;
   }
-
-  // Sudah check-in, belum check-out → tampilkan tombol ajukan
   btnEarly.style.display = '';
-
-  // Cek pengajuan untuk attendance_id ini
+  if (btnEarlyCard) btnEarlyCard.style.display = '';
   const req = findMyEarlyCheckoutForAtt_(att.id);
   if (!req) {
-    // Tidak ada pengajuan → checkout normal, sembunyikan status
     if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    if (statusBoxCard) { statusBoxCard.style.display = 'none'; statusBoxCard.innerHTML = ''; }
     btnCheckout.disabled = false;
-    btnCheckout.style.opacity = '1';
-    btnCheckout.style.cursor = 'pointer';
-    btnEarly.innerHTML = '<i data-feather="alert-circle" style="width:14px; height:14px;"></i> Ajukan Pulang Lebih Awal';
-    btnEarly.disabled = false;
-    btnEarly.style.opacity = '1';
+    const h = '<i data-feather="alert-circle" style="width:14px; height:14px;"></i> Ajukan Pulang Lebih Awal';
+    btnEarly.innerHTML = h; btnEarly.disabled = false; btnEarly.style.opacity = '1';
+    if (btnEarlyCard) { btnEarlyCard.innerHTML = h; btnEarlyCard.disabled = false; btnEarlyCard.style.opacity = '1'; }
     if (window.feather) feather.replace();
     return;
   }
-
-  // Ada pengajuan → tampilkan status sesuai status-nya
-  if (statusBox) {
-    statusBox.style.display = '';
-    if (String(req.status) === 'Pending') {
-      statusBox.style.background = '#fef3c7';
-      statusBox.style.border = '1px solid #fde68a';
-      statusBox.style.color = '#92400e';
-      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Pengajuan pulang lebih awal MENUNGGU approval.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Tombol Presensi Pulang di-block sampai disetujui atasan. Kalau berubah pikiran, <a href="#" onclick="window.cancelMyEarlyCheckout(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan pengajuan</a>.</p>' +
-        '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"><button type="button" style="padding:6px 12px; font-size:11px; font-weight:600; background:#25D366; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.resendEarlyCheckoutWA()"><i data-feather="message-circle" style="width:12px; height:12px; vertical-align:middle;"></i> 📨 Kirim WA ke Atasan</button>' +
-        (req.estimated_checkout ? '<span style="padding:6px 10px; font-size:10.5px; background:#fff; border:1px solid #fde68a; border-radius:6px; color:#92400e;">🕐 Rencana pulang: <strong>' + escapeHtml(req.estimated_checkout) + '</strong></span>' : '') +
-        '</div></div></div>';
-      // BLOCK checkout
-      btnCheckout.disabled = true;
-      btnCheckout.style.opacity = '0.5';
-      btnCheckout.style.cursor = 'not-allowed';
-      btnEarly.disabled = true;
-      btnEarly.style.opacity = '0.5';
-      btnEarly.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Pengajuan menunggu approval...';
-    } else if (String(req.status) === 'Approved') {
-      statusBox.style.background = '#ecfdf5';
-      statusBox.style.border = '1px solid #a7f3d0';
-      statusBox.style.color = '#065f46';
-      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">✅</span><div><strong>Izin pulang lebih awal DISETUJUI.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda sekarang bisa presensi pulang kapan saja — jam aktual akan dicatat.' + (req.approver_note ? ' Catatan atasan: ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
-      // ENABLE checkout
-      btnCheckout.disabled = false;
-      btnCheckout.style.opacity = '1';
-      btnCheckout.style.cursor = 'pointer';
-      btnEarly.disabled = true;
-      btnEarly.style.opacity = '0.5';
-      btnEarly.innerHTML = '<i data-feather="check-circle" style="width:14px; height:14px;"></i> Pengajuan disetujui';
-    } else if (String(req.status) === 'Rejected') {
-      statusBox.style.background = '#fef2f2';
-      statusBox.style.border = '1px solid #fecaca';
-      statusBox.style.color = '#991b1b';
-      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">❌</span><div><strong>Pengajuan pulang lebih awal DITOLAK.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda harus presensi pulang sesuai jam akhir shift.' + (req.approver_note ? ' Alasan penolakan: ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
-      // ENABLE checkout (karyawan harus checkout normal)
-      btnCheckout.disabled = false;
-      btnCheckout.style.opacity = '1';
-      btnCheckout.style.cursor = 'pointer';
-      btnEarly.disabled = false;
-      btnEarly.style.opacity = '1';
-      btnEarly.innerHTML = '<i data-feather="alert-circle" style="width:14px; height:14px;"></i> Ajukan Ulang Pulang Lebih Awal';
-    }
-    if (window.feather) feather.replace();
+  function setBox(box, bg, border, color, html) { if (box) { box.style.display = ''; box.style.background = bg; box.style.border = border; box.style.color = color; box.innerHTML = html; } }
+  function setBtn(btn, card, html, disabled, opacity) { btn.innerHTML = html; btn.disabled = disabled; btn.style.opacity = opacity; if (card) { card.innerHTML = html; card.disabled = disabled; card.style.opacity = opacity; } }
+  if (String(req.status) === 'Pending') {
+    const html = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Pengajuan pulang lebih awal MENUNGGU approval.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Tombol Presensi Pulang di-block sampai disetujui atasan. <a href="#" onclick="window.cancelMyEarlyCheckout(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan</a>.</p><div style="margin-top:6px;"><button type="button" style="padding:5px 10px; font-size:10px; font-weight:600; background:#25D366; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.resendEarlyCheckoutWA()">📨 Kirim WA</button>' + (req.estimated_checkout ? ' <span style="font-size:10px;">🕐 ' + escapeHtml(req.estimated_checkout) + '</span>' : '') + '</div></div></div>';
+    setBox(statusBox, '#fef3c7', '1px solid #fde68a', '#92400e', html);
+    setBox(statusBoxCard, '#fef3c7', '1px solid #fde68a', '#92400e', html);
+    btnCheckout.disabled = true;
+    setBtn(btnEarly, btnEarlyCard, '<i data-feather="clock" style="width:14px; height:14px;"></i> Menunggu approval...', true, '0.5');
+  } else if (String(req.status) === 'Approved') {
+    const html = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">✅</span><div><strong>DISETUJUI.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda bisa presensi pulang kapan saja.' + (req.approver_note ? ' ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
+    setBox(statusBox, '#ecfdf5', '1px solid #a7f3d0', '#065f46', html);
+    setBox(statusBoxCard, '#ecfdf5', '1px solid #a7f3d0', '#065f46', html);
+    btnCheckout.disabled = false;
+    setBtn(btnEarly, btnEarlyCard, '<i data-feather="check-circle" style="width:14px; height:14px;"></i> Disetujui', true, '0.5');
+  } else if (String(req.status) === 'Rejected') {
+    const html = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">❌</span><div><strong>DITOLAK.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda harus presensi pulang sesuai jam akhir shift.' + (req.approver_note ? ' ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
+    setBox(statusBox, '#fef2f2', '1px solid #fecaca', '#991b1b', html);
+    setBox(statusBoxCard, '#fef2f2', '1px solid #fecaca', '#991b1b', html);
+    btnCheckout.disabled = false;
+    setBtn(btnEarly, btnEarlyCard, '<i data-feather="alert-circle" style="width:14px; height:14px;"></i> Ajukan Ulang Pulang Lebih Awal', false, '1');
   }
-  // v100: Sync ke elemen kartu presensi (bukan hanya full-screen)
-  if (btnEarlyCard) {
-    btnEarlyCard.style.display = btnEarly.style.display;
-    btnEarlyCard.disabled = btnEarly.disabled;
-    btnEarlyCard.style.opacity = btnEarly.style.opacity;
-    btnEarlyCard.innerHTML = btnEarly.innerHTML;
-  }
-  if (statusBoxCard && statusBox) {
-    statusBoxCard.style.display = statusBox.style.display;
-    statusBoxCard.style.background = statusBox.style.background;
-    statusBoxCard.style.border = statusBox.style.border;
-    statusBoxCard.style.color = statusBox.style.color;
-    statusBoxCard.innerHTML = statusBox.innerHTML;
-  }
+  if (window.feather) feather.replace();
 };
 window.updateEarlyCheckoutUI = window.updateEarlyCheckoutUI;
 
@@ -5268,106 +5041,70 @@ window.loadLateArrivalRequests = window.loadLateArrivalRequests;
 window.updateLateArrivalUI = () => {
   const btnLate = document.getElementById('btn-late-arrival');
   const statusBox = document.getElementById('late-arrival-status-box');
-  // v100: Juga sync ke elemen kartu presensi (bukan hanya full-screen)
   const btnLateCard = document.getElementById('btn-late-arrival-card');
   const statusBoxCard = document.getElementById('late-arrival-status-box-card');
   if (!btnLate) return;
-
-  // HANYA utk user Management
   if (!isManagementUser_(AppState.currentUser)) {
     btnLate.style.display = 'none';
-    if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
-    // v100: sync kartu
     if (btnLateCard) btnLateCard.style.display = 'none';
+    if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
     if (statusBoxCard) { statusBoxCard.style.display = 'none'; statusBoxCard.innerHTML = ''; }
     return;
   }
-
-  // Cek shift yang sedang dipilih di dropdown presensi
   const shiftSelect = document.getElementById('presensi-shift-select');
   const selectedShift = shiftSelect ? shiftSelect.value : '';
   if (!selectedShift) {
     btnLate.style.display = 'none';
+    if (btnLateCard) btnLateCard.style.display = 'none';
     if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    if (statusBoxCard) { statusBoxCard.style.display = 'none'; statusBoxCard.innerHTML = ''; }
     return;
   }
-
-  // Kalau sudah check-in utk shift tsb → sembunyikan tombol (tidak bisa ajukan retroaktif)
   if (hasCheckedInToday_(selectedShift)) {
     btnLate.style.display = 'none';
-    // Tapi tetap tampilkan status kalau ada pengajuan Approved (info "absen tanpa denda sudah dipakai")
+    if (btnLateCard) btnLateCard.style.display = 'none';
     const req = findMyLateArrivalForShift_(selectedShift);
     if (req && String(req.status) === 'Approved' && statusBox) {
-      statusBox.style.display = '';
-      statusBox.style.background = '#ecfdf5';
-      statusBox.style.border = '1px solid #a7f3d0';
-      statusBox.style.color = '#065f46';
-      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">✅</span><div><strong>Izin berangkit telat sudah dipakai.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda sudah absen masuk shift ini — denda keterlambatan otomatis dihapus berdasarkan izin yang disetujui.</p></div></div>';
-    } else if (statusBox) {
-      statusBox.style.display = 'none';
-      statusBox.innerHTML = '';
-    }
+      statusBox.style.display = ''; statusBox.style.background = '#ecfdf5'; statusBox.style.border = '1px solid #a7f3d0'; statusBox.style.color = '#065f46';
+      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">✅</span><div><strong>Izin telat sudah dipakai.</strong></div></div>';
+    } else if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    if (statusBoxCard) { statusBoxCard.style.display = 'none'; statusBoxCard.innerHTML = ''; }
     return;
   }
-
-  // Belum check-in → tampilkan tombol
   btnLate.style.display = '';
-  btnLate.disabled = false;
-  btnLate.style.opacity = '1';
+  btnLate.disabled = false; btnLate.style.opacity = '1';
   btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Izin Berangkit Telat';
-
-  // Cek pengajuan utk shift tsb
+  if (btnLateCard) { btnLateCard.style.display = ''; btnLateCard.disabled = false; btnLateCard.style.opacity = '1'; btnLateCard.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Izin Berangkit Telat'; }
   const req = findMyLateArrivalForShift_(selectedShift);
   if (!req) {
     if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }
+    if (statusBoxCard) { statusBoxCard.style.display = 'none'; statusBoxCard.innerHTML = ''; }
     if (window.feather) feather.replace();
     return;
   }
-
-  // Ada pengajuan → tampilkan status
-  if (statusBox) {
-    statusBox.style.display = '';
-    if (String(req.status) === 'Pending') {
-      statusBox.style.background = '#fef3c7';
-      statusBox.style.border = '1px solid #fde68a';
-      statusBox.style.color = '#92400e';
-      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Pengajuan izin berangkit telat MENUNGGU approval.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Untuk shift ' + escapeHtml(selectedShift) + '. Kalau berubah pikiran, <a href="#" onclick="window.cancelMyLateArrival(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan pengajuan</a>.</p>' +
-        '<div style="margin-top:8px;"><button type="button" style="padding:6px 12px; font-size:11px; font-weight:600; background:#25D366; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="window.resendLateArrivalWA()"><i data-feather="message-circle" style="width:12px; height:12px; vertical-align:middle;"></i> 📨 Kirim WA ke Atasan</button></div>' +
-        '</div></div>';
-      btnLate.disabled = true;
-      btnLate.style.opacity = '0.5';
-      btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Pengajuan menunggu approval...';
-    } else if (String(req.status) === 'Approved') {
-      statusBox.style.background = '#ecfdf5';
-      statusBox.style.border = '1px solid #a7f3d0';
-      statusBox.style.color = '#065f46';
-      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">✅</span><div><strong>Izin berangkit telat DISETUJUI.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Untuk shift ' + escapeHtml(selectedShift) + '. Anda bisa absen masuk kapan saja hari ini — denda keterlambatan otomatis dihapus (status: "Hadir Tepat Waktu (Izin Telat)").' + (req.approver_note ? ' Catatan atasan: ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
-      btnLate.disabled = true;
-      btnLate.style.opacity = '0.5';
-      btnLate.innerHTML = '<i data-feather="check-circle" style="width:14px; height:14px;"></i> Izin telat disetujui';
-    } else if (String(req.status) === 'Rejected') {
-      statusBox.style.background = '#fef2f2';
-      statusBox.style.border = '1px solid #fecaca';
-      statusBox.style.color = '#991b1b';
-      statusBox.innerHTML = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">❌</span><div><strong>Pengajuan izin berangkit telat DITOLAK.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Untuk shift ' + escapeHtml(selectedShift) + '. Anda harus absen tepat waktu atau dikenakan denda keterlambatan normal.' + (req.approver_note ? ' Alasan penolakan: ' + escapeHtml(req.approver_note) : '') + '</p></div></div>';
-      btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Ulang Izin Telat';
-    }
-    if (window.feather) feather.replace();
+  function setBox(box, bg, border, color, html) { if (box) { box.style.display = ''; box.style.background = bg; box.style.border = border; box.style.color = color; box.innerHTML = html; } }
+  if (String(req.status) === 'Pending') {
+    const html = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">⏳</span><div><strong>Izin telat MENUNGGU approval.</strong> <a href="#" onclick="window.cancelMyLateArrival(\'' + req.id + '\'); return false;" style="color:#92400e; text-decoration:underline;">batalkan</a></div></div>';
+    setBox(statusBox, '#fef3c7', '1px solid #fde68a', '#92400e', html);
+    setBox(statusBoxCard, '#fef3c7', '1px solid #fde68a', '#92400e', html);
+    btnLate.disabled = true; btnLate.style.opacity = '0.5';
+    btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Menunggu approval...';
+    if (btnLateCard) { btnLateCard.disabled = true; btnLateCard.style.opacity = '0.5'; btnLateCard.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Menunggu approval...'; }
+  } else if (String(req.status) === 'Approved') {
+    const html = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">✅</span><div><strong>Izin telat DISETUJUI.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda bisa absen telat tanpa denda.</p></div></div>';
+    setBox(statusBox, '#ecfdf5', '1px solid #a7f3d0', '#065f46', html);
+    setBox(statusBoxCard, '#ecfdf5', '1px solid #a7f3d0', '#065f46', html);
+    btnLate.disabled = true; btnLate.style.opacity = '0.5';
+    btnLate.innerHTML = '<i data-feather="check-circle" style="width:14px; height:14px;"></i> Disetujui';
+    if (btnLateCard) { btnLateCard.disabled = true; btnLateCard.style.opacity = '0.5'; btnLateCard.innerHTML = '<i data-feather="check-circle" style="width:14px; height:14px;"></i> Disetujui'; }
+  } else if (String(req.status) === 'Rejected') {
+    const html = '<div style="display:flex; align-items:flex-start; gap:8px;"><span style="font-size:18px;">❌</span><div><strong>Izin telat DITOLAK.</strong><p style="margin:4px 0 0 0; font-size:10.5px;">Anda harus absen tepat waktu.</p></div></div>';
+    setBox(statusBox, '#fef2f2', '1px solid #fecaca', '#991b1b', html);
+    setBox(statusBoxCard, '#fef2f2', '1px solid #fecaca', '#991b1b', html);
+    btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Ulang Izin Telat';
+    if (btnLateCard) btnLateCard.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Ulang Izin Telat';
   }
-  // v100: Sync ke elemen kartu presensi (bukan hanya full-screen)
-  if (btnLateCard) {
-    btnLateCard.style.display = btnLate.style.display;
-    btnLateCard.disabled = btnLate.disabled;
-    btnLateCard.style.opacity = btnLate.style.opacity;
-    btnLateCard.innerHTML = btnLate.innerHTML;
-  }
-  if (statusBoxCard && statusBox) {
-    statusBoxCard.style.display = statusBox.style.display;
-    statusBoxCard.style.background = statusBox.style.background;
-    statusBoxCard.style.border = statusBox.style.border;
-    statusBoxCard.style.color = statusBox.style.color;
-    statusBoxCard.innerHTML = statusBox.innerHTML;
-  }
+  if (window.feather) feather.replace();
 };
 window.updateLateArrivalUI = window.updateLateArrivalUI;
 
