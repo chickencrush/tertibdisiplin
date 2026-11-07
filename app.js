@@ -5189,8 +5189,8 @@ window.updateLateArrivalUI = () => {
   }
   btnLate.style.display = '';
   btnLate.disabled = false; btnLate.style.opacity = '1';
-  btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Izin Berangkit Telat';
-  if (btnLateCard) { btnLateCard.style.display = ''; btnLateCard.disabled = false; btnLateCard.style.opacity = '1'; btnLateCard.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Izin Berangkit Telat'; }
+  btnLate.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Izin Telat';
+  if (btnLateCard) { btnLateCard.style.display = ''; btnLateCard.disabled = false; btnLateCard.style.opacity = '1'; btnLateCard.innerHTML = '<i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Izin Telat'; }
   const req = findMyLateArrivalForShift_(selectedShift);
   if (!req) {
     if (statusBox) { statusBox.style.display = 'none'; statusBox.innerHTML = ''; }

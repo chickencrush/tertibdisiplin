@@ -689,7 +689,7 @@
               <i data-feather="alert-circle" style="width:14px; height:14px;"></i> Ajukan Pulang Lebih Awal
             </button>
             <button class="btn-secondary" type="button" style="width:100%; margin-top:8px; justify-content:center; display:none;" id="btn-late-arrival-card" onclick="window.openLateArrivalModal && window.openLateArrivalModal()">
-              <i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Izin Berangkit Telat
+              <i data-feather="clock" style="width:14px; height:14px;"></i> Ajukan Izin Telat
             </button>
 
             <!-- SPL Overtime Button -->
@@ -1950,7 +1950,7 @@
           <div class="modern-card">
             <div class="card-title-row">
               <div>
-                <h3>Approval Pengajuan Izin Berangkit Telat</h3>
+                <h3>Approval Pengajuan Izin Telat</h3>
                 <p style="font-size:12px; color:#64748b;">Daftar karyawan Management yang mengajukan izin berangkit telat. Setujui → karyawan bisa absen telat tanpa denda keterlambatan.</p>
               </div>
               <span class="card-badge-tag" id="sa-latearrival-count" style="background:#f1f5f9; color:#475569;">-</span>
@@ -3068,11 +3068,11 @@
      sudah setuju → modal-agreement-view (baca ulang). -->
 <!-- v92.1: display:none inline DIHAPUS (menimpa class .active — modal tak pernah tampil);
      container pakai .modal-card (class standar yang ada di style.css) -->
-<!-- v94: Modal Ajukan Izin Berangkit Telat (karyawan Management) -->
+<!-- v94: Modal Ajukan Izin Telat (karyawan Management) -->
 <div class="modal-overlay" id="modal-late-arrival" style="z-index:9998;">
   <div class="modal-card" style="max-width:560px; width:96%; max-height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
     <div style="padding:16px 20px; background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:#fff; flex-shrink:0;">
-      <h3 style="margin:0; font-size:15px;"><i data-feather="clock" style="width:16px; height:16px; vertical-align:middle;"></i> Ajukan Izin Berangkit Telat</h3>
+      <h3 style="margin:0; font-size:15px;"><i data-feather="clock" style="width:16px; height:16px; vertical-align:middle;"></i> Ajukan Izin Telat</h3>
       <p style="margin:4px 0 0 0; font-size:11px; opacity:0.9;">Khusus user Management. Setelah disetujui, Anda bisa absen telat tanpa denda.</p>
     </div>
     <div style="flex:1; overflow-y:auto; padding:18px 20px;">
@@ -3109,11 +3109,11 @@
   </div>
 </div>
 
-<!-- v94: Modal Approval Pengajuan Izin Berangkit Telat (approver — PCD/Super Admin) -->
+<!-- v94: Modal Approval Pengajuan Izin Telat (approver — PCD/Super Admin) -->
 <div class="modal-overlay" id="modal-late-arrival-approval" style="z-index:9998;">
   <div class="modal-card" style="max-width:560px; width:96%; max-height:90vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
     <div style="padding:16px 20px; background:linear-gradient(135deg, var(--burgundy-primary), var(--burgundy-soft)); color:#fff; flex-shrink:0;">
-      <h3 style="margin:0; font-size:15px;"><i data-feather="check-square" style="width:16px; height:16px; vertical-align:middle;"></i> Approval Izin Berangkit Telat</h3>
+      <h3 style="margin:0; font-size:15px;"><i data-feather="check-square" style="width:16px; height:16px; vertical-align:middle;"></i> Approval Izin Telat</h3>
       <p style="margin:4px 0 0 0; font-size:11px; opacity:0.9;">Detail pengajuan karyawan — setujui atau tolak.</p>
     </div>
     <div id="late-arrival-approval-content" style="flex:1; overflow-y:auto; padding:18px 20px; font-size:12.5px; line-height:1.6;">
