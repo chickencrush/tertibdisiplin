@@ -3250,35 +3250,33 @@ select.form-control {
 
 
 /* ========================================================================
-   v100.4: FULL-SCREEN CAMERA VIEW (kamera pas di tengah)
+   v100.5: FULL-SCREEN CAMERA VIEW (fix Android — pakai JS set height)
    ------------------------------------------------------------------------
-   Camera feed & face box keduanya di tengah viewport (center vertically
-   & horizontally). Semua elemen kontrol pakai persentase viewport.
+   Container tinggi di-set oleh JavaScript (window.innerHeight).
+   Semua elemen kontrol pakai position:fixed supaya langsung relatif
+   ke browser viewport (bukan container yang mungkin salah tinggi).
    ======================================================================== */
 
-/* Full-screen overlay */
+/* Full-screen overlay — fixed ke viewport */
 #presensi-fullscreen {
   position: fixed !important;
-  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
   z-index: 9999 !important;
   background: #000 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  height: 100dvh !important;
+  /* Tinggi di-set oleh JS (window.innerHeight) — tidak pakai CSS 100vh */
 }
 
 .presensi-fullscreen-container {
   position: relative;
   width: 100%;
-  height: 100%;
   background: #000;
   overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  /* Tinggi di-set oleh JS */
 }
 
-/* Camera background — pas di tengah, object-fit: cover */
+/* Camera background — full cover */
 .presensi-camera-bg {
   position: absolute;
   top: 0;
@@ -3291,7 +3289,7 @@ select.form-control {
   -webkit-transform: scaleX(-1);
 }
 
-/* Face detection box — KOTAK, pas di tengah viewport */
+/* Face detection box — KOTAK, pas di tengah */
 .presensi-face-ring {
   position: absolute;
   top: 50%;
@@ -3307,33 +3305,25 @@ select.form-control {
   pointer-events: none;
   transition: all 0.3s ease;
 }
-.presensi-face-ring.detected {
-  border-color: #10b981;
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
-}
-.presensi-face-ring.no-face {
-  border-color: #f59e0b;
-  box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
-}
+.presensi-face-ring.detected { border-color: #10b981; box-shadow: 0 0 20px rgba(16, 185, 129, 0.5); }
+.presensi-face-ring.no-face { border-color: #f59e0b; box-shadow: 0 0 20px rgba(245, 158, 11, 0.4); }
 
 /* Corner brackets */
 .presensi-corner {
   position: absolute;
-  width: 30px;
-  height: 30px;
+  width: 30px; height: 30px;
   border: 3px solid rgba(255, 255, 255, 0.5);
-  z-index: 3;
-  pointer-events: none;
+  z-index: 3; pointer-events: none;
 }
 .presensi-corner-tl { top: 12px; left: 12px; border-right: none; border-bottom: none; border-radius: 8px 0 0 0; }
 .presensi-corner-tr { top: 12px; right: 12px; border-left: none; border-bottom: none; border-radius: 0 8px 0 0; }
 .presensi-corner-bl { bottom: 12px; left: 12px; border-right: none; border-top: none; border-radius: 0 0 0 8px; }
 .presensi-corner-br { bottom: 12px; right: 12px; border-left: none; border-top: none; border-radius: 0 0 8px 0; }
 
-/* Header panel (top) */
+/* Header panel — position:fixed supaya relatif browser viewport */
 .presensi-overlay-panel {
-  position: absolute;
-  z-index: 10;
+  position: fixed;
+  z-index: 10001;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(15px) saturate(150%);
   -webkit-backdrop-filter: blur(15px) saturate(150%);
@@ -3353,14 +3343,14 @@ select.form-control {
   max-width: 92%;
 }
 
-/* Face hint — di bawah face box */
+/* Face hint — position:fixed */
 .presensi-face-hint {
-  position: absolute;
+  position: fixed;
   top: 50%;
   left: 50%;
   transform: translateX(-50%);
   margin-top: 50px;
-  z-index: 10;
+  z-index: 10001;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -3374,30 +3364,26 @@ select.form-control {
   text-align: center;
 }
 
-/* Controls row (shutter + side buttons) */
+/* Controls row — position:fixed (paling penting! supaya tidak hilang di Android) */
 .presensi-controls-row {
-  position: absolute;
-  bottom: 22%;
+  position: fixed;
+  bottom: 120px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 11;
+  z-index: 10001;
   display: flex;
   align-items: center;
   gap: 28px;
 }
 .presensi-shutter-btn {
-  width: 64px;
-  height: 64px;
+  width: 64px; height: 64px;
   border-radius: 50%;
   border: 4px solid #fff;
   background: linear-gradient(135deg, #701c34, #4a0e21);
   cursor: pointer;
   box-shadow: 0 0 20px rgba(112, 28, 52, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 22px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 22px;
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
@@ -3408,36 +3394,30 @@ select.form-control {
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
 }
 .presensi-side-btn {
-  width: 44px;
-  height: 44px;
+  width: 44px; height: 44px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #f1f5f9;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  color: #f1f5f9; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
   font-size: 16px;
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
 .presensi-side-btn:hover { background: rgba(255, 255, 255, 0.15); transform: scale(1.05); }
 
-/* Info panel */
+/* Info panel — position:fixed */
 .presensi-info-panel {
-  position: absolute;
-  bottom: 10%;
+  position: fixed;
+  bottom: 55px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10;
+  z-index: 10001;
   display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: center;
+  gap: 10px; align-items: center;
+  flex-wrap: wrap; justify-content: center;
   max-width: 95%;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(10px);
@@ -3452,28 +3432,23 @@ select.form-control {
 .presensi-info-item strong { color: #f1f5f9; }
 .presensi-info-divider { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.1); }
 
-/* GPS banner */
+/* GPS banner — position:fixed */
 .presensi-gps-banner {
-  position: absolute;
-  bottom: 2%;
+  position: fixed;
+  bottom: 10px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  z-index: 10001;
+  display: flex; align-items: center; gap: 8px;
   background: rgba(16, 185, 129, 0.85);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid #10b981;
   border-radius: 12px;
   padding: 7px 14px;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
+  color: #fff; font-size: 11px; font-weight: 600;
   box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
-  max-width: 90%;
-  text-align: center;
+  max-width: 90%; text-align: center;
 }
 .presensi-gps-banner.error { background: rgba(239, 68, 68, 0.85); border-color: #ef4444; }
 .presensi-gps-banner.warning { background: rgba(245, 158, 11, 0.85); border-color: #f59e0b; }
@@ -3491,28 +3466,25 @@ select.form-control {
   box-shadow: 0 4px 16px rgba(112, 28, 52, 0.3) !important;
   transition: all 0.3s ease;
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
 }
 .presensi-start-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(112, 28, 52, 0.4) !important; }
 
-/* Mobile responsive */
+/* Mobile responsive — adjust posisi fixed */
 @media (max-width: 600px) {
-  .presensi-controls-row { gap: 20px; bottom: 20%; }
+  .presensi-controls-row { gap: 20px; bottom: 100px; }
   .presensi-shutter-btn { width: 56px; height: 56px; font-size: 19px; border-width: 3px; }
   .presensi-side-btn { width: 40px; height: 40px; font-size: 14px; }
   .presensi-face-hint { margin-top: 40px; font-size: 10px; padding: 4px 12px; }
-  .presensi-info-panel { font-size: 10px; gap: 6px; padding: 5px 8px; bottom: 9%; }
-  .presensi-gps-banner { font-size: 10px; padding: 5px 10px; bottom: 1.5%; }
+  .presensi-info-panel { font-size: 10px; gap: 6px; padding: 5px 8px; bottom: 45px; }
+  .presensi-gps-banner { font-size: 10px; padding: 5px 10px; bottom: 8px; }
   .presensi-face-ring { width: 60%; max-width: 220px; }
   .presensi-corner { width: 25px; height: 25px; }
 }
 @media (max-width: 380px) {
-  .presensi-controls-row { gap: 14px; bottom: 18%; }
+  .presensi-controls-row { gap: 14px; bottom: 90px; }
   .presensi-shutter-btn { width: 50px; height: 50px; font-size: 17px; }
   .presensi-side-btn { width: 36px; height: 36px; font-size: 12px; }
-  .presensi-info-panel { font-size: 9px; gap: 4px; }
+  .presensi-info-panel { font-size: 9px; gap: 4px; bottom: 40px; }
   .presensi-face-ring { width: 65%; max-width: 190px; }
 }

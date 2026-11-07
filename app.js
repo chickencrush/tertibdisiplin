@@ -4161,7 +4161,25 @@ AppState.__presensiFullscreenOpen = false;
 window.openPresensiFullscreen = async () => {
   const fs = document.getElementById('presensi-fullscreen');
   if (!fs) { showToast('Elemen presensi tidak ditemukan.', 'error'); return; }
+  // v100.5: Set tinggi container = window.innerHeight (sudah exclude address bar Android/iPhone).
+  // CSS 100vh/100dvh tidak reliable di Android Chrome — address bar bikin viewport salah hitung.
+  const h = window.innerHeight;
   fs.style.display = 'block';
+  fs.style.height = h + 'px';
+  const container = fs.querySelector('.presensi-fullscreen-container');
+  if (container) container.style.height = h + 'px';
+  // Listen resize (mis. saat address bar show/hide)
+  if (!AppState.__presensiResizeHandler) {
+    AppState.__presensiResizeHandler = function () {
+      if (AppState.__presensiFullscreenOpen) {
+        const newH = window.innerHeight;
+        fs.style.height = newH + 'px';
+        if (container) container.style.height = newH + 'px';
+      }
+    };
+    window.addEventListener('resize', AppState.__presensiResizeHandler);
+    window.addEventListener('orientationchange', function () { setTimeout(AppState.__presensiResizeHandler, 200); });
+  }
   AppState.__presensiFullscreenOpen = true;
   // Update info panel (date, time, shift, outlet)
   window.updatePresensiInfoPanel && window.updatePresensiInfoPanel();
