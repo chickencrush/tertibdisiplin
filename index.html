@@ -585,102 +585,102 @@
         </div>
       </section>
 
-      <!-- VIEW 2: PRESENSI GPS & SELFIE -->
+      <!-- VIEW 2: PRESENSI GPS & SELFIE (v100.9: full-screen camera + riwayat) -->
       <section class="view-panel" id="view-presensi">
-        <div style="display:grid; grid-template-columns: 460px 1fr; gap:24px;">
 
-          <!-- Left: Live Camera Viewfinder & Coordinates Check -->
-          <div class="modern-card">
-            <div class="card-title-row">
-              <h3>Presensi Online Berbasis GPS & Selfie</h3>
-              <span class="card-badge-tag">Live Validasi</span>
-            </div>
-
-            <!-- Outlet Selector for GPS Check -->
-            <div class="form-group">
-              <label class="form-label required">Pilih Titik Lokasi Presensi (Kantor / Outlet)</label>
-              <select class="form-control" id="presensi-outlet-select" onchange="window.checkGpsDistance && window.checkGpsDistance()">
-                <option value="">— Pilih titik lokasi —</option>
-                <!-- Populated dynamically -->
-              </select>
-            </div>
-
-            <!-- Trigger GPS Detection Manually -->
-            <div style="display:flex; gap:8px; margin-bottom:12px;">
-              <button class="btn-secondary" type="button" style="flex:1; justify-content:center;" onclick="window.detectDeviceGPS && window.detectDeviceGPS()">
-                <i data-feather="map-pin" style="width:14px; height:14px;"></i> Deteksi Lokasi GPS
-              </button>
-              <button class="btn-secondary" type="button" style="flex:1; justify-content:center; background:#eff6ff; color:#1e40af; border-color:#bfdbfe;" onclick="window.diagnosePresensi && window.diagnosePresensi()">
-                <i data-feather="activity" style="width:14px; height:14px;"></i> Diagnosa
-              </button>
-            </div>
-
-            <!-- Live Geofence Distance Warning/Valid Pill -->
-            <div id="geofence-status-banner" class="geofence-alert geofence-warning">
-              <i data-feather="alert-circle" id="geofence-icon"></i>
-              <div id="geofence-text">
-                <strong>Menunggu deteksi GPS.</strong> Tekan tombol "Deteksi Lokasi GPS Saya" di atas, lalu izinkan akses lokasi.
-              </div>
-            </div>
-
-            <!-- Live Camera Feed -->
-            <div class="camera-wrapper">
-              <video id="camera-feed" class="camera-video" autoplay playsinline muted></video>
-              <canvas id="camera-snapshot-canvas" style="display:none;"></canvas>
-              <canvas id="face-detect-canvas" width="64" height="48" style="display:none;"></canvas>
-              <div class="camera-guide-overlay"></div>
-              <!-- v68: Ring indikator wajah — hijau saat wajah sesuai posisi -->
-              <div id="face-ring-overlay" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:56%; height:78%; border:3px dashed rgba(255,255,255,0.55); border-radius:50% 50% 46% 46%; pointer-events:none; transition:border-color 0.25s ease, box-shadow 0.25s ease;"></div>
-              <div class="camera-timestamp-stamp" id="camera-timestamp-box">
-                GPS: <span id="camera-gps-display">belum diketahui</span> | <span id="camera-clock">00:00:00 WIB</span>
-              </div>
-            </div>
-
-            <!-- Camera Controls & Shift Selection -->
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label">Pilihan Shift Kerja</label>
-                <select class="form-control" id="presensi-shift-select" onchange="window.updateLateArrivalUI && window.updateLateArrivalUI()">
-                  <option value="">Memuat shift...</option>
-                  <!-- Options diisi otomatis sesuai divisi akun yang login (populateShiftOptions) -->
-                </select>
-              </div>
-
-              <!-- v68: Indikator posisi wajah (pengganti tombol Buka Kamera) -->
-              <!-- v90: Tambah tombol "Buka Kamera" utk retry manual (fix bug kamera terkadang tidak bisa terbuka) -->
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label">Status Kamera &amp; Wajah</label>
-                <div style="display:flex; gap:6px; align-items:stretch;">
-                  <div id="face-status-indicator" style="flex:1; display:flex; align-items:center; gap:8px; padding:10px 12px; border-radius:10px; background:#f1f5f9; border:2px solid #e2e8f0; height:44px; box-sizing:border-box; transition: all 0.3s ease;">
-                    <span id="face-status-icon" style="font-size:16px; line-height:1;">📷</span>
-                    <span id="face-status-text" style="font-size:12px; font-weight:600; color:#64748b;">Kamera belum aktif</span>
-                  </div>
-                  <button type="button" class="btn-secondary" style="padding:0 14px; font-size:11.5px; font-weight:700; height:44px; white-space:nowrap;" onclick="window.retryCamera && window.retryCamera()" title="Buka kamera manual (jika kamera tidak otomatis terbuka)">
-                    <i data-feather="camera" style="width:14px; height:14px;"></i> Buka Kamera
-                  </button>
+        <!-- Full-screen camera overlay (hidden, shown when "PRESENSI SEKARANG" clicked) -->
+        <div id="presensi-fullscreen" style="display:none;">
+          <div class="presensi-fullscreen-container">
+            <!-- 1. Header -->
+            <div class="presensi-header-panel">
+              <div class="presensi-title">
+                <div class="presensi-title-icon">📸</div>
+                <div class="presensi-title-text">
+                  <strong>Presensi Selfie</strong>
+                  <span>Ambil foto untuk presensi kehadiran</span>
                 </div>
               </div>
+              <button type="button" class="presensi-close-btn" onclick="window.closePresensiFullscreen && window.closePresensiFullscreen()">&times;</button>
             </div>
+            <!-- 2. Camera box (large, flex-grow) -->
+            <div class="presensi-camera-box">
+              <video id="camera-feed" class="presensi-camera-bg" autoplay playsinline muted></video>
+              <canvas id="camera-snapshot-canvas" style="display:none;"></canvas>
+              <canvas id="face-detect-canvas" width="64" height="48" style="display:none;"></canvas>
+              <div class="presensi-corner presensi-corner-tl"></div>
+              <div class="presensi-corner presensi-corner-tr"></div>
+              <div class="presensi-corner presensi-corner-bl"></div>
+              <div class="presensi-corner presensi-corner-br"></div>
+              <div id="face-ring-overlay" class="presensi-face-ring"></div>
+              <div id="geofence-status-banner" class="presensi-gps-status warning">
+                <i data-feather="alert-circle" id="geofence-icon" style="width:12px; height:12px;"></i>
+                <span id="geofence-text">Menunggu GPS...</span>
+              </div>
+              <!-- Hidden elements for app.js (off-screen, not display:none parent) -->
+              <div style="position:absolute; left:-9999px; top:-9999px; opacity:0; pointer-events:none;">
+                <select id="presensi-outlet-select" onchange="window.checkGpsDistance && window.checkGpsDistance()"><option value="">—</option></select>
+                <select id="presensi-shift-select" onchange="window.updateLateArrivalUI && window.updateLateArrivalUI()"><option value="">—</option></select>
+                <div id="camera-timestamp-box">GPS: <span id="camera-gps-display">-</span> | <span id="camera-clock">-</span></div>
+                <button id="btn-submit-checkin" onclick="window.submitAttendanceCheckIn && window.submitAttendanceCheckIn()"></button>
+                <button id="btn-submit-checkout" onclick="window.submitAttendanceCheckOut && window.submitAttendanceCheckOut()"></button>
+                <button id="btn-early-checkout" style="display:none;" onclick="window.openEarlyCheckoutModal && window.openEarlyCheckoutModal()"></button>
+                <button id="btn-late-arrival" style="display:none;" onclick="window.openLateArrivalModal && window.openLateArrivalModal()"></button>
+                <div id="early-checkout-status-box"></div>
+                <div id="late-arrival-status-box"></div>
+                <div id="face-status-indicator"><span id="face-status-icon">📷</span> <span id="face-status-text">-</span></div>
+              </div>
+            </div>
+            <!-- 3. Face hint -->
+            <div class="presensi-face-hint">
+              <span id="face-hint-icon">📷</span> <span id="face-hint-text">Kamera belum aktif</span>
+            </div>
+            <!-- 4. Controls: [switch] [shutter] [guide] -->
+            <div class="presensi-controls-row">
+              <button type="button" class="presensi-side-btn" onclick="window.retryCamera && window.retryCamera()" title="Buka/Ulangi Kamera">
+                <i data-feather="refresh-cw" style="width:18px; height:18px;"></i>
+              </button>
+              <button type="button" class="presensi-shutter-btn" id="presensi-shutter" onclick="window.presensiShutterClick && window.presensiShutterClick()">
+                <i data-feather="camera" style="width:24px; height:24px;"></i>
+              </button>
+              <button type="button" class="presensi-side-btn" onclick="window.detectDeviceGPS && window.detectDeviceGPS()" title="Deteksi GPS">
+                <i data-feather="map-pin" style="width:18px; height:18px;"></i>
+              </button>
+            </div>
+            <!-- 5. Info panel -->
+            <div class="presensi-info-panel">
+              <div class="presensi-info-item"><i data-feather="calendar" style="width:13px; height:13px; color:#06b6d4;"></i><span id="presensi-fs-date">-</span></div>
+              <div class="presensi-info-divider"></div>
+              <div class="presensi-info-item"><i data-feather="clock" style="width:13px; height:13px; color:#8b5cf6;"></i><strong id="presensi-fs-time">--:--:--</strong> WIB</div>
+              <div class="presensi-info-divider"></div>
+              <div class="presensi-info-item"><i data-feather="briefcase" style="width:13px; height:13px; color:#f59e0b;"></i><strong id="presensi-fs-shift">-</strong></div>
+              <div class="presensi-info-divider"></div>
+              <div class="presensi-info-item"><i data-feather="map-pin" style="width:13px; height:13px; color:#10b981;"></i><strong id="presensi-fs-outlet">-</strong></div>
+            </div>
+            <!-- 6. GPS banner -->
+            <div class="presensi-gps-banner" id="presensi-fs-gps-banner" style="display:none;">
+              <i data-feather="check-circle" style="width:16px; height:16px;"></i>
+              <span id="presensi-fs-gps-text">Lokasi terdeteksi sesuai GPS</span>
+            </div>
+          </div>
+        </div>
 
-            <!-- Check-in Action Button -->
-            <button class="btn-primary" type="button" style="width:100%; justify-content:center; padding:14px; font-size:14px;" id="btn-submit-checkin" onclick="window.submitAttendanceCheckIn && window.submitAttendanceCheckIn()">
-              <i data-feather="check-circle"></i> AMBIL SELFIE & PRESENSI MASUK
+        <!-- Panel presensi utama (kartu + riwayat) -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px;">
+
+          <!-- Left: Presensi action card -->
+          <div class="modern-card">
+            <div class="card-title-row">
+              <h3>Presensi GPS &amp; Selfie</h3>
+              <span class="card-badge-tag">Live Validasi</span>
+            </div>
+            <p style="font-size:12px; color:var(--text-muted); margin:8px 0 16px 0;">Klik tombol di bawah untuk membuka kamera presensi. Sistem akan otomatis mendeteksi apakah Anda perlu check-in atau check-out.</p>
+
+            <!-- Tombol Presensi Sekarang (buka full-screen camera) -->
+            <button type="button" class="presensi-start-btn" onclick="window.openPresensiFullscreen && window.openPresensiFullscreen()">
+              <i data-feather="camera" style="width:20px; height:20px;"></i> PRESENSI SEKARANG
             </button>
 
-            <!-- Check-out Action Button (Presensi Pulang) — sama seperti masuk: selfie + GPS -->
-            <button class="btn-primary" type="button" style="width:100%; justify-content:center; padding:14px; font-size:14px; margin-top:10px; background:linear-gradient(135deg, #f59e0b, #d97706); box-shadow:0 4px 14px rgba(245, 158, 11, 0.25);" id="btn-submit-checkout" onclick="window.submitAttendanceCheckOut && window.submitAttendanceCheckOut()">
-              <i data-feather="log-out" style="width:16px; height:16px;"></i> AMBIL SELFIE & PRESENSI PULANG
-            </button>
-
-            <!-- v93: Status Pengajuan Pulang Lebih Awal (muncul otomatis kalau ada pengajuan) -->
-            <div id="early-checkout-status-box" style="display:none; margin-top:10px; padding:10px 12px; border-radius:10px; font-size:11.5px; line-height:1.5;"></div>
-
-            <!-- v93: Tombol Ajukan Pulang Lebih Awal (muncul setelah check-in, sebelum check-out) -->
-            <button class="btn-secondary" type="button" style="width:100%; margin-top:8px; justify-content:center; display:none;" id="btn-early-checkout" onclick="window.openEarlyCheckoutModal && window.openEarlyCheckoutModal()">
-              <i data-feather="alert-circle" style="width:14px; height:14px;"></i> Ajukan Pulang Lebih Awal
-            </button>
-
-            <!-- v93/v94: Status pengajuan (tampil di kartu) -->
+            <!-- Status pengajuan (tampil di kartu) -->
             <div id="early-checkout-status-box-card" style="display:none; margin-top:12px; padding:10px 12px; border-radius:10px; font-size:11.5px; line-height:1.5;"></div>
             <div id="late-arrival-status-box-card" style="display:none; margin-top:8px; padding:10px 12px; border-radius:10px; font-size:11.5px; line-height:1.5;"></div>
 
@@ -698,7 +698,7 @@
             </button>
           </div>
 
-          <!-- Right: Today's Attendance Logs & Late Calculation -->
+          <!-- Right: Riwayat Presensi -->
           <div class="modern-card">
             <div class="card-title-row">
               <div>
@@ -709,7 +709,6 @@
                 <i data-feather="refresh-cw" style="width:12px; height:12px;"></i> Segarkan
               </button>
             </div>
-
             <div style="overflow-x:auto;">
               <table class="payslip-table" id="attendance-table">
                 <thead>
