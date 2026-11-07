@@ -10689,3 +10689,229 @@ window.viewSaSpkEmployeeDocs = async (employeeId, empName) => {
 };
 window.viewSaSpkEmployeeDocs = window.viewSaSpkEmployeeDocs;
 
+
+/* ========================================================================
+   v100.14: LOADING & BUSY ENGINE — tanda "aplikasi sedang memproses"
+   ------------------------------------------------------------------------
+   Fungsi: setiap klik yang menunggu server otomatis menampilkan:
+   1. Spinner di tombol yang diklik + tombol terkunci (anti dobel-klik)
+      sampai proses benar-benar selesai.
+   2. Garis progres tipis di tepi atas layar (request >= 400 ms).
+   3. Pil "Memproses…"/"Memuat…"/"Menunggu GPS…" (request >= 800 ms).
+   Cara aman:
+   - window.fetch dibungkus DI SINI (api-client.js tetap bekerja normal).
+   - navigator.geolocation.getCurrentPosition dibungkus → menunggu GPS
+     (termasuk dialog izin) ikut dihitung; tombol tetap busy sampai data
+     terkirim.
+   - Chat polling tiap 4 detik (GET /api/chat/ TANPA klik) = silent,
+     tidak pernah memicu indikator.
+   - Pengaman: busy tombol lepas otomatis maksimal 12 detik; indikator
+     hanya pakai transform/opacity (murah, tanpa layout shift).
+   - TIDAK mengubah layout kamera v100.10, tema, warna, atau logika app.
+   ======================================================================== */
+(function () {
+  'use strict';
+  if (window.__tdLoadingEngine) return;
+  window.__tdLoadingEngine = true;
+
+  var active = [];              // daftar request aktif [{id, method, silent}]
+  var reqSeq = 0;
+  var barTimer = null, pillTimer = null, quietTimer = null;
+  var candidates = [];          // tombol yang baru diklik user
+  var CAND_WINDOW = 1200;       // klik -> request masih dianggap satu aksi
+  var BAR_DELAY = 400;          // garis progres tampil kalau request >= 400ms
+  var PILL_DELAY = 800;         // pil status tampil kalau request >= 800ms
+  var QUIET_MS = 600;           // sepi 600ms -> tombol lepas busy
+  var BUSY_CAP = 12000;         // pengaman: busy maksimal 12 detik
+
+  var bar = null, pill = null, pillText = null;
+
+  function ensureDom() {
+    if (bar || !document.body) return;
+    bar = document.createElement('div');
+    bar.id = 'td-progress-bar';
+    bar.innerHTML = '<div class="td-bar-fill"></div>';
+    document.body.appendChild(bar);
+
+    pill = document.createElement('div');
+    pill.id = 'td-loading-pill';
+    pill.innerHTML = '<span class="td-pill-spin"></span><span class="td-pill-text">Memproses\u2026</span>';
+    document.body.appendChild(pill);
+    pillText = pill.querySelector('.td-pill-text');
+  }
+  ensureDom();
+  if (!bar) document.addEventListener('DOMContentLoaded', ensureDom);
+
+  function isBusyEl(el) { return !!(el && el.classList && el.classList.contains('is-busy')); }
+
+  function markBusy(el) {
+    if (!el || !el.classList || isBusyEl(el) || el.hasAttribute('data-no-busy')) return;
+    el.classList.add('is-busy');
+    el.setAttribute('aria-busy', 'true');
+    var until = Date.now() + BUSY_CAP;
+    el.__tdBusyUntil = until;
+    setTimeout(function () {
+      if (el.__tdBusyUntil === until) releaseBusy(el);
+    }, BUSY_CAP + 60);
+  }
+  function releaseBusy(el) {
+    if (!el || !el.classList) return;
+    el.classList.remove('is-busy');
+    el.removeAttribute('aria-busy');
+    el.__tdBusyUntil = null;
+  }
+  function releaseAllBusy() {
+    var els = document.querySelectorAll('.is-busy');
+    for (var i = 0; i < els.length; i++) releaseBusy(els[i]);
+  }
+  // API manual (opsional): window.TDLoading.setBusy(el, true|false)
+  window.TDLoading = {
+    setBusy: function (el, on) { if (on) markBusy(el); else releaseBusy(el); },
+    clearAll: releaseAllBusy
+  };
+
+  // --- kandidat: elemen seperti-tombol yang baru diklik user ---
+  var BTN_SEL = 'button, [role="button"], [class*="btn"], .auth-submit-btn, .tab-pill-btn, .mode-btn';
+  function pushCandidate(el) {
+    if (!el || el.disabled || isBusyEl(el) || el.hasAttribute('data-no-busy')) return;
+    if (el.closest && el.closest('.nav-item')) return; // sidebar cukup indikator global
+    candidates.push({ el: el, ts: Date.now() });
+    if (candidates.length > 8) candidates.shift();
+  }
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    pushCandidate(t.closest(BTN_SEL));
+  }, true);
+  // Submit lewat tombol Enter (event click tidak selalu terpicu)
+  document.addEventListener('submit', function (ev) {
+    var f = ev.target;
+    if (!f || f.tagName !== 'FORM') return;
+    var el = ev.submitter || f.querySelector('button[type="submit"], input[type="submit"], button:not([type])');
+    if (el) pushCandidate(el);
+  }, true);
+
+  function hasFreshCandidate() {
+    var now = Date.now();
+    candidates = candidates.filter(function (c) {
+      return c.el && document.contains(c.el) && (now - c.ts) < CAND_WINDOW;
+    });
+    return candidates.length > 0;
+  }
+  function markFreshCandidates() {
+    var now = Date.now();
+    candidates = candidates.filter(function (c) { return c.el && document.contains(c.el); });
+    candidates.forEach(function (c) {
+      if ((now - c.ts) < CAND_WINDOW && !c.el.disabled) markBusy(c.el);
+    });
+  }
+
+  function netCount() {
+    var n = 0;
+    for (var i = 0; i < active.length; i++) if (!active[i].silent) n++;
+    return n;
+  }
+  function anyWriting() {
+    for (var i = 0; i < active.length; i++) {
+      if (active[i].silent) continue;
+      var m = active[i].method;
+      if (m === 'POST' || m === 'PUT' || m === 'DELETE' || m === 'PATCH') return true;
+    }
+    return false;
+  }
+
+  function beginActivity() {
+    if (quietTimer) { clearTimeout(quietTimer); quietTimer = null; } // rantai GPS->kirim tetap nyambung
+  }
+  function startIndicators(pillLabel) {
+    if (!barTimer) {
+      barTimer = setTimeout(function () {
+        barTimer = null;
+        if (netCount() > 0 && bar) bar.classList.add('active');
+      }, BAR_DELAY);
+    }
+    if (!pillTimer) {
+      pillTimer = setTimeout(function () {
+        pillTimer = null;
+        if (netCount() > 0 && pill && pillText) {
+          pillText.textContent = pillLabel || (anyWriting() ? 'Memproses\u2026' : 'Memuat\u2026');
+          pill.classList.add('show');
+        }
+      }, PILL_DELAY);
+    }
+  }
+  function maybeFinish() {
+    if (netCount() > 0) return;
+    if (barTimer) { clearTimeout(barTimer); barTimer = null; }
+    if (pillTimer) { clearTimeout(pillTimer); pillTimer = null; }
+    if (bar) bar.classList.remove('active');
+    if (pill) pill.classList.remove('show');
+    if (quietTimer) clearTimeout(quietTimer);
+    quietTimer = setTimeout(function () {
+      quietTimer = null;
+      if (netCount() === 0) { releaseAllBusy(); candidates = []; }
+    }, QUIET_MS);
+  }
+
+  function track(promise, method, silent) {
+    var rec = { id: ++reqSeq, method: method, silent: silent };
+    active.push(rec);
+    beginActivity();
+    if (silent) { if (hasFreshCandidate()) markFreshCandidates(); }
+    else { markFreshCandidates(); startIndicators(); }
+    var fin = function () {
+      var i = active.indexOf(rec);
+      if (i >= 0) active.splice(i, 1);
+      maybeFinish();
+    };
+    Promise.resolve(promise).then(fin, fin);
+    return promise;
+  }
+
+  // --- bungkus window.fetch (api-client.js & seluruh app lewat sini) ---
+  var prevFetch = window.fetch;
+  if (typeof prevFetch === 'function') {
+    window.fetch = function (input, init) {
+      var url = '', method = 'GET';
+      try {
+        if (typeof input === 'string') url = input;
+        else if (input && input.url) url = String(input.url);
+        if (init && init.method) method = String(init.method).toUpperCase();
+        else if (input && typeof input === 'object' && input.method) method = String(input.method).toUpperCase();
+      } catch (e) { /* diam */ }
+      // Polling chat (GET /api/chat/ TANPA klik) = silent
+      var silent = method === 'GET' && url.indexOf('/api/chat/') !== -1 && !hasFreshCandidate();
+      var p;
+      try { p = prevFetch.apply(this, arguments); }
+      catch (e) { return Promise.reject(e); }
+      return track(p, method, silent);
+    };
+  }
+
+  // --- bungkus geolocation: menunggu GPS/izin ikut dihitung ---
+  try {
+    var geo = navigator.geolocation;
+    if (geo && geo.getCurrentPosition) {
+      var origGcp = geo.getCurrentPosition.bind(geo);
+      geo.getCurrentPosition = function (ok, err, opt) {
+        var rec = { id: ++reqSeq, method: 'GET', silent: false };
+        active.push(rec);
+        beginActivity();
+        markFreshCandidates();
+        startIndicators('Menunggu GPS\u2026');
+        var done = false;
+        var fin = function () {
+          if (done) return;
+          done = true;
+          var i = active.indexOf(rec);
+          if (i >= 0) active.splice(i, 1);
+          maybeFinish();
+        };
+        var okFn = function (p) { fin(); if (ok) ok(p); };
+        var errFn = function (e) { fin(); if (err) err(e); };
+        try { origGcp(okFn, errFn, opt); }
+        catch (e) { fin(); throw e; }
+      };
+    }
+  } catch (e) { /* diam */ }
+})();

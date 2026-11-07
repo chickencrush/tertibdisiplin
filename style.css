@@ -3671,3 +3671,159 @@ body::before {
 @media (max-width: 768px) {
   body::before { animation-duration: 48s; }
 }
+
+/* ========================================================================
+   v100.14: LOADING & BUSY STATE — tanda "aplikasi sedang memproses"
+   ========================================================================
+   Prinsip:
+   1. Setiap klik yang menunggu server otomatis menandai tombolnya busy:
+      spinner + tombol terkunci (anti dobel-klik) sampai proses selesai.
+   2. Indikator global: garis progres tipis di atas layar + pil
+      "Memproses…"/"Memuat…" — hanya tampil kalau request berjalan lebih
+      dari 400ms/800ms, jadi klik cepat & polling chat (4 detik, silent)
+      TIDAK memicu kedip.
+   3. Hanya transform/opacity — murah di GPU, tanpa layout shift
+      (anti-flicker v82.2 tetap aman; layout kamera v100.10 tak tersentuh).
+   4. prefers-reduced-motion global (di atas) membekukan animasinya —
+      spinner jadi lingkaran statis, status tetap terlihat jelas.
+   ======================================================================== */
+
+@keyframes tdBusySpin { to { transform: rotate(360deg); } }
+@keyframes tdBarSlide {
+  0%   { transform: translateX(-110%); }
+  55%  { transform: translateX(35%); }
+  100% { transform: translateX(430%); }
+}
+
+/* — Garis progres global di tepi atas layar — */
+#td-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 2147483000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  overflow: hidden;
+}
+#td-progress-bar.active { opacity: 1; }
+#td-progress-bar .td-bar-fill {
+  height: 100%;
+  width: 34%;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(90deg, rgba(139,35,65,0) 0%, #8b2341 35%, #d6336c 72%, rgba(214,51,108,0) 100%);
+  animation: tdBarSlide 1.15s ease-in-out infinite;
+}
+
+/* — Pil status "Memproses…" / "Memuat…" — */
+#td-loading-pill {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-10px);
+  z-index: 2147483000;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.9);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid rgba(139,35,65,0.16);
+  box-shadow: 0 12px 34px rgba(74,14,33,0.28);
+  color: #4a0e21;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+#td-loading-pill.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#td-loading-pill .td-pill-spin {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  border: 2.5px solid rgba(139,35,65,0.25);
+  border-top-color: #8b2341;
+  animation: tdBusySpin 0.7s linear infinite;
+}
+
+/* — Status tombol busy: terkunci + sedikit redup — */
+button.is-busy,
+.auth-submit-btn.is-busy,
+.tab-pill-btn.is-busy,
+.mode-btn.is-busy,
+[class*="btn"].is-busy,
+input[type="submit"].is-busy,
+input[type="button"].is-busy {
+  pointer-events: none;
+  opacity: 0.82;
+}
+input[type="submit"].is-busy,
+input[type="button"].is-busy { opacity: 0.6; }
+
+/* — Spinner inline di samping label (tombol teks) — */
+button.is-busy::after,
+.auth-submit-btn.is-busy::after,
+.tab-pill-btn.is-busy::after,
+.mode-btn.is-busy::after {
+  content: '';
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-left: 8px;
+  vertical-align: -0.125em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: tdBusySpin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+
+/* — Tombol ikon bulat (shutter, GPS, kamera, aksi kecil):
+     spinner overlay di tengah, ikon diredupkan — layout bulat utuh — */
+.presensi-shutter-btn.is-busy,
+.presensi-side-btn.is-busy,
+.presensi-close-btn.is-busy,
+.icon-action-btn.is-busy {
+  position: relative;
+}
+.presensi-shutter-btn.is-busy::after,
+.presensi-side-btn.is-busy::after,
+.presensi-close-btn.is-busy::after,
+.icon-action-btn.is-busy::after {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  height: 40%;
+  min-width: 15px;
+  min-height: 15px;
+  margin: auto;
+  border: 2.5px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: tdBusySpin 0.7s linear infinite;
+}
+.presensi-shutter-btn.is-busy > *,
+.presensi-side-btn.is-busy > *,
+.presensi-close-btn.is-busy > *,
+.icon-action-btn.is-busy > * {
+  opacity: 0.3;
+}
+
+/* — HP: pil pindah ke bawah-tengah (tidak menutupi topbar/menu) — */
+@media (max-width: 768px) {
+  #td-loading-pill {
+    top: auto;
+    bottom: 18px;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%) translateY(10px);
+  }
+  #td-loading-pill.show { transform: translateX(-50%) translateY(0); }
+}

@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.13-glassy-motion';  // v100.13: Tema Glassy Burgundy + animasi transisi halus (blob latar hidup, fade modal & fullscreen presensi, umpan balik sentuh tombol) + rename "Izin Telat". Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.14-loading-state';  // v100.14: v100.13 (Glassy Burgundy + motion) + animasi LOADING (spinner tombol yang menunggu server, garis progres atas, pil "Memproses…", anti dobel-klik) + rename "Izin Telat". Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',
