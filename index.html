@@ -588,69 +588,72 @@
       <!-- VIEW 2: PRESENSI GPS & SELFIE (v100: glassy futuristic + full-screen camera) -->
       <section class="view-panel" id="view-presensi">
 
-        <!-- v100: Full-screen camera view (hidden by default, di-show saat klik "Presensi Sekarang") -->
-        <div id="presensi-fullscreen" style="display:none; position:fixed; inset:0; z-index:9999; background:#000;">
-          <!-- Camera feed (background) -->
+        <!-- v100.6: Full-screen camera view — flex column sesuai gambar referensi -->
+        <div id="presensi-fullscreen" style="display:none;">
           <div class="presensi-fullscreen-container">
-            <video id="camera-feed" class="presensi-camera-bg" autoplay playsinline muted></video>
-            <canvas id="camera-snapshot-canvas" style="display:none;"></canvas>
-            <canvas id="face-detect-canvas" width="64" height="48" style="display:none;"></canvas>
 
-            <!-- Corner brackets -->
-            <div class="presensi-corner presensi-corner-tl"></div>
-            <div class="presensi-corner presensi-corner-tr"></div>
-            <div class="presensi-corner presensi-corner-bl"></div>
-            <div class="presensi-corner presensi-corner-br"></div>
+            <!-- 1. Header: title + close -->
+            <div class="presensi-header-panel">
+              <div class="presensi-title">
+                <div class="presensi-title-icon">📸</div>
+                <div class="presensi-title-text">
+                  <strong>Presensi Selfie</strong>
+                  <span>Ambil foto untuk presensi kehadiran</span>
+                </div>
+              </div>
+              <button type="button" class="presensi-close-btn" onclick="window.closePresensiFullscreen && window.closePresensiFullscreen()">&times;</button>
+            </div>
 
-            <!-- Face detection ring (ID dipertahankan untuk app.js setFaceStatus) -->
-            <div id="face-ring-overlay" class="presensi-face-ring"></div>
+            <!-- 2. Camera box (kotak di tengah, bukan full screen) -->
+            <div class="presensi-camera-box">
+              <video id="camera-feed" class="presensi-camera-bg" autoplay playsinline muted></video>
+              <canvas id="camera-snapshot-canvas" style="display:none;"></canvas>
+              <canvas id="face-detect-canvas" width="64" height="48" style="display:none;"></canvas>
+              <!-- Corner brackets -->
+              <div class="presensi-corner presensi-corner-tl"></div>
+              <div class="presensi-corner presensi-corner-tr"></div>
+              <div class="presensi-corner presensi-corner-bl"></div>
+              <div class="presensi-corner presensi-corner-br"></div>
+              <!-- Face detection box (ID dipertahankan untuk app.js) -->
+              <div id="face-ring-overlay" class="presensi-face-ring"></div>
+              <!-- GPS status (ID dipertahankan untuk app.js) -->
+              <div id="geofence-status-banner" class="presensi-gps-status warning">
+                <i data-feather="alert-circle" id="geofence-icon" style="width:12px; height:12px;"></i>
+                <span id="geofence-text">Menunggu GPS...</span>
+              </div>
+              <!-- Hidden elements (dipertahankan untuk app.js) -->
+              <div style="display:none;">
+                <select id="presensi-outlet-select" onchange="window.checkGpsDistance && window.checkGpsDistance()"><option value="">— Pilih —</option></select>
+                <select id="presensi-shift-select" onchange="window.updateLateArrivalUI && window.updateLateArrivalUI()"><option value="">Memuat...</option></select>
+                <div id="camera-timestamp-box">GPS: <span id="camera-gps-display">-</span> | <span id="camera-clock">-</span></div>
+                <button id="btn-submit-checkin" onclick="window.submitAttendanceCheckIn && window.submitAttendanceCheckIn()"></button>
+                <button id="btn-submit-checkout" onclick="window.submitAttendanceCheckOut && window.submitAttendanceCheckOut()"></button>
+              </div>
+            </div>
 
-            <!-- Face hint text -->
+            <!-- 3. Face hint (di bawah camera box) -->
             <div id="face-status-indicator" class="presensi-face-hint">
               <span id="face-status-icon">📷</span> <span id="face-status-text">Kamera belum aktif</span>
             </div>
 
-            <!-- Header panel: title + close button -->
-            <div class="presensi-overlay-panel presensi-header-panel">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <div style="width:36px; height:36px; border-radius:10px; background:linear-gradient(135deg, var(--neon-cyan), var(--neon-violet)); display:flex; align-items:center; justify-content:center; color:#fff; font-size:18px;">📸</div>
-                <div>
-                  <div style="font-size:13px; font-weight:700; color:#f1f5f9;">Presensi Selfie</div>
-                  <div style="font-size:10px; color:var(--text-muted);">Ambil foto untuk presensi kehadiran</div>
-                </div>
-              </div>
-              <button type="button" onclick="window.closePresensiFullscreen && window.closePresensiFullscreen()" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#ef4444; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center;">&times;</button>
-            </div>
-
-            <!-- GPS status banner (ID dipertahankan) -->
-            <div id="geofence-status-banner" class="presensi-gps-banner warning" style="position:absolute; top:80px; left:50%; transform:translateX(-50%); bottom:auto;">
-              <i data-feather="alert-circle" id="geofence-icon" style="width:16px; height:16px;"></i>
-              <span id="geofence-text">Menunggu deteksi GPS...</span>
-            </div>
-
-            <!-- Hidden elements (dipertahankan untuk app.js, tidak tampil) -->
-            <div style="display:none;">
-              <select class="form-control" id="presensi-outlet-select" onchange="window.checkGpsDistance && window.checkGpsDistance()"><option value="">— Pilih titik lokasi —</option></select>
-              <select class="form-control" id="presensi-shift-select" onchange="window.updateLateArrivalUI && window.updateLateArrivalUI()"><option value="">Memuat shift...</option></select>
-              <div class="camera-timestamp-stamp" id="camera-timestamp-box">GPS: <span id="camera-gps-display">belum diketahui</span> | <span id="camera-clock">00:00:00 WIB</span></div>
-              <button id="btn-submit-checkin" onclick="window.submitAttendanceCheckIn && window.submitAttendanceCheckIn()"></button>
-              <button id="btn-submit-checkout" onclick="window.submitAttendanceCheckOut && window.submitAttendanceCheckOut()"></button>
-            </div>
-
-            <!-- Side buttons + Shutter (dalam flex row, sesuai gambar referensi) -->
+            <!-- 4. Controls: [switch] [shutter] [guide] -->
             <div class="presensi-controls-row">
-              <button type="button" class="presensi-side-btn" onclick="window.retryCamera && window.retryCamera()" title="Buka/Ulangi Kamera">
-                <i data-feather="refresh-cw" style="width:18px; height:18px;"></i>
-              </button>
+              <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                <button type="button" class="presensi-side-btn" onclick="window.retryCamera && window.retryCamera()" title="Buka/Ulangi Kamera">
+                  <i data-feather="refresh-cw" style="width:18px; height:18px;"></i>
+                </button>
+              </div>
               <button type="button" class="presensi-shutter-btn" id="presensi-shutter" onclick="window.presensiShutterClick && window.presensiShutterClick()">
                 <i data-feather="camera" style="width:24px; height:24px;"></i>
               </button>
-              <button type="button" class="presensi-side-btn" onclick="window.detectDeviceGPS && window.detectDeviceGPS()" title="Deteksi GPS">
-                <i data-feather="map-pin" style="width:18px; height:18px;"></i>
-              </button>
+              <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                <button type="button" class="presensi-side-btn" onclick="window.detectDeviceGPS && window.detectDeviceGPS()" title="Deteksi GPS">
+                  <i data-feather="map-pin" style="width:18px; height:18px;"></i>
+                </button>
+              </div>
             </div>
 
-            <!-- Info panel: date/time + shift + outlet -->
+            <!-- 5. Info panel: tanggal, jam, shift, outlet -->
             <div class="presensi-info-panel">
               <div class="presensi-info-item">
                 <i data-feather="calendar" style="width:13px; height:13px; color:#06b6d4;"></i>
@@ -673,15 +676,21 @@
               </div>
             </div>
 
-            <!-- GPS confirmation banner (bottom) -->
+            <!-- 6. GPS confirmation banner -->
             <div class="presensi-gps-banner" id="presensi-fs-gps-banner" style="display:none;">
               <i data-feather="check-circle" style="width:16px; height:16px;"></i>
-              <span id="presensi-fs-gps-text">Lokasi anda terdeteksi sesuai lokasi GPS</span>
+              <span id="presensi-fs-gps-text">Lokasi terdeteksi sesuai GPS</span>
             </div>
 
-            <!-- Status pengajuan (dipertahankan, tampil di bottom) -->
-            <div id="early-checkout-status-box" style="display:none; position:absolute; bottom:60px; left:50%; transform:translateX(-50%); z-index:10; max-width:90%;"></div>
-            <div id="late-arrival-status-box" style="display:none; position:absolute; bottom:60px; left:50%; transform:translateX(-50%); z-index:10; max-width:90%;"></div>
+            <!-- Status pengajuan (dipertahankan untuk app.js) -->
+            <div id="early-checkout-status-box" class="presensi-status-box" style="display:none;"></div>
+            <div id="late-arrival-status-box" class="presensi-status-box" style="display:none;"></div>
+
+            <!-- Hidden: tombol lama (dipertahankan untuk app.js sync) -->
+            <div style="position:absolute; left:-9999px; top:-9999px; opacity:0; pointer-events:none;">
+              <button id="btn-early-checkout" style="display:none;" onclick="window.openEarlyCheckoutModal && window.openEarlyCheckoutModal()"></button>
+              <button id="btn-late-arrival" style="display:none;" onclick="window.openLateArrivalModal && window.openLateArrivalModal()"></button>
+            </div>
           </div>
         </div>
 
