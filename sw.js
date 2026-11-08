@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.21-fix-android-presensi-face-ring';  // v100.21: Fix bug layar kamera presensi melebar di Android (pakai 100dvh dynamic viewport, fallback window.innerHeight). Face ring diubah jadi kotak persegi 4 sisi (radius 0). TIDAK mengganggu layout kamera v100.10, iOS tetap aman. Mencakup v100.12-v100.20. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.22-android-dvh-siku-4-sudut';  // v100.22: Fix Android presensi (camera-box max-height 60dvh dynamic viewport) + face ring diubah jadi SIKU 4 SUDUT (bukan kotak penuh). TIDAK mengganggu layout kamera v100.10. Mencakup v100.12-v100.21. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',

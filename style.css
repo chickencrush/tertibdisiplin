@@ -4040,3 +4040,77 @@ button.is-busy::after,
   box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
   border-radius: 0 !important;
 }
+
+/* ========================================================================
+   v100.22: FIX ANDROID PRESENSI (lagi) + FACE RING → SIKU 4 SUDUT
+   ------------------------------------------------------------------------
+   Bug: v100.21 tidak cukup — shutter & teks masih hilang di Android.
+   Root cause sebenarnya: .presensi-camera-box pakai max-height: 60vh
+   (layout viewport, BUKAN dynamic). Saat address bar show, viewport
+   kecil tapi 60vh tetap pakai layout viewport besar → camera-box
+   melebar → container overflow → shutter terdorong keluar viewport.
+
+   Fix: max-height pakai 60dvh (dynamic viewport) supaya ikut
+   menyesuaikan address bar. 60vh fallback utk browser lama.
+
+   Face ring: user mau HANYA SIKU 4 SUDUT (bukan kotak penuh).
+   .presensi-corner sudah ada (4 siku di sudut camera-box). Sekarang
+   .presensi-face-ring dihapus border-nya, hanya tampil siku di 4
+   sudut camera-box.
+   ======================================================================== */
+
+/* Override max-height camera-box: 60dvh (dynamic) supaya ikut
+   address bar show/hide di Android. 60vh fallback. */
+.presensi-camera-box {
+  max-height: 60vh;       /* fallback browser lama */
+  max-height: 60dvh;      /* Android Chrome 108+, iOS 15.4+ — dynamic */
+}
+@media (max-width: 600px) {
+  .presensi-camera-box {
+    max-height: 50vh;     /* fallback */
+    max-height: 50dvh;    /* dynamic */
+  }
+}
+
+/* v100.22: Face ring jadi SIKU 4 SUDUT saja (bukan kotak penuh).
+   Hapus border 4 sisi, hapus radius, hapus aspect-ratio constraint.
+   Yang tampil: .presensi-corner (4 siku di sudut camera-box).
+   .presensi-face-ring sekarang invisible (border transparent) —
+   tapi elemen tetap ada supaya JS face-detect (classList add/remove
+   detected/no-face) tidak error. Warna siku tetap dinamis via
+   parent class di camera-box. */
+.presensi-face-ring {
+  border: 3px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  width: 70% !important;
+  aspect-ratio: 3/4 !important;
+  z-index: 2 !important;
+  pointer-events: none !important;
+}
+/* Deteksi wajah sekarang diwujudkan dgn warna SIKU (.presensi-corner).
+   Saat face-ring.detected → siku jadi hijau. Saat .no-face → oranye.
+   Default → putih. Pakai :has() selector (didukung Chrome 105+,
+   iOS 16.4+). Fallback: siku tetap putih kalau :has() tidak didukung. */
+.presensi-camera-box:has(.presensi-face-ring.detected) .presensi-corner {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
+}
+.presensi-camera-box:has(.presensi-face-ring.no-face) .presensi-corner {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+}
+/* Siku lebih tebal & jelas supaya terlihat sebagai penanda wajah */
+.presensi-corner {
+  width: 32px !important;
+  height: 32px !important;
+  border-width: 3px !important;
+  border-color: rgba(255, 255, 255, 0.8) !important;
+}
+@media (max-width: 600px) {
+  .presensi-corner {
+    width: 26px !important;
+    height: 26px !important;
+  }
+}
