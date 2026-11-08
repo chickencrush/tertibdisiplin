@@ -4114,3 +4114,89 @@ button.is-busy::after,
     height: 26px !important;
   }
 }
+
+/* ========================================================================
+   v100.23: FIX TELAK ANDROID FULLSCREEN + SIKU BERUBAH WARNA SAAT WAJAH DETECTED
+   ------------------------------------------------------------------------
+   Bug: v100.21 & v100.22 TIDAK menyelesaikan masalah Android. Shutter
+   & teks masih hilang. Root cause sebenarnya:
+   - #presensi-fullscreen TIDAK punya height! CSS v100.21 tambah 100dvh
+     TAPI tanpa !important → inline style JS (window.innerHeight) override.
+   - JS openPresensiFullscreen pakai deteksi supportsDvh (getComputedStyle)
+     yang UNRELIABLE di Android → false positive → inline style di-clear
+     → height jadi 0/auto → layout melebar.
+   - Siku (presensi-corner) saya override di v100.22, + :has() selector
+     tidak pernah match karena setFaceStatus pakai inline style, bukan
+     classList. Jadi siku tidak pernah berubah warna.
+
+   FIX v100.23:
+   1. #presensi-fullscreen & .presensi-fullscreen-container: 100dvh !important
+      → inline style JS TIDAK bisa override. Android pakai dynamic viewport.
+   2. Hapus deteksi supportsDvh di JS, biarkan CSS !important yang atur.
+   3. setFaceStatus (app.js) TAMBAH class ke camera-box:
+      - face-detected → siku hijau
+      - face-none → siku oranye
+      - (default) → siku putih
+   4. Siku (presensi-corner) kembalikan seperti v100.10 (putih jelas),
+      warnanya dikontrol via class di camera-box (bukan :has()).
+   ======================================================================== */
+
+/* PAKSA 100dvh — inline style JS tidak bisa override */
+#presensi-fullscreen {
+  height: 100vh !important;
+  height: 100dvh !important;
+}
+.presensi-fullscreen-container {
+  height: 100vh !important;
+  height: 100dvh !important;
+}
+
+/* Camera-box max-height juga paksa dvh */
+.presensi-camera-box {
+  max-height: 60vh !important;
+  max-height: 60dvh !important;
+}
+@media (max-width: 600px) {
+  .presensi-camera-box {
+    max-height: 50vh !important;
+    max-height: 50dvh !important;
+  }
+}
+
+/* v100.23: SIKU berubah warna saat wajah terdeteksi.
+   Class di .presensi-camera-box:
+   - face-detected → siku HIJAU
+   - face-none → siku ORANYE
+   - (default) → siku PUTIH
+   Class ditambah/dihapus oleh setFaceStatus() di app.js. */
+.presensi-corner {
+  width: 28px !important;
+  height: 28px !important;
+  border-width: 3px !important;
+  border-color: rgba(255, 255, 255, 0.85) !important;
+  box-shadow: none !important;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease !important;
+}
+@media (max-width: 600px) {
+  .presensi-corner {
+    width: 24px !important;
+    height: 24px !important;
+  }
+}
+/* Wajah terdeteksi → siku HIJAU + glow */
+.presensi-camera-box.face-detected .presensi-corner {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.6) !important;
+}
+/* Tidak ada wajah → siku ORANYE + glow */
+.presensi-camera-box.face-none .presensi-corner {
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.5) !important;
+}
+/* Face-ring tetap invisible (border transparent) — elemen ada supaya JS
+   tidak error. Warna indikator sekarang lewat siku, bukan ring. */
+.presensi-face-ring {
+  border: 3px solid transparent !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}

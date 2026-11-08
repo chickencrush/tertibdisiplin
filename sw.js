@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.22-android-dvh-siku-4-sudut';  // v100.22: Fix Android presensi (camera-box max-height 60dvh dynamic viewport) + face ring diubah jadi SIKU 4 SUDUT (bukan kotak penuh). TIDAK mengganggu layout kamera v100.10. Mencakup v100.12-v100.21. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.23-fix-telak-android-siku-warna';  // v100.23: FIX TELAK Android — #presensi-fullscreen pakai 100dvh !important (inline style JS tidak bisa override). Hapus deteksi supportsDvh yang unreliable. SIKU (presensi-corner) tetap ada, berubah HIJAU saat wajah detected, ORANYE saat no-face (via class face-detected/face-none di camera-box, di-toggle setFaceStatus). Mencakup v100.12-v100.22. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',
