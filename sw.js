@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.19-shift-picker';  // v100.19: Dropdown shift terlihat di kartu presensi — Tim Operasional (semua shift) & Management HANYA kalau default_shift='Shift Security'. Pilihan hanya utk presensi kali ini (tidak ubah default_shift permanen). TIDAK menyentuh logika lintas tanggal/geofence/denda. Mencakup v100.12-v100.18. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.20-koreksi-shift';  // v100.20: Fitur Koreksi Shift Presensi (Super Admin only). Tombol "Koreksi" di Riwayat Presensi → modal pilih shift baru → denda dihitung ulang otomatis. Audit log: original_shift, corrected_by, corrected_at. TIDAK mengganggu lintas tanggal/geofense/denda/checkout. Mencakup v100.12-v100.19. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',

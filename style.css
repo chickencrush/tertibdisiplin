@@ -3964,3 +3964,31 @@ button.is-busy::after,
   border-color: var(--burgundy-primary, #8b1e3f);
   box-shadow: 0 0 0 3px rgba(139, 35, 65, 0.15);
 }
+
+/* ========================================================================
+   v100.20: TOMBOL KOREKSI SHIFT — kecil, tema burgundy, di kolom Status
+   Hanya tampil untuk Super Admin (render kondisional di app.js).
+   ======================================================================== */
+.btn-correct-shift {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid rgba(139, 35, 65, 0.22);
+  background: rgba(254, 243, 199, 0.7);
+  color: #92400e;
+  cursor: pointer;
+  transition: background-color 0.22s var(--ease-glassy, ease), border-color 0.22s var(--ease-glassy, ease), transform 0.18s var(--ease-glassy, ease);
+}
+.btn-correct-shift:hover {
+  background: rgba(254, 215, 170, 0.9);
+  border-color: rgba(139, 35, 65, 0.5);
+  transform: translateY(-1px);
+}
+.btn-correct-shift:active {
+  transform: scale(0.95);
+}

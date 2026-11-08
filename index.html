@@ -3225,6 +3225,41 @@
   </div>
 </div>
 
+<!-- ================= v100.20: MODAL KOREKSI SHIFT PRESENSI (Super Admin only) ================= -->
+<div class="modal-overlay" id="modal-correct-shift" style="z-index:9998;">
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>✏️ Koreksi Shift Presensi</h3>
+      <button class="modal-close-btn" onclick="closeModal('modal-correct-shift')">&times;</button>
+    </div>
+    <div style="padding:20px 26px;">
+      <input type="hidden" id="cs-att-id">
+      <div style="background:#f8fafc; border-radius:10px; padding:12px 14px; margin-bottom:16px; font-size:12.5px; line-height:1.7;">
+        <div><strong>Karyawan:</strong> <span id="cs-att-employee">-</span></div>
+        <div><strong>Tanggal:</strong> <span id="cs-att-date">-</span></div>
+        <div><strong>Jam Masuk:</strong> <span id="cs-att-checkin">-</span></div>
+        <div><strong>Shift Saat Ini:</strong> <span id="cs-att-current-shift" style="color:#dc2626; font-weight:700;">-</span></div>
+        <div><strong>Koreksi Sebelumnya:</strong> <span id="cs-att-original" style="color:#92400e; font-style:italic;">-</span></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label required">Shift Baru</label>
+        <select class="form-control" id="cs-new-shift">
+          <!-- Diisi oleh openCorrectShiftModal() -->
+        </select>
+      </div>
+      <div style="background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; padding:10px 12px; margin-top:12px; font-size:11.5px; color:#92400e; line-height:1.5;">
+        <strong>⚠️ Catatan:</strong> Denda keterlambatan akan dihitung ulang otomatis berdasarkan shift baru & jam masuk yang sudah ada. Jam masuk, foto selfie, dan data checkout TIDAK diubah. Audit log (shift lama, siapa, kapan) tersimpan otomatis.
+      </div>
+    </div>
+    <div class="modal-footer" style="padding:14px 26px; display:flex; gap:10px; justify-content:flex-end;">
+      <button type="button" class="btn-secondary" onclick="closeModal('modal-correct-shift')">Batal</button>
+      <button type="button" class="btn-primary" id="cs-submit-btn" onclick="window.submitCorrectShift && window.submitCorrectShift()">
+        <i data-feather="save" style="width:14px; height:14px;"></i> Simpan Koreksi
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 

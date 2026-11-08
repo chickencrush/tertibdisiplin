@@ -5750,9 +5750,11 @@ const renderAttendanceTable = (logs) => {
         <td>${checkOutDisplay}</td>
         <td>${lateBadge}</td>
         <td>
-          <span class="status-badge-pill ${l.status === 'Hadir Tepat Waktu' ? 'status-selesai' : 'status-hold'}">
+          <span class="status-badge-pill ${l.status === 'Hadir Tepat Waktu' || l.status === 'Hadir Tepat Waktu (Izin Telat)' ? 'status-selesai' : 'status-hold'}">
             ${l.status}
           </span>
+          ${l.original_shift ? `<div style="font-size:10px; color:#92400e; margin-top:4px; font-style:italic;" title="Dikoreksi dari: ${l.original_shift}">✏️ dari: ${l.original_shift}</div>` : ''}
+          ${isSuperAdminUser() ? `<button type="button" class="btn-correct-shift" onclick="window.openCorrectShiftModal && window.openCorrectShiftModal('${l.id}')" title="Koreksi shift presensi"><i data-feather="edit-3" style="width:11px; height:11px;"></i> Koreksi</button>` : ''}
         </td>
       </tr>
     `;
@@ -11015,3 +11017,87 @@ window.viewSaSpkEmployeeDocs = window.viewSaSpkEmployeeDocs;
     }
   } catch (e) { /* diam */ }
 })();
+
+// ================= v100.20: KOREKSI SHIFT PRESENSI (Super Admin only) =================
+// Modal untuk koreksi shift presensi yang salah. Recalculate denda otomatis di backend.
+// Audit log: original_shift, corrected_by, corrected_at disimpan di sheet attendance.
+// TIDAK menyentuh: check_in_time, check_out_time, lat/lon, selfie, overtime, lintas tanggal.
+AppState.__correctShiftTarget = null;
+window.openCorrectShiftModal = function (attendanceId) {
+  if (!isSuperAdminUser()) { showToast('Hanya Super Admin yang dapat mengoreksi shift.', 'error'); return; }
+  const log = (AppState.attendanceLogs || []).find(function (l) { return String(l.id) === String(attendanceId); });
+  if (!log) { showToast('Data presensi tidak ditemukan.', 'error'); return; }
+  AppState.__correctShiftTarget = log;
+  // Build options dari AppState.shifts (dynamic) atau fallback hardcoded
+  let optsHtml = '';
+  const dynShifts = Array.isArray(AppState.shifts) ? AppState.shifts : [];
+  if (dynShifts.length > 0) {
+    optsHtml = dynShifts.filter(function (s) { return Number(s.active) !== 0; })
+      .sort(function (a, b) { return (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0); })
+      .map(function (s) {
+        const sel = s.name === log.shift_name ? ' selected' : '';
+        const label = s.name + (s.time_label ? ' (' + s.time_label + ')' : '');
+        return '<option value="' + s.name + '"' + sel + '>' + label + '</option>';
+      }).join('');
+  } else {
+    // Fallback hardcoded
+    const allShifts = SHIFT_OPTIONS_MANAGEMENT.concat(SHIFT_OPTIONS_OPERASIONAL).concat(SHIFT_OPTIONS_SCH).concat(SHIFT_OPTIONS_UII);
+    optsHtml = allShifts.map(function (o) {
+      const sel = o.value === log.shift_name ? ' selected' : '';
+      return '<option value="' + o.value + '"' + sel + '>' + o.label + '</option>';
+    }).join('');
+  }
+  // Isi modal
+  const elId = document.getElementById('cs-att-id');
+  const elEmp = document.getElementById('cs-att-employee');
+  const elDate = document.getElementById('cs-att-date');
+  const elCheckIn = document.getElementById('cs-att-checkin');
+  const elCurShift = document.getElementById('cs-att-current-shift');
+  const elSel = document.getElementById('cs-new-shift');
+  const elOriginal = document.getElementById('cs-att-original');
+  if (elId) elId.value = log.id;
+  if (elEmp) elEmp.textContent = log.employee_name + ' (' + (log.division || '-') + ')';
+  if (elDate) elDate.textContent = log.date || '-';
+  if (elCheckIn) elCheckIn.textContent = log.check_in_time || '-';
+  if (elCurShift) elCurShift.textContent = log.shift_name || '-';
+  if (elSel) elSel.innerHTML = optsHtml;
+  if (elOriginal) elOriginal.textContent = log.original_shift || '(belum pernah dikoreksi)';
+  // Tampilkan modal
+  if (typeof openModal === 'function') openModal('modal-correct-shift');
+  else { const m = document.getElementById('modal-correct-shift'); if (m) m.classList.add('active'); }
+  if (window.feather) feather.replace();
+};
+window.openCorrectShiftModal = window.openCorrectShiftModal;
+
+window.submitCorrectShift = async function () {
+  const log = AppState.__correctShiftTarget;
+  if (!log) { showToast('Target koreksi tidak ditemukan.', 'error'); return; }
+  const sel = document.getElementById('cs-new-shift');
+  const newShift = sel ? sel.value : '';
+  if (!newShift) { showToast('Pilih shift baru dulu.', 'warning'); return; }
+  if (newShift === log.shift_name) { showToast('Shift baru sama dengan shift lama. Tidak ada perubahan.', 'info'); return; }
+  if (!confirm('Koreksi shift presensi?\n\nKaryawan: ' + log.employee_name + '\nShift lama: ' + log.shift_name + '\nShift baru: ' + newShift + '\n\nDenda akan dihitung ulang otomatis.')) return;
+  const btn = document.getElementById('cs-submit-btn');
+  if (window.TDLoading && window.TDLoading.capBusy && btn) window.TDLoading.capBusy(btn, 2000);
+  try {
+    const res = await fetch('/api/attendance/' + log.id + '/correct-shift', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shift_name: newShift })
+    });
+    const data = await res.json();
+    if (res.ok && data.status === 'success') {
+      showToast(data.message || 'Shift presensi dikoreksi.', 'success');
+      if (typeof closeModal === 'function') closeModal('modal-correct-shift');
+      else { const m = document.getElementById('modal-correct-shift'); if (m) m.classList.remove('active'); }
+      // Refresh data presensi
+      if (typeof loadAttendanceLogs === 'function') await loadAttendanceLogs();
+    } else {
+      showToast(data.detail || data.message || 'Gagal mengoreksi shift.', 'error');
+    }
+  } catch (err) {
+    showToast('Kesalahan koneksi saat koreksi shift.', 'error');
+    console.error('Correct shift error:', err);
+  }
+};
+window.submitCorrectShift = window.submitCorrectShift;
