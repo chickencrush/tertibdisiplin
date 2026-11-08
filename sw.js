@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.25-bulletproof-visualviewport';  // v100.25: BULLETPROOF layout untuk HP layar panjang (Redmi Note 9 Pro 20:9). Container overflow:hidden + camera-box min-height:0 + flex-shrink:0 non-camera. JS pakai visualViewport API measure real viewport + apply pixel height. TIDAK peduli dvh/vh — dapatin viewport real-time. Mencakup v100.12-v100.24. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.26-security-shift-picker';  // v100.26: Security SELALU tampil dropdown shift (tidak peduli default_shift — shift bisa rotasi Shift Security ↔ Shift Management). Sebelumnya hanya tampil kalau default_shift='Shift Security'. Tim Operasional tetap tampil (semua shift). Mencakup v100.12-v100.25. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',

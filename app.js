@@ -652,13 +652,19 @@ window.showPresensiShiftPicker_ = function () {
   const div = u.division || '';
   const isOps = OPERASIONAL_DIVISIONS.indexOf(div) >= 0;
   const isMgmt = MANAGEMENT_DIVISIONS.indexOf(div) >= 0;
+  const isSecurity = div === 'Security';   // v100.26: Security selalu tampil dropdown (shift bisa rotasi Shift Security ↔ Shift Management)
   const defaultShift = (u.default_shift || '').trim();
 
   // v100.19 aturan visibility:
   // - Tim Operasional: TAMPIL (semua shift relevan)
   // - Management: TAMPIL HANYA kalau default_shift='Shift Security'
-  // - Lainnya: Sembunyikan
-  const shouldShow = isOps || (isMgmt && defaultShift === 'Shift Security');
+  // v100.26 update:
+  // - Security: TAMPIL SELALU (tidak peduli default_shift — shift bisa rotasi
+  //   antara Shift Security 07:00-19:00 dan Shift Management 08:30-16:30).
+  //   Sebelumnya Security hanya tampil kalau default_shift='Shift Security' →
+  //   kalau belum di-set, tidak bisa ganti shift.
+  // - Lainnya (BM, HRD, Finance, dll): Sembunyikan
+  const shouldShow = isOps || isSecurity || (isMgmt && defaultShift === 'Shift Security');
 
   if (!shouldShow) {
     wrapper.style.display = 'none';
