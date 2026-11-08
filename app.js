@@ -3781,6 +3781,14 @@ const setFaceStatus = (state, customLabel) => {
     textEl.style.color = s.text;
   }
   if (iconEl) iconEl.textContent = s.icon;
+  // v100.31: FIX bug "Kamera belum aktif" tetap muncul walau kamera sudah aktif.
+  // Sebelumnya setFaceStatus hanya update #face-status-* (HIDDEN off-screen).
+  // #face-hint-* (TERLIHAT di layar kamera) tidak pernah di-update → tetap
+  // "Kamera belum aktif" selamanya. Sekarang sync ke face-hint juga.
+  const hintIconEl = document.getElementById('face-hint-icon');
+  const hintTextEl = document.getElementById('face-hint-text');
+  if (hintIconEl) hintIconEl.textContent = s.icon;
+  if (hintTextEl) hintTextEl.textContent = customLabel || s.label;
   if (ring) {
     if (state === 'ok') {
       ring.style.borderColor = '#10b981';

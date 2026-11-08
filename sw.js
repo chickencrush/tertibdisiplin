@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.30-modern-futuristik-login';  // v100.30: Redesign layar login jadi modern futuristik — dark gradient + aurora bergerak + grid pattern, glassmorphism card, logo glow neon ring (PNG transparan tanpa background hitam), gradient title, glassmorphism inputs, neon button. Logo baru dibuat transparan sempurna (sebelumnya ada background hitam di fallback base64). Mencakup v100.12-v100.29. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.31-fix-face-hint';  // v100.31: Fix bug "Kamera belum aktif" tetap muncul di layar kamera walau kamera sudah aktif. Root cause: setFaceStatus hanya update #face-status-* (hidden off-screen), tidak sync ke #face-hint-* (terlihat di layar). Sekarang sync keduanya. Mencakup v100.12-v100.30. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',
