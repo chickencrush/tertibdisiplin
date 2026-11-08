@@ -4216,18 +4216,54 @@ AppState.__presensiFullscreenOpen = false;
 window.openPresensiFullscreen = async () => {
   const fs = document.getElementById('presensi-fullscreen');
   if (!fs) { showToast('Elemen presensi tidak ditemukan.', 'error'); return; }
-  const h = window.innerHeight;
+  // v100.21: Fix Android fullscreen melebar.
+  // Sebelumnya: fs.style.height = window.innerHeight + 'px' (inline style).
+  //   Masalah: window.innerHeight di Android Chrome bisa salah (include/exclude
+  //   browser chrome tidak konsisten) → saat address bar show/hide, layout
+  //   melebar → shutter & teks hilang di bawah viewport.
+  // SekARANG: pakai CSS 100dvh (dynamic viewport height) yang menyesuaikan
+  //   otomatis saat address bar show/hide. Inline style TIDAK di-set supaya
+  //   CSS dvh yang menang. Resize handler juga di-skip (dvh otomatis).
+  //   Fallback: kalau browser tidak dukung dvh (deteksi via CSS support),
+  //   pakai window.innerHeight lama.
+  const supportsDvh = (function () {
+    try {
+      // Cek apakah 100dvh di-resolve ke nilai pixel yang valid
+      const el = document.createElement('div');
+      el.style.height = '100dvh';
+      el.style.display = 'none';
+      document.body.appendChild(el);
+      const h = window.getComputedStyle(el).height;
+      document.body.removeChild(el);
+      return h && h !== 'auto' && h !== '0px';
+    } catch (e) { return false; }
+  })();
   fs.style.display = 'block';
-  fs.style.height = h + 'px';
-  const container = fs.querySelector('.presensi-fullscreen-container');
-  if (container) container.style.height = h + 'px';
+  if (!supportsDvh) {
+    // Browser lama tanpa dvh — fallback ke window.innerHeight (lama)
+    const h = window.innerHeight;
+    fs.style.height = h + 'px';
+    const container = fs.querySelector('.presensi-fullscreen-container');
+    if (container) container.style.height = h + 'px';
+  } else {
+    // dvh didukung — biarkan CSS atur, clear inline style lama kalau ada
+    fs.style.height = '';
+    const container = fs.querySelector('.presensi-fullscreen-container');
+    if (container) container.style.height = '';
+  }
+  // Resize handler tetap dipasang utk fallback browser lama (tanpa dvh).
+  // Untuk browser dvh, handler no-op (height sudah dari CSS).
   if (!AppState.__presensiResizeHandler) {
     AppState.__presensiResizeHandler = function () {
-      if (AppState.__presensiFullscreenOpen) {
+      if (!AppState.__presensiFullscreenOpen) return;
+      // Cek apakah inline style masih dipakai (fallback mode)
+      if (fs.style.height && fs.style.height !== '') {
         const newH = window.innerHeight;
         fs.style.height = newH + 'px';
+        const container = fs.querySelector('.presensi-fullscreen-container');
         if (container) container.style.height = newH + 'px';
       }
+      // Kalau inline style kosong (dvh mode), dvh otomatis menyesuaikan — skip
     };
     window.addEventListener('resize', AppState.__presensiResizeHandler);
     window.addEventListener('orientationchange', function () { setTimeout(AppState.__presensiResizeHandler, 200); });

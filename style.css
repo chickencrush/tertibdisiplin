@@ -3992,3 +3992,51 @@ button.is-busy::after,
 .btn-correct-shift:active {
   transform: scale(0.95);
 }
+
+/* ========================================================================
+   v100.21: FIX ANDROID FULLSCREEN PRESENSI + FACE RING KOTAK
+   ------------------------------------------------------------------------
+   Bug: di Android Chrome, layar kamera presensi melebar sehingga
+   teks & tombol shutter hilang di bawah viewport. iOS aman.
+   Root cause: window.innerHeight (inline style di openPresensiFullscreen)
+   bisa salah di Android (include/exclude browser chrome tidak konsisten).
+   Saat address bar show/hide, layout melebar → container > viewport →
+   shutter terdorong ke bawah tak terlihat.
+
+   Fix: pakai 100dvh (dynamic viewport height) di CSS — override inline
+   style. dvh menyesuaikan otomatis saat address bar show/hide, tidak
+   perlu JS resize handler. 100vh fallback utk browser lama.
+
+   AMAN: tidak sentuh layout kamera v100.10 (camera-box, controls,
+   shutter, info-panel posisinya tetap). Hanya height container yg
+   diperbaiki. iOS tetap aman (dvh didukung iOS 15.4+).
+   ======================================================================== */
+
+/* Override inline style window.innerHeight — pakai dvh (dynamic) */
+#presensi-fullscreen {
+  height: 100vh;       /* fallback browser lama */
+  height: 100dvh;      /* Android Chrome 108+, iOS 15.4+ — menyesuaikan address bar */
+}
+.presensi-fullscreen-container {
+  height: 100vh;       /* fallback */
+  height: 100dvh;      /* dynamic — ikut parent */
+}
+
+/* v100.21: Face ring jadi KOTAK PERSEGI (4 sisi rata, radius 0).
+   Sebelumnya border-radius:12px + aspect-ratio 3/4 (agak oval).
+   Sekarang: persegi empat tegas, aspect-ratio tetap 3/4 (cocok utk
+   face detection), TANPA radius. */
+.presensi-face-ring {
+  border-radius: 0 !important;
+}
+/* Hover/glow tetap jalan — hanya bentuk yg kotak */
+.presensi-face-ring.detected {
+  border-color: #10b981;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+  border-radius: 0 !important;
+}
+.presensi-face-ring.no-face {
+  border-color: #f59e0b;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+  border-radius: 0 !important;
+}
