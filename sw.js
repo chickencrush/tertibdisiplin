@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.28-siku-clean-area-wajah';  // v100.28: Siku deteksi wajah CLEAN — hilangkan box-shadow glow (bayang-bayang kotak), hapus border-radius (siku persegi tegas). Siku dipindah KE DALAM face-ring supaya mengikuti area wajah (tengah camera-box, width 70%, aspect 3/4). Mencakup v100.12-v100.27. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.29-modern-loading-ios-fix';  // v100.29: Modern loading — dual-ring spinner (CW+CCW berlawanan), conic-gradient spinner untuk tombol, shimmer progress bar, glassmorphism pil. Fix iOS: exclude loading indicators dari prefers-reduced-motion (iOS Safari default reduce-motion ON → spinner berhenti setelah 1x). Mencakup v100.12-v100.28. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',

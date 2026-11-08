@@ -2922,6 +2922,25 @@ select.form-control {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+  /* v100.29: LOADING INDICATORS TETAP BERGERAK walau reduce motion.
+     iOS Safari default reduce-motion ON di banyak device → spinner
+     berhenti setelah 1x → user kira app hang. Loading HARUS animasi
+     supaya user tahu proses berjalan. Exclude via lebih specific. */
+  #td-progress-bar .td-bar-fill,
+  #td-loading-pill .td-pill-spin,
+  #td-loading-pill .td-pill-spin::before,
+  #td-loading-pill .td-pill-spin::after,
+  button.is-busy::after,
+  .auth-submit-btn.is-busy::after,
+  .tab-pill-btn.is-busy::after,
+  .mode-btn.is-busy::after,
+  .presensi-shutter-btn.is-busy::after,
+  .presensi-side-btn.is-busy::after,
+  .presensi-close-btn.is-busy::after,
+  .icon-action-btn.is-busy::after {
+    animation-duration: 0.7s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 /* ==========================================
@@ -4385,4 +4404,123 @@ button.is-busy::after,
   box-shadow: none !important;
   background: transparent !important;
   /* width 70%, aspect-ratio 3/4 — area wajah. Tetap dari rule awal. */
+}
+
+/* ========================================================================
+   v100.29: MODERN LOADING — dual-ring spinner + shimmer progress
+   ------------------------------------------------------------------------
+   1. Spinner lama: border + border-top-color: transparent (single ring).
+      Masalah di iOS: terkadang tidak smooth, terlihat "lompat".
+   2. Spinner baru: DUAL-RING (modern, kekinian). Ring luar + ring dalam
+      berputar berlawanan arah. Lebih dinamis & modern.
+   3. Progress bar: tambah shimmer overlay (efek kilau bergerak).
+   4. Pil status: glassmorphism lebih kuat + spinner dual-ring.
+   ======================================================================== */
+
+/* — Modern dual-ring spinner keyframes — */
+@keyframes tdSpinCW  { to { transform: rotate(360deg); } }
+@keyframes tdSpinCCW { to { transform: rotate(-360deg); } }
+
+/* — Pil status: spinner dual-ring modern — */
+#td-loading-pill .td-pill-spin {
+  /* Hapus border-based lama, ganti dual-ring */
+  border: none !important;
+  width: 18px !important;
+  height: 18px !important;
+  position: relative;
+  animation: none !important;  /* container tidak berputar, anak-anak yang berputar */
+}
+#td-loading-pill .td-pill-spin::before,
+#td-loading-pill .td-pill-spin::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+}
+/* Ring luar — putar CW, warna burgundy */
+#td-loading-pill .td-pill-spin::before {
+  border-top-color: #8b2341;
+  border-right-color: #d6336c;
+  animation: tdSpinCW 0.9s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+/* Ring dalam — putar CCW, warna gold accent, lebih kecil */
+#td-loading-pill .td-pill-spin::after {
+  inset: 4px;
+  border-bottom-color: #f59e0b;
+  border-left-color: #fbbf24;
+  animation: tdSpinCCW 0.7s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* — Spinner tombol teks (button.is-busy): dual-ring mini — */
+button.is-busy::after,
+.auth-submit-btn.is-busy::after,
+.tab-pill-btn.is-busy::after,
+.mode-btn.is-busy::after {
+  border: none !important;
+  width: 1.1em !important;
+  height: 1.1em !important;
+  position: relative;
+  animation: none !important;
+  border-radius: 50%;
+}
+/* Untuk tombol teks, pakai conic-gradient spinner (modern, single element).
+   CSS TIDAK mendukung pseudo-element di dalam pseudo-element (::after::before),
+   jadi pakai conic-gradient + mask untuk efek ring berputar. */
+button.is-busy::after,
+.auth-submit-btn.is-busy::after,
+.tab-pill-btn.is-busy::after,
+.mode-btn.is-busy::after {
+  background: conic-gradient(from 0deg, transparent 0deg, currentColor 270deg, currentColor 360deg) !important;
+  -webkit-mask: radial-gradient(circle, transparent 40%, #000 42%) !important;
+  mask: radial-gradient(circle, transparent 40%, #000 42%) !important;
+  animation: tdSpinCW 0.7s linear infinite !important;
+  border: none !important;
+  border-radius: 50% !important;
+}
+
+/* — Spinner tombol ikon bulat (shutter, GPS, dll): conic-gradient modern — */
+.presensi-shutter-btn.is-busy::after,
+.presensi-side-btn.is-busy::after,
+.presensi-close-btn.is-busy::after,
+.icon-action-btn.is-busy::after {
+  border: none !important;
+  background: conic-gradient(from 0deg, transparent 0deg, currentColor 270deg, currentColor 360deg) !important;
+  -webkit-mask: radial-gradient(circle, transparent 38%, #000 40%) !important;
+  mask: radial-gradient(circle, transparent 38%, #000 40%) !important;
+  animation: tdSpinCW 0.7s linear infinite !important;
+  border-radius: 50% !important;
+}
+
+/* — Progress bar: tambah shimmer overlay (kilau bergerak modern) — */
+#td-progress-bar .td-bar-fill {
+  /* Tetap pakai gradient lama, tambah shimmer via background-image layered */
+  background:
+    linear-gradient(90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.4) 50%,
+      rgba(255,255,255,0) 100%
+    ),
+    linear-gradient(90deg, rgba(139,35,65,0) 0%, #8b2341 35%, #d6336c 72%, rgba(214,51,108,0) 100%) !important;
+  background-size: 200% 100%, 100% 100% !important;
+  animation: tdBarSlide 1.15s ease-in-out infinite, tdShimmer 1.6s linear infinite !important;
+}
+@keyframes tdShimmer {
+  0%   { background-position: 200% 0, 0 0; }
+  100% { background-position: -200% 0, 0 0; }
+}
+
+/* — Pil status: glassmorphism lebih kuat + modern — */
+#td-loading-pill {
+  background: rgba(255,255,255,0.75) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(139,35,65,0.12) !important;
+  box-shadow: 0 8px 32px rgba(74,14,33,0.18), 0 2px 8px rgba(74,14,33,0.08),
+              inset 0 1px 0 rgba(255,255,255,0.6) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  padding: 9px 18px !important;
+  border-radius: 999px !important;
 }
