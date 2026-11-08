@@ -4226,25 +4226,57 @@ AppState.__presensiFullscreenOpen = false;
 window.openPresensiFullscreen = async () => {
   const fs = document.getElementById('presensi-fullscreen');
   if (!fs) { showToast('Elemen presensi tidak ditemukan.', 'error'); return; }
-  // v100.23: FIX TELAK Android. CSS #presensi-fullscreen pakai 100dvh !important
-  // (rule di style.css bagian v100.23). Inline style TIDAK di-set sama sekali
-  // supaya CSS !important yang menang. Resize handler tidak perlu (dvh otomatis).
-  // Sebelumnya (v100.21) pakai deteksi supportsDvh (getComputedStyle) yang
-  // UNRELIABLE di Android → false positive → inline style di-clear → height
-  // jadi 0/auto → layout melebar → shutter hilang.
+  // v100.25: BULLETPROOF layout untuk HP layar panjang (Redmi Note 9 Pro 20:9).
+  // Pakai visualViewport API untuk measure viewport sebenarnya (exclude browser
+  // UI seperti address bar). Apply sebagai pixel height ke container. Resize
+  // listener untuk address bar show/hide.
+  // visualViewport didukung Chrome 61+ (2017), semua browser modern. Fallback
+  // kalau tidak support: pakai window.innerHeight lama.
   fs.style.display = 'block';
-  // Hapus inline style height lama (kalau ada dari versi sebelumnya) supaya
-  // CSS !important 100dvh yang mengatur.
-  fs.style.height = '';
   const container = fs.querySelector('.presensi-fullscreen-container');
-  if (container) container.style.height = '';
+
+  function applyRealViewportHeight() {
+    if (!AppState.__presensiFullscreenOpen) return;
+    let realH;
+    if (window.visualViewport && window.visualViewport.height) {
+      // visualViewport.height = viewport sebenarnya, exclude browser UI
+      realH = window.visualViewport.height;
+    } else {
+      // Fallback: window.innerHeight (kurang reliable di Android)
+      realH = window.innerHeight;
+    }
+    // Apply sebagai pixel height ke container. override CSS height:100%.
+    // Pakai !important via setProperty supaya menang.
+    if (container) {
+      container.style.setProperty('height', realH + 'px', 'important');
+    }
+    // fs (parent) biarkan CSS inset:0 yang atur (dari v100.24)
+  }
+  applyRealViewportHeight();
+
+  // Pasang resize listener untuk address bar show/hide & orientation change
+  if (!AppState.__presensiVpHandler) {
+    AppState.__presensiVpHandler = function () { applyRealViewportHeight(); };
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', AppState.__presensiVpHandler);
+      window.visualViewport.addEventListener('scroll', AppState.__presensiVpHandler);
+    }
+    window.addEventListener('resize', AppState.__presensiVpHandler);
+    window.addEventListener('orientationchange', function () { setTimeout(AppState.__presensiVpHandler, 200); });
+  }
+
   AppState.__presensiFullscreenOpen = true;
+  // Re-apply setelah 1 frame (kalau visualViewport baru ready setelah display:block)
+  requestAnimationFrame(applyRealViewportHeight);
+  setTimeout(applyRealViewportHeight, 100);
   window.updatePresensiInfoPanel && window.updatePresensiInfoPanel();
   window.startPresensiClock && window.startPresensiClock();
   if (!AppState.gpsOk) { if (window.detectDeviceGPS) window.detectDeviceGPS(); }
   if (window.startCamera) { try { await window.startCamera(); } catch (e) { console.warn('Camera start error:', e); } }
   window.updatePresensiShutterLabel && window.updatePresensiShutterLabel();
   if (window.feather) feather.replace();
+  // Re-apply lagi setelah camera start (viewport bisa berubah)
+  applyRealViewportHeight();
 };
 window.openPresensiFullscreen = window.openPresensiFullscreen;
 

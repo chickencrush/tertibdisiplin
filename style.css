@@ -4200,3 +4200,127 @@ button.is-busy::after,
   box-shadow: none !important;
   background: transparent !important;
 }
+
+/* ========================================================================
+   v100.24: FIX DEVICE-AGNOSTIC — Redmi Note 9 Pro & HP layar lebar berpunch-hole
+   ------------------------------------------------------------------------
+   Bug: v100.23 andalkan 100dvh !important. TAPI di HP tertentu (mis.
+   Redmi Note 9 Pro dengan Mi Browser berbasis Chromium lama), dvh
+   TIDAK support → jatuh ke 100vh fallback yang di Android bermasalah
+   (include browser chrome) → layout melebar → shutter hilang.
+   Plus: punch-hole camera (Redmi/iPhone) bisa nutupin header kalau
+   tidak ada safe-area-inset.
+
+   FIX v100.24 (device-agnostic, tidak peduli dvh/vh support):
+   1. #presensi-fullscreen pakai position:fixed; inset:0 (top:0; right:0;
+      bottom:0; left:0) — SELALU fill viewport, tidak peduli dvh/vh.
+      inset:0 lebih reliable dari height:100dvh karena tidak hitung
+      viewport unit sama sekali.
+   2. .presensi-fullscreen-container pakai height:100% (ikut parent
+      yang sudah fixed inset:0) + safe-area-inset padding supaya
+      konten tidak ketutup punch-hole/status bar.
+   3. Camera-box max-height pakai calc dengan safe-area-inset supaya
+      tidak overflow di HP dengan punch-hole.
+   ======================================================================== */
+
+/* Override v100.23: pakai inset:0 (lebih reliable dari dvh) */
+#presensi-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: auto !important;       /* override 100dvh !important v100.23 */
+  z-index: 9999;
+}
+.presensi-fullscreen-container {
+  height: 100% !important;       /* ikut parent yang fixed inset:0 */
+  /* safe-area-inset: akomodasi punch-hole (Redmi/iPhone), status bar, home bar.
+     Pakai max() supaya minimal ada padding walaupun safe-area = 0. */
+  padding-top: max(10px, env(safe-area-inset-top, 0px)) !important;
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)) !important;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)) !important;
+  padding-right: max(16px, env(safe-area-inset-right, 0px)) !important;
+  box-sizing: border-box !important;
+}
+
+/* Camera-box max-height: hitung ulang dengan safe-area-inset supaya tidak
+   overflow. Pakai calc() — kalau safe-area 0, jatuh ke 60vh/50vh lama. */
+.presensi-camera-box {
+  /* 60vh fallback, 60dvh kalau support, kurangi safe-area supaya pas */
+  max-height: calc(60vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+}
+@supports (height: 60dvh) {
+  .presensi-camera-box {
+    max-height: calc(60dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+@media (max-width: 600px) {
+  .presensi-camera-box {
+    max-height: calc(50vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+  }
+  @supports (height: 50dvh) {
+    .presensi-camera-box {
+      max-height: calc(50dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+    }
+  }
+}
+
+/* Close button & GPS status: tambah safe-area-top supaya tidak ketutup
+   punch-hole/status bar di Redmi/iPhone. */
+.presensi-header-panel {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+}
+.presensi-gps-status {
+  top: max(8px, env(safe-area-inset-top, 0px)) !important;
+}
+
+/* ========================================================================
+   v100.25: BULLETPROOF LAYOUT — visualViewport API + overflow:hidden
+   ------------------------------------------------------------------------
+   Bug: v100.24 masih bermasalah di Redmi Note 9 Pro (aspect ratio 20:9,
+   layar sangat panjang). Container overflow-y:auto → scroll muncul TAPI
+   tidak terlihat di dark background → user kira elemen "hilang".
+
+   Root cause: .presensi-camera-box min-height:300px (mobile 250px) +
+   flex:1 → di aspect ratio 20:9, total elemen > viewport → overflow.
+
+   FIX v100.25 (bulletproof, 2 layer):
+   1. CSS: container overflow:hidden (TIDAK boleh scroll — harus fit).
+      camera-box min-height:0 !important (bisa shrink sampai 0 kalau
+      perlu). Semua elemen non-camera flex-shrink:0 (tidak boleh
+      di-shrink). Camera-box flex:1 (ambil sisa ruang).
+   2. JS: pakai visualViewport API untuk measure viewport sebenarnya
+      (exclude browser UI) → apply sebagai pixel height ke container.
+      Resize listener untuk address bar show/hide. visualViewport
+      didukung Chrome 61+ (2017), semua browser modern.
+   ======================================================================== */
+
+/* Container: TIDAK boleh scroll. Harus fit viewport. */
+.presensi-fullscreen-container {
+  overflow: hidden !important;
+}
+
+/* Camera-box: boleh shrink sampai 0 (min-height:0). flex:1 ambil sisa.
+   max-height tetap 60dvh (dengan safe-area calc dari v100.24). */
+.presensi-camera-box {
+  min-height: 0 !important;
+  flex: 1 1 0 !important;
+}
+/* Mobile override min-height juga 0 */
+@media (max-width: 600px) {
+  .presensi-camera-box {
+    min-height: 0 !important;
+  }
+}
+
+/* Pastikan semua elemen non-camera TIDAK boleh di-shrink */
+.presensi-header-panel,
+.presensi-face-hint,
+.presensi-controls-row,
+.presensi-info-panel,
+.presensi-gps-banner {
+  flex-shrink: 0 !important;
+}
