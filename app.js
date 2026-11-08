@@ -633,8 +633,61 @@ window.populateShiftOptions = () => {
   } else if (opts.length > 0) {
     shiftSelect.value = opts[0].value;
   }
+  // v100.19: Setelah populate hidden select, sync ke dropdown terlihat (kalau eligible)
+  if (window.showPresensiShiftPicker_) window.showPresensiShiftPicker_();
 };
 const populateShiftOptions = window.populateShiftOptions;
+
+// v100.19: PRESENSI SHIFT PICKER — dropdown shift terlihat di kartu presensi.
+// Tampil untuk: Tim Operasional (semua shift) & Management HANYA kalau default_shift='Shift Security'.
+// Cara kerja: populate options dari hidden select (presensi-shift-select), mirror selection.
+// TIDAK menyentuh logika lintas tanggal, geofence, late_arrival, denda — hanya UI mirror.
+window.showPresensiShiftPicker_ = function () {
+  const wrapper = document.getElementById('presensi-shift-picker');
+  const pickerSel = document.getElementById('presensi-shift-picker-select');
+  const hiddenSel = document.getElementById('presensi-shift-select');
+  if (!wrapper || !pickerSel || !hiddenSel) return;
+
+  const u = AppState.currentUser || {};
+  const div = u.division || '';
+  const isOps = OPERASIONAL_DIVISIONS.indexOf(div) >= 0;
+  const isMgmt = MANAGEMENT_DIVISIONS.indexOf(div) >= 0;
+  const defaultShift = (u.default_shift || '').trim();
+
+  // v100.19 aturan visibility:
+  // - Tim Operasional: TAMPIL (semua shift relevan)
+  // - Management: TAMPIL HANYA kalau default_shift='Shift Security'
+  // - Lainnya: Sembunyikan
+  const shouldShow = isOps || (isMgmt && defaultShift === 'Shift Security');
+
+  if (!shouldShow) {
+    wrapper.style.display = 'none';
+    pickerSel.innerHTML = '';
+    return;
+  }
+
+  // Mirror options dari hidden select (sudah diisi populateShiftOptions sesuai aturan divisi)
+  pickerSel.innerHTML = hiddenSel.innerHTML;
+  pickerSel.value = hiddenSel.value;
+  wrapper.style.display = 'block';
+};
+window.showPresensiShiftPicker_ = window.showPresensiShiftPicker_;
+
+// v100.19: Handler saat user ganti shift di dropdown terlihat.
+// Sinkronkan ke hidden select (presensi-shift-select) supaya:
+//   - updateLateArrivalUI jalan normal (trigger onchange existing)
+//   - submitAttendanceCheckIn/CheckOut baca shiftSelect.value seperti biasa
+//   - updatePresensiInfoPanel tampilkan shift benar di layar kamera
+// TIDAK mengubah default_shift permanen — hanya untuk presensi kali ini.
+window.onShiftPickerChange = function (val) {
+  const hiddenSel = document.getElementById('presensi-shift-select');
+  if (!hiddenSel || !val) return;
+  hiddenSel.value = val;
+  // Trigger handler existing supaya late-arrival UI & info-panel update
+  if (window.updateLateArrivalUI) window.updateLateArrivalUI();
+  if (window.updatePresensiInfoPanel) window.updatePresensiInfoPanel();
+};
+window.onShiftPickerChange = window.onShiftPickerChange;
 
 // v82: Populate dropdown "Shift Default" di modal edit karyawan (Database Karyawan).
 // Tampilkan daftar shift aktif dari AppState.shifts (dynamic). Filter: shift yang

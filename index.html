@@ -675,6 +675,20 @@
             </div>
             <p style="font-size:12px; color:var(--text-muted); margin:8px 0 16px 0;">Klik tombol di bawah untuk membuka kamera presensi. Sistem akan otomatis mendeteksi apakah Anda perlu check-in atau check-out.</p>
 
+            <!-- v100.19: Dropdown shift terlihat — tampil untuk Tim Operasional (semua shift)
+                 & Management HANYA kalau default_shift-nya 'Shift Security'.
+                 Wrapper .presensi-shift-wrapper TIDAK punya display:none default (CSS atur).
+                 JS (showPresensiShiftPicker_) yang toggle display:none/block sesuai kondisi. -->
+            <div class="presensi-shift-wrapper" id="presensi-shift-picker" style="display:none; margin-bottom:14px;">
+              <label for="presensi-shift-picker-select" style="display:block; font-size:12px; font-weight:600; color:var(--burgundy-primary, #8b1e3f); margin-bottom:6px;">
+                <i data-feather="clock" style="width:13px; height:13px; vertical-align:-2px;"></i> Shift Kerja Saat Ini
+              </label>
+              <select id="presensi-shift-picker-select" class="form-control presensi-shift-picker-select" onchange="window.onShiftPickerChange && window.onShiftPickerChange(this.value)">
+                <!-- Diisi oleh showPresensiShiftPicker_() dari app.js -->
+              </select>
+              <p style="font-size:10.5px; color:#94a3b8; margin:5px 0 0 0; line-height:1.4;">Pilih shift sesuai jadwal kerja Anda hari ini. Hanya berlaku untuk presensi kali ini.</p>
+            </div>
+
             <!-- Tombol Presensi Sekarang (buka full-screen camera) -->
             <button type="button" class="presensi-start-btn" onclick="window.openPresensiFullscreen && window.openPresensiFullscreen()">
               <i data-feather="camera" style="width:20px; height:20px;"></i> PRESENSI SEKARANG

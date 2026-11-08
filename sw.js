@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.18-riwayat-tanggal';  // v100.18: Tambah tanggal di bawah jam masuk untuk SEMUA baris di Riwayat Presensi Hari Ini (sebelumnya hanya lintas hari). Format singkat "8 Nov 2026". Mencakup v100.12-v100.17. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.19-shift-picker';  // v100.19: Dropdown shift terlihat di kartu presensi — Tim Operasional (semua shift) & Management HANYA kalau default_shift='Shift Security'. Pilihan hanya utk presensi kali ini (tidak ubah default_shift permanen). TIDAK menyentuh logika lintas tanggal/geofence/denda. Mencakup v100.12-v100.18. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',

@@ -3930,3 +3930,37 @@ button.is-busy::after,
   transition: transform 0.28s var(--ease-glassy),
               box-shadow 0.28s var(--ease-glassy);
 }
+
+/* ========================================================================
+   v100.19: PRESENSI SHIFT PICKER — dropdown shift terlihat di kartu presensi
+   Tampil untuk: Tim Operasional (semua shift) & Management HANYA kalau
+   default_shift-nya 'Shift Security'. JS toggle display:none/block.
+   Hanya styling — tidak mengganggu logika presensi/lintas tanggal.
+   ======================================================================== */
+.presensi-shift-picker-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(139, 35, 65, 0.18);
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.22s var(--ease-glassy, ease), box-shadow 0.22s var(--ease-glassy, ease);
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b2341' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+.presensi-shift-picker-select:hover {
+  border-color: rgba(139, 35, 65, 0.45);
+  box-shadow: 0 4px 14px rgba(139, 35, 65, 0.10);
+}
+.presensi-shift-picker-select:focus {
+  outline: none;
+  border-color: var(--burgundy-primary, #8b1e3f);
+  box-shadow: 0 0 0 3px rgba(139, 35, 65, 0.15);
+}
