@@ -460,7 +460,9 @@ window.refreshPresensiOutletOptions = () => {
 };
 const SHIFT_OPTIONS_MANAGEMENT = [
   { value: 'Shift Management', label: 'Shift Management (08:30 - 16:30)' },
-  { value: 'Shift Security', label: 'Shift Security (07:00 - 19:00)' }
+  // v100.27: Shift Security lama (07:00-19:00) diganti 2 shift baru
+  { value: 'Shift Security 1', label: 'Shift Security 1 (08:00 - 17:00)' },
+  { value: 'Shift Security 2', label: 'Shift Security 2 (23:15 - 08:15) — Lintas Tanggal' }
 ];
 const SHIFT_OPTIONS_OPERASIONAL = [
   { value: 'Shift Pagi', label: 'Shift Pagi (07:00 - 15:00)' },
@@ -653,18 +655,25 @@ window.showPresensiShiftPicker_ = function () {
   const isOps = OPERASIONAL_DIVISIONS.indexOf(div) >= 0;
   const isMgmt = MANAGEMENT_DIVISIONS.indexOf(div) >= 0;
   const isSecurity = div === 'Security';   // v100.26: Security selalu tampil dropdown (shift bisa rotasi Shift Security ↔ Shift Management)
-  const defaultShift = (u.default_shift || '').trim();
+  let defaultShift = (u.default_shift || '').trim();
+  // v100.27: Kalau default_shift masih pakai nama lama (Shift Security / Shift Security Malam),
+  // redirect ke nama baru. Migrasi backend sudah update sheet employees, tapi cached user
+  // di localStorage mungkin masih pakai nama lama → redirect di sini supaya dropdown select benar.
+  if (defaultShift === 'Shift Security') defaultShift = 'Shift Security 1';
+  if (defaultShift === 'Shift Security Malam') defaultShift = 'Shift Security 2';
 
   // v100.19 aturan visibility:
   // - Tim Operasional: TAMPIL (semua shift relevan)
   // - Management: TAMPIL HANYA kalau default_shift='Shift Security'
   // v100.26 update:
   // - Security: TAMPIL SELALU (tidak peduli default_shift — shift bisa rotasi
-  //   antara Shift Security 07:00-19:00 dan Shift Management 08:30-16:30).
-  //   Sebelumnya Security hanya tampil kalau default_shift='Shift Security' →
-  //   kalau belum di-set, tidak bisa ganti shift.
+  //   antara Shift Security 1/2 dan Shift Management).
+  // v100.27 update:
+  // - Management: TAMPIL kalau default_shift adalah Shift Security 1 atau Shift Security 2
+  //   (sebelumnya cek 'Shift Security' — nama lama, sekarang cek nama baru).
   // - Lainnya (BM, HRD, Finance, dll): Sembunyikan
-  const shouldShow = isOps || isSecurity || (isMgmt && defaultShift === 'Shift Security');
+  const isSecurityShiftDefault = (defaultShift === 'Shift Security 1' || defaultShift === 'Shift Security 2');
+  const shouldShow = isOps || isSecurity || (isMgmt && isSecurityShiftDefault);
 
   if (!shouldShow) {
     wrapper.style.display = 'none';

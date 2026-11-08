@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.26-security-shift-picker';  // v100.26: Security SELALU tampil dropdown shift (tidak peduli default_shift — shift bisa rotasi Shift Security ↔ Shift Management). Sebelumnya hanya tampil kalau default_shift='Shift Security'. Tim Operasional tetap tampil (semua shift). Mencakup v100.12-v100.25. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.27-security-shift-1-2';  // v100.27: Shift Security baru — Shift Security 1 (08:00-17:00) & Shift Security 2 (23:15-08:15, lintas tanggal). Shift lama (Shift Security 07:00-19:00 & Shift Security Malam 23:00-07:00) dinonaktifkan. Migrasi otomatis: konversi data presensi lama + default_shift karyawan + recalc denda. UII tidak diubah (sudah sesuai). Mencakup v100.12-v100.26. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',
