@@ -1185,6 +1185,14 @@ const logoutUser = () => {
   restartToLogin('Anda telah keluar dari aplikasi.');
 };
 
+// v100.17: Handle "Logout & Login Ulang" dari banner error 401 di panel presensi.
+// Tanpa confirm() — user sudah klik tombol eksplisit. Clear session + reload ke login.
+window.handleLogoutAndReload = () => {
+  clearSessionData();
+  if (window.tdLogout) tdLogout();
+  restartToLogin('Sesi telah diperbarui. Silakan login kembali.');
+};
+
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
   // Register PWA Service Worker
@@ -1807,7 +1815,9 @@ const loadOutlets = async (opts) => {
       if (res.status === 500) {
         AppState.outletsLoadError = 'Server error (500). Kemungkinan: (1) Sheet "outlets" belum dibuat — jalankan setupBaru di Apps Script. (2) Code.gs belum di-deploy ulang. Detail: ' + errMsg;
       } else if (res.status === 401) {
-        AppState.outletsLoadError = 'Sesi login berakhir. Silakan login kembali.';
+        // v100.17: Pesan 401 lebih jelas — no auto-logout, jadi user perlu tahu
+        // harus re-login manual. Tombol Logout disediakan di banner (checkGpsDistance).
+        AppState.outletsLoadError = 'Sesi mungkin kedaluwarsa (HTTP 401). Klik "Logout & Login Ulang" di bawah, atau deploy ulang backend Code.gs ke versi terbaru.';
       } else {
         AppState.outletsLoadError = errMsg;
       }
@@ -2393,7 +2403,7 @@ window.loadApprovalQueue = async () => {
   try {
     const res = await fetch('/api/admin/approval-queue');
     if (!res.ok) {
-      if (listEl) listEl.innerHTML = '<p style="color:#dc2626; font-size:11px; text-align:center; padding:14px;">Gagal memuat antrian (HTTP ' + res.status + '). Backend mungkin belum v95+.</p>';
+      if (listEl) listEl.innerHTML = '<p style="color:#dc2626; font-size:11px; text-align:center; padding:14px;">Gagal memuat antrian (HTTP ' + res.status + '). Sesi mungkin kedaluwarsa — coba <strong>Logout lalu login kembali</strong>. Atau deploy ulang backend Code.gs ke versi terbaru (v95+).</p>';
       return;
     }
     const data = await res.json();
@@ -3903,13 +3913,18 @@ window.checkGpsDistance = () => {
   // === STATE: Outlet gagal dimuat — tampilkan error + tombol retry + diagnosa ===
   if (AppState.outletsLoadError) {
     banner.className = 'geofence-alert geofence-invalid';
+    // v100.17: Tombol "Logout & Login Ulang" kalau error mengandung "401" (sesi expired)
+    const is401 = AppState.outletsLoadError.indexOf('401') >= 0;
+    const logoutBtn = is401
+      ? '<button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px; background:#fef2f2; color:#991b1b; border-color:#fecaca;" onclick="window.handleLogoutAndReload && window.handleLogoutAndReload()"><i data-feather=\'log-out\' style=\'width:11px; height:11px;\'></i> Logout & Login Ulang</button>'
+      : '';
     text.innerHTML = `<strong>Gagal memuat daftar outlet:</strong> ${AppState.outletsLoadError}
       <br><button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px; margin-right:4px;" onclick="window.retryLoadOutlets && window.retryLoadOutlets()">
         <i data-feather="refresh-cw" style="width:11px; height:11px;"></i> Coba Muat Ulang
       </button>
       <button type="button" class="btn-secondary" style="margin-top:6px; padding:5px 10px; font-size:11px; background:#eff6ff; color:#1e40af; border-color:#bfdbfe;" onclick="window.diagnosePresensi && window.diagnosePresensi()">
         <i data-feather="activity" style="width:11px; height:11px;"></i> Diagnosa Masalah
-      </button>`;
+      </button>${logoutBtn ? ' ' + logoutBtn : ''}`;
     if (window.feather) feather.replace();
     return;
   }
@@ -5630,10 +5645,20 @@ const renderAttendanceTable = (logs) => {
 
     // Format display jam masuk
     // v98.2: Kalau jam 00:00:00 (data lama tanpa jam), tampilkan "-" supaya tidak misleading
+    // v100.18: Tanggal tampil di bawah jam masuk untuk SEMUA baris (bukan hanya lintas hari),
+    //   format singkat "8 Nov 2026". Lintas hari tetap ditandai warna abu-abu (kode di bawah).
+    //   Tidak mengganggu logika lain — hanya mengubah render display kolom "Shift & Jam Masuk".
+    const checkInDateShort = checkInDate ? (function () {
+      try {
+        const d = new Date(checkInDate.replace(/-/g, '/'));
+        if (isNaN(d.getTime())) return checkInDate;
+        return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+      } catch (e) { return checkInDate; }
+    })() : '';
     const checkInDisplay = l.check_in_time
       ? (checkInTime === '00:00:00'
-        ? '<span style="color:#cbd5e1;">jam tidak tersimpan</span>'
-        : `<strong style="color:#1e40af;">${checkInTime}</strong>${isCrossDay ? `<div style="font-size:10px; color:#64748b;">${checkInDate}</div>` : ''}`)
+        ? `<span style="color:#cbd5e1;">jam tidak tersimpan</span>${checkInDateShort ? `<div style="font-size:10px; color:#94a3b8;">📅 ${checkInDateShort}</div>` : ''}`
+        : `<strong style="color:#1e40af;">${checkInTime}</strong>${checkInDateShort ? `<div style="font-size:10px; color:${isCrossDay ? '#64748b' : '#94a3b8'};">📅 ${checkInDateShort}</div>` : ''}`)
       : '<span style="color:#94a3b8;">-</span>';
 
     // Format display jam pulang (v98: lebih menonjol + tampil tanggal kalau lintas hari)
@@ -7681,7 +7706,7 @@ const renderOutletsTable = () => {
         </td>
         <td>${o.address}</td>
         <td>
-          <span style="font-family:monospace; font-weight:700;">${o.lat.toFixed(5)}, ${o.lon.toFixed(5)}</span>
+          <span style="font-family:monospace; font-weight:700;">${(o.lat != null && o.lat !== '' && !isNaN(Number(o.lat))) ? Number(o.lat).toFixed(5) : '-'}, ${(o.lon != null && o.lon !== '' && !isNaN(Number(o.lon))) ? Number(o.lon).toFixed(5) : '-'}</span>
         </td>
         <td>
           <span class="card-badge-tag" style="background:#ecfdf5; color:#065f46;">${o.radius_meters} Meter</span>
