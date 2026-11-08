@@ -607,11 +607,15 @@
               <video id="camera-feed" class="presensi-camera-bg" autoplay playsinline muted></video>
               <canvas id="camera-snapshot-canvas" style="display:none;"></canvas>
               <canvas id="face-detect-canvas" width="64" height="48" style="display:none;"></canvas>
-              <div class="presensi-corner presensi-corner-tl"></div>
-              <div class="presensi-corner presensi-corner-tr"></div>
-              <div class="presensi-corner presensi-corner-bl"></div>
-              <div class="presensi-corner presensi-corner-br"></div>
-              <div id="face-ring-overlay" class="presensi-face-ring"></div>
+              <!-- v100.28: Siku dipindah KE DALAM face-ring supaya mengikuti area wajah
+                   (face-ring ada di tengah camera-box, width 70%, aspect 3/4 = area wajah).
+                   Sebelumnya siku di sudut camera-box (terlalu luas, tidak mengikuti wajah). -->
+              <div id="face-ring-overlay" class="presensi-face-ring">
+                <div class="presensi-corner presensi-corner-tl"></div>
+                <div class="presensi-corner presensi-corner-tr"></div>
+                <div class="presensi-corner presensi-corner-bl"></div>
+                <div class="presensi-corner presensi-corner-br"></div>
+              </div>
               <div id="geofence-status-banner" class="presensi-gps-status warning">
                 <i data-feather="alert-circle" id="geofence-icon" style="width:12px; height:12px;"></i>
                 <span id="geofence-text">Menunggu GPS...</span>
