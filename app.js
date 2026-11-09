@@ -3012,9 +3012,32 @@ const openCreateReportModal = () => {
   const f1 = document.getElementById('rep-form-file'); if (f1) f1.value = '';
   const f2 = document.getElementById('rep-form-file-camera'); if (f2) f2.value = '';
   document.getElementById('proof-preview-container').style.display = 'none';
+  // v100.32: Reset kategori ke default + hide input "Lainnya"
+  const catSel = document.getElementById('rep-form-category');
+  if (catSel) catSel.value = 'Operasional Rutin';
+  const catOther = document.getElementById('rep-form-category-other');
+  if (catOther) { catOther.value = ''; catOther.style.display = 'none'; }
   handleReportStatusChange('Proses');
   openModal('modal-report');
 };
+
+// v100.32: Handler saat user ganti kategori. Kalau pilih "Lainnya", tampilkan
+// input text untuk ketik mandiri. Kalau pilih kategori lain, hide input text.
+// TIDAK mengganggu logika lain — hanya show/hide 1 input element.
+window.handleReportCategoryChange = (val) => {
+  const otherInput = document.getElementById('rep-form-category-other');
+  if (!otherInput) return;
+  if (val === 'Lainnya') {
+    otherInput.style.display = 'block';
+    otherInput.required = true;
+    setTimeout(() => otherInput.focus(), 50);  // auto-focus supaya user langsung bisa ketik
+  } else {
+    otherInput.style.display = 'none';
+    otherInput.required = false;
+    otherInput.value = '';
+  }
+};
+window.handleReportCategoryChange = window.handleReportCategoryChange;
 
 const handleReportStatusChange = (status) => {
   const section = document.getElementById('proof-upload-section');
@@ -3205,9 +3228,22 @@ const submitDailyReportForm = async (e) => {
     return;
   }
 
+  // v100.32: Kalau kategori "Lainnya", ambil dari input text mandiri + validasi tidak kosong
+  let categoryValue = document.getElementById('rep-form-category').value;
+  if (categoryValue === 'Lainnya') {
+    const otherInput = document.getElementById('rep-form-category-other');
+    const otherVal = (otherInput ? otherInput.value.trim() : '');
+    if (!otherVal) {
+      alert('Kategori "Lainnya" dipilih — silakan ketik kategori di kolom yang muncul.');
+      if (otherInput) otherInput.focus();
+      return;
+    }
+    categoryValue = otherVal;
+  }
+
   const payload = {
     title: document.getElementById('rep-form-title').value,
-    category: document.getElementById('rep-form-category').value,
+    category: categoryValue,
     type: AppState.currentUser.type,
     division: AppState.currentUser.division,
     outlet_id: document.getElementById('rep-form-outlet').value,

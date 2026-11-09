@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.31-fix-face-hint';  // v100.31: Fix bug "Kamera belum aktif" tetap muncul di layar kamera walau kamera sudah aktif. Root cause: setFaceStatus hanya update #face-status-* (hidden off-screen), tidak sync ke #face-hint-* (terlihat di layar). Sekarang sync keduanya. Mencakup v100.12-v100.30. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.32-kategori-lainnya';  // v100.32: Tambah opsi "Lainnya" di kategori Daily Report — saat dipilih, muncul input text untuk ketik kategori mandiri. Validasi tidak kosong. TIDAK mengganggu logika lain. Mencakup v100.12-v100.31. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',
