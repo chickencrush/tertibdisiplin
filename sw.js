@@ -1,6 +1,6 @@
 // TERTIB DISIPLIN - Service Worker
 // Naikkan angka versi di bawah setiap kali file aplikasi diperbarui.
-const CACHE_NAME = 'tertib-disiplin-v100.32.1-kategori-lainnya-clean';  // v100.32.1: Hapus teks "ketik mandiri" dari opsi Lainnya (cukup "Lainnya"). Mencakup v100.12-v100.32. Cache lama dihapus otomatis saat activate.
+const CACHE_NAME = 'tertib-disiplin-v100.33-fix-early-checkout-hide-pwa-banner';  // v100.33: (1) Fix "Rencana pulang: 1899-12-30" — normalize estimated_checkout ke HH:MM string (Google Sheets auto-convert ke Date serial). (2) Fix "Invalid Date" di created_at — hapus replace(/-/g,/) yang bikin ISO string invalid. (3) Hilangkan panel "Install sekarang" di atas (pwa-banner display:none). Mencakup v100.12-v100.32.1. Cache lama dihapus otomatis saat activate.
 // Pre-cache file critical + SEMUA icons (sebelumnya hanya logo.png → 404 utk icon-192/favicon di install prompt)
 const SHELL = [
   './',

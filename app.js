@@ -2538,7 +2538,22 @@ window.renderApprovalQueue = () => {
   };
   listEl.innerHTML = filtered.map(function (it) {
     const meta = typeMeta[it.type] || { label: it.type, color: '#475569', bg: '#f1f5f9', icon: 'file' };
-    const created = it.created_at ? new Date(String(it.created_at).replace(/-/g, '/')).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+    // v100.33: Fix "Invalid Date" — backend sekarang kirim ISO string valid.
+    // Hapus replace(/-/g, '/') yang bikin ISO string ("2026-11-09T...Z") jadi invalid.
+    // Pakai new Date() langsung. Fallback kalau masih gagal.
+    let created = '-';
+    if (it.created_at) {
+      const d = new Date(it.created_at);
+      if (!isNaN(d.getTime())) {
+        created = d.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      } else {
+        // Fallback: coba replace - jadi / (utk format "yyyy-MM-dd HH:mm:ss" lama)
+        const d2 = new Date(String(it.created_at).replace(/-/g, '/'));
+        if (!isNaN(d2.getTime())) {
+          created = d2.toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+        }
+      }
+    }
     const reasonShort = (it.reason || '').length > 80 ? (it.reason || '').slice(0, 80) + '…' : (it.reason || '');
     const attachLink = it.attachment_url ? ' <a href="' + escapeHtml(it.attachment_url) + '" target="_blank" style="color:#2563eb; text-decoration:underline; font-size:10px;" onclick="event.stopPropagation();">📎 Lihat lampiran</a>' : '';
     return '<div style="padding:12px; border:1px solid #e2e8f0; border-radius:10px; margin-bottom:8px; background:#fff;">' +

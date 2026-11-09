@@ -4851,3 +4851,15 @@ button.is-busy::after,
     animation: none !important;
   }
 }
+
+/* ========================================================================
+   v100.33: HILANGKAN PANEL "INSTALL SEKARANG" DI ATAS
+   ------------------------------------------------------------------------
+   User minta hilangkan panel PWA install banner yang muncul di atas.
+   pwa-banner di-hide permanen via display:none !important.
+   Logic beforeinstallprompt & triggerPwaPrompt tetap utuh (modal install
+   di sidebar masih jalan). Hanya banner atas yang dihilangkan.
+   ======================================================================== */
+.pwa-install-banner#pwa-banner {
+  display: none !important;
+}
