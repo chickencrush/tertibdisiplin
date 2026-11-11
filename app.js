@@ -900,12 +900,13 @@ const loadAllAppData = async () => {
     loadDailyReports(),
     loadAttendanceLogs()
   ];
-  // Load payslips & calendar in background (tidak block dashboard)
-  const backgroundJobs = [loadPayslips(), loadCalendarEvents(), loadShifts()]; // v82: load shifts (untuk dropdown presensi dinamis)
+  // v100.34: LAZY LOAD — payslips, calendar, KPI, leave balance, leave requests
+  // DIPINDAH ke saat user buka view masing-masing (switchView). Sebelumnya load
+  // semua di background di awal → 9 request paralel → lemot.
+  // Sekarang hanya load shifts (utk dropdown presensi) di background — ringan.
+  const backgroundJobs = [loadShifts()]; // v82: load shifts (untuk dropdown presensi dinamis)
   if (canAccessView('employees')) criticalJobs.push(loadEmployees());
-  if (canAccessView('kpi')) backgroundJobs.push(loadKpiSummary());
-  backgroundJobs.push(loadLeaveBalance());
-  backgroundJobs.push(loadLeaveRequests());
+  // KPI, payslips, calendar, leave → lazy load di switchView (payroll/kpi/calendar/leaves)
 
   // Tunggu critical data dulu (untuk render dashboard cepat)
   await Promise.all(criticalJobs);
@@ -1677,6 +1678,21 @@ const switchView = (viewName) => {
       // Data sudah ada — hanya render (cache check di dalam)
       renderDailyReportBoard && renderDailyReportBoard();
     }
+  } else if (viewName === 'payroll' && !isSameView) {
+    // v100.34: Lazy load payslips saat buka view Payroll (sebelumnya load di awal)
+    stopCamera();
+    window.stopChatPolling && window.stopChatPolling();
+    if (typeof loadPayslips === 'function') loadPayslips();
+  } else if (viewName === 'kpi' && !isSameView) {
+    // v100.34: Lazy load KPI summary saat buka view KPI
+    stopCamera();
+    window.stopChatPolling && window.stopChatPolling();
+    if (typeof loadKpiSummary === 'function') loadKpiSummary();
+  } else if (viewName === 'calendar' && !isSameView) {
+    // v100.34: Lazy load calendar events saat buka view Calendar
+    stopCamera();
+    window.stopChatPolling && window.stopChatPolling();
+    if (typeof loadCalendarEvents === 'function') loadCalendarEvents();
   } else if (!isSameView) {
     stopCamera();
     // Stop chat polling kalau keluar dari view chat (hemat network)
@@ -6315,7 +6331,7 @@ const switchChatChannel = window.switchChatChannel;
 // Chat state: tracking untuk polling & smart-diff
 const ChatState = {
   pollingTimer: null,
-  pollInterval: 4000,          // 4 detik — balance antara real-time & hemat quota Apps Script
+  pollInterval: 8000,          // v100.34: 8 detik (sebelumnya 4s) — hemat quota Apps Script, kurangi beban backend. Real-time tetap cukup untuk chat operasional.
   isActive: false,             // hanya poll saat chat view sedang dibuka
   isLoading: false,            // mencegah request paralel
   lastSig: '',                 // signature = lastMessageId + count, untuk skip re-render
