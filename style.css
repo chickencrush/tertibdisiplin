@@ -5123,3 +5123,48 @@ button.is-busy::after,
     transform: none !important;
   }
 }
+
+/* ========================================================================
+   v102: DIVISION GROUP HEADER — untuk tabel karyawan yang dikelompokkan
+   ======================================================================== */
+.division-group-header td {
+  background: linear-gradient(90deg, #faf5f7 0%, #f1f5f9 100%) !important;
+  border-top: 2px solid #8b1e3f !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  padding: 10px 14px !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+  color: #8b1e3f !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.division-group-header td::first-letter {
+  margin-right: 2px;
+}
+
+.division-subgroup-header td {
+  background: #fefce8 !important;
+  border-bottom: 1px dashed #fde68a !important;
+  padding: 8px 14px !important;
+  font-weight: 600 !important;
+  font-size: 11px !important;
+  color: #92400e !important;
+}
+
+/* Hover effect pada baris grup (visual feedback) */
+.division-group-header:hover td {
+  background: linear-gradient(90deg, #f8f0f3 0%, #f1f5f9 100%) !important;
+}
+
+/* Responsif: di mobile, group header tetap kelihatan */
+@media (max-width: 768px) {
+  .division-group-header td {
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+  }
+  .division-subgroup-header td {
+    padding: 6px 10px !important;
+    font-size: 10px !important;
+  }
+}
