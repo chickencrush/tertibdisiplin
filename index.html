@@ -448,7 +448,7 @@
                 <div class="stat-subtitle">📝 Total laporan operasional & checklist</div>
               </div>
 
-              <!-- Happy Customers Card -->
+              <!-- Attendance Rate Card -->
               <div class="stat-card stat-card-coral">
                 <div class="stat-header">
                   <span class="stat-title">Tingkat Kehadiran Hari Ini</span>
@@ -550,23 +550,29 @@
             </div>
           </div>
 
-          <!-- Right Column: Happy Count Donut & Staff Ratings -->
+          <!-- Right Column: Izin/Cuti Hari Ini + Staff Ratings -->
           <div class="dashboard-right-col">
-            
-            <!-- Happy Count Comparison Donut -->
-            <div class="modern-card">
+
+            <!-- v101: Widget Izin/Cuti Harian (admin & super admin) -->
+            <div class="modern-card leave-today-card" id="dashboard-leave-today-card" style="display:none; border-left:4px solid #8b1e3f;">
               <div class="card-title-row">
-                <h3>Happy Count Comparison</h3>
-                <span class="card-badge-tag">Tamu & Member</span>
+                <div>
+                  <h3>📋 Izin & Cuti Hari Ini</h3>
+                  <p style="font-size:11px; color:#64748b;">Siapa saja yang sedang / akan izin & cuti</p>
+                </div>
+                <span class="card-badge-tag" id="leave-today-total-badge" style="background:#fef3c7; color:#92400e;">0</span>
               </div>
-              <div style="height: 180px; position:relative;">
-                <canvas id="happyDonutChart"></canvas>
+
+              <!-- Sub-tabs: Hari Ini / Akan Datang / Pending -->
+              <div class="leave-today-tabs" style="margin-top:12px; display:flex; gap:6px; flex-wrap:wrap; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+                <button type="button" class="leave-today-tab active" data-filter="today" onclick="window.switchLeaveTodayFilter && window.switchLeaveTodayFilter('today')" style="padding:6px 12px; font-size:11px; font-weight:600; border:none; background:#8b1e3f; color:#fff; border-radius:6px; cursor:pointer;">Hari Ini (<span id="lt-count-today">0</span>)</button>
+                <button type="button" class="leave-today-tab" data-filter="upcoming" onclick="window.switchLeaveTodayFilter && window.switchLeaveTodayFilter('upcoming')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">Akan Datang (<span id="lt-count-upcoming">0</span>)</button>
+                <button type="button" class="leave-today-tab" data-filter="pending" onclick="window.switchLeaveTodayFilter && window.switchLeaveTodayFilter('pending')" style="padding:6px 12px; font-size:11px; font-weight:600; border:1px solid #e2e8f0; background:#f1f5f9; color:#475569; border-radius:6px; cursor:pointer;">Menunggu (<span id="lt-count-pending">0</span>)</button>
               </div>
-              <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:11px; margin-top:10px;">
-                <div><span style="color:#701c34;">●</span> Members (0%)</div>
-                <div><span style="color:#0284c7;">●</span> Non-Members (0%)</div>
-                <div><span style="color:#f43f5e;">●</span> New Guest (0%)</div>
-                <div><span style="color:#10b981;">●</span> Existing (0%)</div>
+
+              <!-- List items -->
+              <div id="leave-today-list" style="margin-top:12px; max-height:420px; overflow-y:auto;">
+                <p style="color:#94a3b8; font-size:12px; text-align:center; padding:20px;">Memuat data izin/cuti...</p>
               </div>
             </div>
 
