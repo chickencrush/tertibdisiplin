@@ -2609,6 +2609,19 @@
               <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Dikali jumlah hari hadir</p>
             </div>
           </div>
+          <!-- v106: Tunjangan Jabatan & Tunjangan Bonus dipindah ke section "Data Gaji & Tunjangan" -->
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Tunjangan Jabatan (per bulan, Rp)</label>
+              <input type="number" class="form-control" id="dc-edit-tunjangan-jabatan" min="0" max="50000000" step="50000" placeholder="0">
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Tunjangan tetap bulanan berdasarkan jabatan.</p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tunjangan Bonus Tambahan (per bulan, Rp)</label>
+              <input type="number" class="form-control" id="dc-edit-tunjangan-bonus" min="0" max="50000000" step="50000" placeholder="0">
+              <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Bonus tambahan tetap per bulan.</p>
+            </div>
+          </div>
         </div>
 
         <!-- Section 3: Data KPI -->
@@ -2671,16 +2684,7 @@
               <p style="font-size:10px; color:#94a3b8; margin:2px 0 0 0;">Negatif = kurangi sisa cuti, positif = tambah.</p>
             </div>
           </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-            <div class="form-group">
-              <label class="form-label">Tunjangan Jabatan (per bulan, Rp)</label>
-              <input type="number" class="form-control" id="dc-edit-tunjangan-jabatan" min="0" max="50000000" step="50000" placeholder="0">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Tunjangan Bonus Tambahan (per bulan, Rp)</label>
-              <input type="number" class="form-control" id="dc-edit-tunjangan-bonus" min="0" max="50000000" step="50000" placeholder="0">
-            </div>
-          </div>
+          <!-- v106: Tunjangan Jabatan & Tunjangan Bonus dipindah ke section "Data Gaji & Tunjangan" -->
           <div class="form-group">
             <label class="form-label">Presensi Semua Titik Lokasi (Geofence Exempt)</label>
             <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#475569; cursor:pointer;">
